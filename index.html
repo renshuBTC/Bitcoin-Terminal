@@ -2141,10 +2141,10 @@ function renderChart(data) {
   }
 
   if (spot && spot > 0) {
-    // For profit/loss annotation stats in split modes with Flow/Delta,
-    // compute from raw aggAll (unsmoothed) to avoid smooth() distribution artifacts.
-    // The visual bars use smoothed+normalized data, but stats must be exact.
-    var useAggAllForStats = (isFlow || isDelta) && !isCD && !isVD && aggAll;
+    // Compute profit/loss annotation stats from raw aggAll (unsmoothed) to avoid
+    // smooth() distribution artifacts and to match mobile stats exactly.
+    // The visual bars use smoothed data, but stats must be exact.
+    var useAggAllForStats = !isCD && !isVD && aggAll;
     var statsPrices, statsValues;
     if (useAggAllForStats) {
       statsPrices = aggAll.map(function(b) { return b.price; });
@@ -3015,14 +3015,16 @@ function fetchMobileStats(dateStr, spotPrice) {
     var buckets = resp.buckets;
     var spot = resp.close || spotPrice;
 
-    // === STOCK STATS (URPD) ===
-    var totalSupply = resp.total_supply || buckets.reduce(function(s, b) { return s + b.supply; }, 0);
+    // === STOCK STATS (URPD) — use aggregate() to match desktop ===
+    var maxPrice = buckets.reduce(function(a,b){return b.price_floor>a?b.price_floor:a;},0);
+    var binW = maxPrice / NUM_BINS;
+    var aggStock = aggregate(buckets, binW);
+    var totalSupply = resp.total_supply || aggStock.reduce(function(s, b) { return s + b.supply; }, 0);
     var profitBTC = 0, lossBTC = 0, profitUSD = 0, lossUSD = 0, totalInvested = 0;
-    for (var i = 0; i < buckets.length; i++) {
-      var rc = buckets[i].realized_cap || (buckets[i].supply * buckets[i].price_floor);
-      totalInvested += rc;
-      if (buckets[i].price_floor <= spot) { profitBTC += buckets[i].supply; profitUSD += rc; }
-      else { lossBTC += buckets[i].supply; lossUSD += rc; }
+    for (var i = 0; i < aggStock.length; i++) {
+      totalInvested += aggStock[i].invested;
+      if (aggStock[i].price <= spot) { profitBTC += aggStock[i].supply; profitUSD += aggStock[i].invested; }
+      else { lossBTC += aggStock[i].supply; lossUSD += aggStock[i].invested; }
     }
 
     var stats = {
@@ -3039,17 +3041,9 @@ function fetchMobileStats(dateStr, spotPrice) {
       totalSpentUSD: 0, soldProfitUSD: 0, soldLossUSD: 0, minedUSD: 0
     };
 
-    // === FLOW STATS (SOPD) ===
+    // === FLOW STATS (SOPD) — use same binW as STOCK (current-day maxPrice, matches desktop) ===
     if (respPrev && respPrev.buckets) {
       var prevBuckets = respPrev.buckets;
-      var maxPrice = 0;
-      for (var j = 0; j < buckets.length; j++) {
-        if (buckets[j].price_floor > maxPrice) maxPrice = buckets[j].price_floor;
-      }
-      for (var j2 = 0; j2 < prevBuckets.length; j2++) {
-        if (prevBuckets[j2].price_floor > maxPrice) maxPrice = prevBuckets[j2].price_floor;
-      }
-      var binW = maxPrice / NUM_BINS;
       var aggCurr = aggregate(buckets, binW);
       var aggPrev = aggregate(prevBuckets, binW);
       var diff = diffAgg(aggPrev, aggCurr);
@@ -3142,12 +3136,14 @@ function displayMobileStats(stats, spot, dateStr) {
   document.getElementById("mpProfitLabel").textContent = isUSD ? tm("investedProfit") : tm("profitBTC");
   document.getElementById("mpLossLabel").textContent = isUSD ? tm("investedLoss") : tm("lossBTC");
 
-  // Flow stats
+  // Flow stats (with percentages matching desktop)
   document.getElementById("mpTotalSpent").textContent = isUSD ? fmtUSDMobile(stats.totalSpentUSD) : fmtBTCMobile(stats.totalSpent);
   document.getElementById("mpMined").textContent = stats.minedBTC > 0 ? (isUSD ? fmtUSDMobile(stats.minedUSD) : fmtBTCMobile(stats.minedBTC)) : "—";
   if (stats.totalSpent > 0) {
-    document.getElementById("mpSoldProfit").textContent = isUSD ? fmtUSDMobile(stats.soldProfitUSD) : fmtBTCMobile(stats.soldProfitBTC);
-    document.getElementById("mpSoldLoss").textContent = isUSD ? fmtUSDMobile(stats.soldLossBTC > 0 ? stats.soldLossUSD : 0) : fmtBTCMobile(stats.soldLossBTC);
+    var soldProfPct = stats.soldProfitPct.toFixed(1);
+    var soldLossPct = stats.soldLossPct.toFixed(1);
+    document.getElementById("mpSoldProfit").textContent = (isUSD ? fmtUSDMobile(stats.soldProfitUSD) : fmtBTCMobile(stats.soldProfitBTC)) + " (" + soldProfPct + "%)";
+    document.getElementById("mpSoldLoss").textContent = (isUSD ? fmtUSDMobile(stats.soldLossBTC > 0 ? stats.soldLossUSD : 0) : fmtBTCMobile(stats.soldLossBTC)) + " (" + soldLossPct + "%)";
   } else {
     document.getElementById("mpSoldProfit").textContent = "—";
     document.getElementById("mpSoldLoss").textContent = "—";
