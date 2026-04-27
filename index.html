@@ -1788,11 +1788,15 @@ function renderChart(data) {
   }
 
   if (isSplit) {
-    var allPricesSet = new Set();
-    aggLTH.forEach(function(b){allPricesSet.add(b.price);});
-    aggSTH.forEach(function(b){allPricesSet.add(b.price);});
-    if (needsNormalize) aggAll.forEach(function(b){allPricesSet.add(b.price);});
-    chartPrices = Array.from(allPricesSet).sort(function(a,b){return a-b;});
+    if (needsNormalize) {
+      // Use aggAll prices only — same grid as P/L view for identical bar shapes
+      chartPrices = aggAll.map(function(b){return b.price;});
+    } else {
+      var allPricesSet = new Set();
+      aggLTH.forEach(function(b){allPricesSet.add(b.price);});
+      aggSTH.forEach(function(b){allPricesSet.add(b.price);});
+      chartPrices = Array.from(allPricesSet).sort(function(a,b){return a-b;});
+    }
     barWidths = chartPrices.map(function(p,i,arr){if(arr.length<=1)return 1;if(i===arr.length-1)return arr[i]-arr[i-1];return arr[i+1]-arr[i];});
     var lthMap = {}, sthMap = {};
     aggLTH.forEach(function(b){lthMap[b.price]=b;});
@@ -1877,12 +1881,16 @@ function renderChart(data) {
     traces.push({x:chartPrices,y:cumul1,type:"scatter",mode:"lines",name:t("pctTotal"),line:{color:CUMUL_COLOR,width:2},yaxis:"y2",visible:showCumulative?true:"legendonly",hovertemplate:hp+"%{x:,.0f}<br>"+hpt+"%{y:.1f}%<extra></extra>"});
   } else if (isAge) {
     // Age-band stacked bar rendering (21 cohorts)
-    var allPricesSetA = new Set();
-    data.ageBandData.forEach(function(ab) {
-      ab.data.forEach(function(b) { allPricesSetA.add(b.price); });
-    });
-    if (needsNormalize) aggAll.forEach(function(b){allPricesSetA.add(b.price);});
-    chartPrices = Array.from(allPricesSetA).sort(function(a,b){return a-b;});
+    if (needsNormalize) {
+      // Use aggAll prices only — same grid as P/L view for identical bar shapes
+      chartPrices = aggAll.map(function(b){return b.price;});
+    } else {
+      var allPricesSetA = new Set();
+      data.ageBandData.forEach(function(ab) {
+        ab.data.forEach(function(b) { allPricesSetA.add(b.price); });
+      });
+      chartPrices = Array.from(allPricesSetA).sort(function(a,b){return a-b;});
+    }
     barWidths = chartPrices.map(function(p,i,arr){if(arr.length<=1)return 1;if(i===arr.length-1)return arr[i]-arr[i-1];return arr[i+1]-arr[i];});
     // Collect raw (unsmoothed) per-band values
     var rawBandArrays = [];
