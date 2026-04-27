@@ -265,7 +265,8 @@
   #mobilePrice { display: none; height: 100%; width: 100%; flex-direction: column; background: #000000; overflow-x: hidden; overflow-y: auto; }
   #mpDesktopHint { flex: 0 0 auto; padding: 14px 20px 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 13px; color: #FFA500; font-weight: 600; letter-spacing: 0.2px; }
   /* Header: stacked left-aligned like Robinhood */
-  #mpHeader { flex: 0 0 auto; padding: 8px 20px 8px; }
+  #mpHeader { flex: 0 0 auto; padding: 8px 20px 8px; position: relative; }
+  #mpLangBtn { position: absolute; top: 10px; right: 20px; background: #1a1a1a; color: #888; border: 1px solid #333; padding: 5px 12px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; font-size: 12px; font-weight: 600; cursor: pointer; border-radius: 14px; transition: all 0.2s; }
   #mpLabel { font-size: 15px; color: #ffffff; font-weight: 800; letter-spacing: -0.3px; margin-bottom: 2px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
   #mpPrice { font-size: 34px; font-weight: 800; color: #ffffff; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; letter-spacing: -1px; margin-bottom: 4px; }
   #mpChange { font-size: 14px; color: #00e676; font-weight: 600; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
@@ -497,7 +498,7 @@ Positive = accumulation  |  Negative = distribution</div>
   if (p.get("lang")) {
     var btnMap = {zh:"\u65e5\u672c\u8a9e",ja:"FR",fr:"\u0641\u0627\u0631\u0633\u06cc",fa:"EN",en:"\u4e2d\u6587"};
     var nextLang = btnMap[p.get("lang")];
-    if (nextLang) document.getElementById("langBtn").textContent = nextLang;
+    if (nextLang) { document.getElementById("langBtn").textContent = nextLang; var ml = document.getElementById("mpLangBtn"); if (ml) ml.textContent = nextLang; }
   }
   if (p.get("date")) {
     var rwP = parseInt(rw) || 1;
@@ -515,6 +516,7 @@ Positive = accumulation  |  Negative = distribution</div>
     <div id="mpLabel">Bitcoin</div>
     <div id="mpPrice">$---</div>
     <div id="mpChange">---</div>
+    <button id="mpLangBtn">中文</button>
   </div>
   <canvas id="mpChart"></canvas>
   <div id="mpPeriods">
@@ -1011,6 +1013,7 @@ var T_FLOW = {
 
 function applyLang() {
   document.getElementById("langBtn").textContent = t("langBtn");
+  var mpLb = document.getElementById("mpLangBtn"); if (mpLb) mpLb.textContent = t("langBtn");
   if(document.getElementById("footer")) document.getElementById("footer").innerHTML = t("poweredBy");
   document.getElementById("landmarks").options[0].textContent = t("landmarks");
   var lm = document.getElementById("landmarks");
@@ -2407,7 +2410,7 @@ document.getElementById("btnFlow").onclick = function(){ switchViewMode("flow");
 
 // Language toggle
 
-document.getElementById("langBtn").onclick = function(){
+function cycleLang() {
   if (lang === "en") lang = "zh";
   else if (lang === "zh") lang = "ja";
   else if (lang === "ja") lang = "fr";
@@ -2418,7 +2421,12 @@ document.getElementById("langBtn").onclick = function(){
   else url.searchParams.set("lang", lang);
   window.history.replaceState({}, "", url);
   applyLang();
-};
+  // Sync mobile lang button text
+  var mpLb = document.getElementById("mpLangBtn");
+  if (mpLb) mpLb.textContent = t("langBtn");
+}
+document.getElementById("langBtn").onclick = cycleLang;
+document.getElementById("mpLangBtn").onclick = cycleLang;
 
 document.querySelectorAll("#intervalBar .iv").forEach(function(btn) {
   btn.addEventListener("click", function() {
