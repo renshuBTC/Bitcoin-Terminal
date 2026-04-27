@@ -726,7 +726,6 @@ var T = {
     langBtn: "\u65e5\u672c\u8a9e", sbPriceDist: "Price Distribution", expRange: "RANGE",
     notFound: "Exact date not found, showing nearest: ", errBRK: "Make sure BRK is running on localhost:3110",
     sth: "Short-Term Holders", lth: "Long-Term Holders", profitLoss: "Profit/Loss", spot: "Spot",
-    tipPL: "Profit / Loss", tipLTHSTH: "Long-Term Holders / Short-Term Holders",
     tipUSD: "United States Dollar", tipBTC: "Bitcoin", tipVD: "Valuedays", tipCD: "Coindays",
     tipRW: "Rolling Window", tipURPD: "UTXO Realized Price Distribution",
     btcusd: "BTC/USD", realizedPrice: "Realized Price",
@@ -2657,6 +2656,10 @@ var mpAnimFrame = null;
 
 function mpNormalize(prices, count) {
   if (!prices || prices.length === 0) return [];
+  if (prices.length === 0) return [];
+  var minP = Math.min.apply(null, prices);
+  var maxP = Math.max.apply(null, prices);
+  var range = maxP - minP || 1;
   var out = [];
   for (var i = 0; i < count; i++) {
     var t = i / (count - 1 || 1);
@@ -2664,9 +2667,6 @@ function mpNormalize(prices, count) {
     var lo = Math.floor(srcIdx);
     var hi = Math.min(lo + 1, prices.length - 1);
     var frac = srcIdx - lo;
-    var minP = Math.min.apply(null, prices);
-    var maxP = Math.max.apply(null, prices);
-    var range = maxP - minP || 1;
     var val = prices[lo] + (prices[hi] - prices[lo]) * frac;
     out.push((val - minP) / range);
   }
@@ -3219,14 +3219,17 @@ function startBinanceLive() {
       mpLivePrice = parseFloat(d.c); // close price
       if (!mpIsScrubbing && mpCurrentSlice.length > 0) {
         // Update header price in real time
-        document.getElementById("mpPrice").textContent = "$" + mpLivePrice.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        var mpPriceEl = document.getElementById("mpPrice");
+        if (mpPriceEl) mpPriceEl.textContent = "$" + mpLivePrice.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
         // Update change relative to first point in current slice
         var firstP = mpCurrentSlice[0];
         var change = mpLivePrice - firstP;
         var arrow = change >= 0 ? "▲" : "▼";
         var changeEl = document.getElementById("mpChange");
-        changeEl.textContent = arrow + " $" + Math.abs(change).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
-        changeEl.classList.toggle("negative", change < 0);
+        if (changeEl) {
+          changeEl.textContent = arrow + " $" + Math.abs(change).toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2});
+          changeEl.classList.toggle("negative", change < 0);
+        }
       }
     };
     mpLiveWs.onclose = function() {
