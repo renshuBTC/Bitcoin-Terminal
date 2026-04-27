@@ -1674,9 +1674,15 @@ function loadAndRender() {
             data.ageBandData = valid.map(function(r) {
               return { band: r.band, data: aggregate(r.buckets, binWidth) };
             });
-            // Also compute aggAll for totals
-            data.aggAll = aggregateAgeBands(valid, binWidth, isCD ? weightMode : "usd");
-            if (isCD) data.totalCD = data.aggAll.reduce(function(s,b){return s+b.invested;}, 0);
+            // Compute aggAll for totals and stats
+            if (isCD) {
+              // CD/VD need age-weighted aggregate (coindays/valuedays)
+              data.aggAll = aggregateAgeBands(valid, binWidth, weightMode);
+              data.totalCD = data.aggAll.reduce(function(s,b){return s+b.invested;}, 0);
+            } else {
+              // BTC/USD: use plain aggregate (no age weighting) for correct P/L stats
+              data.aggAll = aggregate(buckets, binWidth);
+            }
           } else {
             data.aggAll = aggregateAgeBands(valid, binWidth, weightMode);
             data.totalCD = data.aggAll.reduce(function(s,b){return s+b.invested;}, 0);
@@ -1824,7 +1830,7 @@ function renderChart(data) {
         sthSupV = new Array(chartPrices.length);
         for (var ni = 0; ni < chartPrices.length; ni++) {
           var rawTotal = rawLth[ni] + rawSth[ni];
-          if (rawTotal > 1e-10) {
+          if (Math.abs(rawTotal) > 1e-10) {
             lthSupV[ni] = smoothedAll[ni] * (rawLth[ni] / rawTotal);
             sthSupV[ni] = smoothedAll[ni] * (rawSth[ni] / rawTotal);
           } else {
@@ -1853,7 +1859,7 @@ function renderChart(data) {
         sthInv = new Array(chartPrices.length);
         for (var ni = 0; ni < chartPrices.length; ni++) {
           var rawTotal = rawLth[ni] + rawSth[ni];
-          if (rawTotal > 1e-10) {
+          if (Math.abs(rawTotal) > 1e-10) {
             lthInv[ni] = smoothedAll[ni] * (rawLth[ni] / rawTotal);
             sthInv[ni] = smoothedAll[ni] * (rawSth[ni] / rawTotal);
           } else {
@@ -1927,7 +1933,7 @@ function renderChart(data) {
       }
       for (var ni = 0; ni < chartPrices.length; ni++) {
         var rawTotal = rawSums[ni];
-        if (rawTotal > 1e-10) {
+        if (Math.abs(rawTotal) > 1e-10) {
           for (var bi = 0; bi < rawBandArrays.length; bi++) {
             finalBandArrays[bi][ni] = smoothedAllAge[ni] * (rawBandArrays[bi][ni] / rawTotal);
           }
@@ -2144,7 +2150,8 @@ function renderChart(data) {
     // Compute profit/loss annotation stats from raw aggAll (unsmoothed) to avoid
     // smooth() distribution artifacts and to match mobile stats exactly.
     // The visual bars use smoothed data, but stats must be exact.
-    var useAggAllForStats = !isCD && !isVD && aggAll;
+    // Works for all weight modes: BTC reads .supply, USD/CD/VD read .invested.
+    var useAggAllForStats = !!aggAll;
     var statsPrices, statsValues;
     if (useAggAllForStats) {
       statsPrices = aggAll.map(function(b) { return b.price; });
