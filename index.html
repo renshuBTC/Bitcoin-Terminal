@@ -1946,10 +1946,12 @@ function renderChart(data) {
     for (var ai = 0; ai < data.ageBandData.length; ai++) {
       var bandLabel = data.ageBandData[ai].band.label;
       var hoverFmt = isCoin ? "%{y:,.2f} BTC" : isCD ? "%{y:,.0f} CD" : isVD ? "%{y:$,.0f} VD" : "%{y:$,.0f}";
+      var bandBaseColor = AGE_BAND_COLORS[ai];
+      var bandColors = chartPrices.map(function(p){return spot&&p>spot?bandBaseColor+"66":bandBaseColor;});
       traces.push({
         x: chartPrices, y: finalBandArrays[ai], type: "bar", name: bandLabel,
         width: barWidths,
-        marker: { color: AGE_BAND_COLORS[ai], line: { width: 0.3, color: "rgba(0,0,0,0.3)" } },
+        marker: { color: bandColors, line: { width: 0.3, color: "rgba(0,0,0,0.3)" } },
         hovertemplate: hp + "%{x:,.0f}<br>" + bandLabel + ": " + hoverFmt + "<extra></extra>"
       });
       for (var pi = 0; pi < chartPrices.length; pi++) {
