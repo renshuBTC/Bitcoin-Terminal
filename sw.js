@@ -13,7 +13,7 @@
 //   Visit any URL on this origin with ?nosw  -> SW unregisters itself.
 // =====================================================================
 
-const VERSION = 'v1';                                  // bump on every deploy
+const VERSION = 'v2';                                  // bump on every deploy
 const PRECACHE  = `precache-${VERSION}`;
 const RUNTIME   = `runtime-${VERSION}`;
 const API_IMM   = `api-immutable-${VERSION}`;
@@ -33,7 +33,7 @@ const ROUTES = [
   { match: u => /^https:\/\/fonts\.googleapis\.com\//.test(u), strategy: 'staleWhileRevalidate', cache: RUNTIME },
   { match: u => /^https:\/\/fonts\.gstatic\.com\//.test(u),    strategy: 'cacheFirst',           cache: RUNTIME },
 
-  // Bitview API: historical date paths /api/urpd/<cohort>/YYYY-MM-DD — past data is immutable
+    // Bitview API: historical date paths /api/urpd/<cohort>/YYYY-MM-DD — past data is immutable
   // Examples: /api/urpd/all/2024-03-15, /api/urpd/age0_3m/2024-03-15, /api/urpd/lth/2024-03-15
   { match: u => /^https:\/\/bitview\.space\/api\/urpd\/[^/]+\/\d{4}-\d{2}-\d{2}(\?|$)/.test(u), strategy: 'cacheFirst', cache: API_IMM },
 
