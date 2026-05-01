@@ -13,7 +13,7 @@
 //   Visit any URL on this origin with ?nosw  -> SW unregisters itself.
 // =====================================================================
 
-const VERSION = 'v6';                                  // bump on every deploy
+const VERSION = 'v7';                                  // bump on every deploy
 const PRECACHE  = `precache-${VERSION}`;
 const RUNTIME   = `runtime-${VERSION}`;
 const API_IMM   = `api-immutable-${VERSION}`;
