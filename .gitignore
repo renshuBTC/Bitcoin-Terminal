@@ -1,0 +1,6 @@
+node_modules/
+obfuscate2.js
+package.json
+package-lock.json
+index_obfuscated.html
+*.log
