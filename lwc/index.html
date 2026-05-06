@@ -650,7 +650,18 @@ function syncSizes() {
 const RIGHT_SCALE_MIN_WIDTH = 80;
 function alignRightScales() {
   try { topChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
-  try { bottomChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+  // Each LWC pane on bottomChart has its own right scale — apply the same
+  // minimumWidth to every pane so the right edges line up across all
+  // bottom-pane indicators (whatever the number of panes).
+  try {
+    const panes = bottomChart.panes ? bottomChart.panes() : [];
+    for (let i = 0; i < Math.max(1, panes.length); i++) {
+      try { bottomChart.priceScale("right", i).applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+    }
+  } catch (e) {
+    // Fallback for older LWC builds without panes(): just align pane 0.
+    try { bottomChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+  }
   try { timeAxisChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
 }
 alignRightScales();
@@ -1354,25 +1365,19 @@ class ProfileHistogramIndicator extends Indicator {
   async load() {
     // No permanent stats box — stats are shown via hover tooltip only.
     this._stats = null;
-    // Create the histogram series upfront and seed it with the Y-axis
-    // anchor so the right-side weight scale (180K, 160K, ..., 0) is
-    // labelled even before the user activates the chart. The X-axis
-    // tick labels stay hidden via the tickMarkFormatter's nav-mode gate.
+    // Create the histogram series upfront, in this indicator's own LWC
+    // pane, and seed it with the Y-axis anchor so the right-side weight
+    // scale (180K, 160K, ..., 0) is labelled even before the user
+    // activates nav mode. The X-axis tick labels stay hidden via the
+    // tickMarkFormatter's nav-mode gate.
     if (!this._series) {
-      if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
-      const isVisibleScale = (_visibleScaleOwner === this.id);
-      const scaleId = isVisibleScale ? "right" : this.id;
+      const paneIdx = _bottomPaneIndexOf(this);
       this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-        priceScaleId: scaleId,
+        priceScaleId: "right",
         priceFormat: { type: "volume" },
         priceLineVisible: false, lastValueVisible: false,
         title: "",
-      });
-      if (!isVisibleScale) {
-        bottomChart.priceScale(scaleId).applyOptions({
-          visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
-        });
-      }
+      }, paneIdx);
       this.series.push(this._series);
       try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
     }
@@ -1457,27 +1462,22 @@ class ProfileHistogramIndicator extends Indicator {
       }
     }
 
-    // Replace series; per-instance price scale (first profile claims visible right axis)
+    // Replace the histogram series in our own pane. Each bottom-pane
+    // indicator owns its own LWC pane (paneIndex = position in
+    // activeIndicators), so we always use the visible "right" scale of
+    // that pane — no more sharing-the-axis ownership juggling.
+    const paneIdx = _bottomPaneIndexOf(this);
     if (this._series) {
       try { bottomChart.removeSeries(this._series); } catch (e) {}
       const idx = this.series.indexOf(this._series);
       if (idx >= 0) this.series.splice(idx, 1);
     }
-    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
-    const isVisibleScale = (_visibleScaleOwner === this.id);
-    const scaleId = isVisibleScale ? "right" : this.id;
-
     this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-      priceScaleId: scaleId,
+      priceScaleId: "right",
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
       title: "",
-    });
-    if (!isVisibleScale) {
-      bottomChart.priceScale(scaleId).applyOptions({
-        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
-      });
-    }
+    }, paneIdx);
     // Cap the Y-axis at the 99th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram. LWC v5's price-scale
     // API has no setVisibleRange — the only reliable way to cap is to clip
@@ -1490,7 +1490,7 @@ class ProfileHistogramIndicator extends Indicator {
     // Compute the cap over NON-ZERO bars only — zero-weight placeholders
     // were added to fill every time slot, so including them in the
     // percentile would drag p99 toward 0 and over-clip real bars.
-    if (isVisibleScale && nonEmptyCount >= 5) {
+    if (nonEmptyCount >= 5) {
       const sorted = dataPoints
         .filter(d => d.value > 0)
         .map(d => d.value)
@@ -1500,12 +1500,12 @@ class ProfileHistogramIndicator extends Indicator {
         yCapValue = p99;
         renderPoints = dataPoints.map(d => d.value > p99 ? { ...d, value: p99 } : d);
       }
-      try {
-        bottomChart.priceScale("right").applyOptions({
-          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
-        });
-      } catch (e) {}
     }
+    try {
+      bottomChart.priceScale("right", paneIdx).applyOptions({
+        autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    } catch (e) {}
     // Pin a synthetic zero-weight bar at $0 so the histogram's X-axis
     // always starts at zero (and the "$0" tick is visible) regardless of
     // the lowest real cost-basis bin.
@@ -1513,7 +1513,9 @@ class ProfileHistogramIndicator extends Indicator {
     this._series.setData(renderWithZero);
     this.series.push(this._series);
     // Force visible range to start at $0 so the zero tick is anchored on
-    // the left edge no matter where real bars start.
+    // the left edge no matter where real bars start. The time scale is
+    // shared across all bottom-pane panes, so this lines them all up at
+    // the same X positions — exactly what we want for cohort comparisons.
     try {
       bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
     } catch (e) {
@@ -1533,23 +1535,24 @@ class ProfileHistogramIndicator extends Indicator {
   }
 
   remove() {
-    if (_visibleScaleOwner === this.id) {
-      _visibleScaleOwner = null;
-      for (const ind of activeIndicators.values()) {
-        if (ind !== this && ind instanceof ProfileHistogramIndicator) {
-          _visibleScaleOwner = ind.id;
-          if (typeof ind.onDateChange === "function") ind.onDateChange(currentDateStr);
-          break;
-        }
-      }
-    }
+    // The pane index this indicator owns at remove-time. We capture it
+    // BEFORE super.remove() (which clears `this.series` and would cause
+    // _bottomPaneIndexOf to skip this instance and return the wrong index
+    // for siblings). super.remove() also iterates and removes our series
+    // from the chart; LWC's empty-pane behaviour kicks in when the last
+    // series leaves a pane.
+    const paneIdx = _bottomPaneIndexOf(this);
     this._stats = null;
     super.remove();
+    // Explicit pane removal in case LWC leaves an empty pane behind. Wrap
+    // in try/catch since `removePane` was added in a recent v5 release —
+    // if it isn't available the pane is just an empty strip until the user
+    // adds another indicator that reuses the slot.
+    if (paneIdx >= 0 && bottomChart.removePane) {
+      try { bottomChart.removePane(paneIdx); } catch (e) {}
+    }
   }
 }
-
-// Tracks which bottom-pane indicator owns the visible right Y-axis.
-let _visibleScaleOwner = null;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Concrete profile indicators — each is just a different fetchBuckets()
@@ -1639,26 +1642,19 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     this._series = null;
   }
 
-  // Helper: create one HistogramSeries on this indicator's price scale.
-  // The first instance to load on the chart owns the visible right axis;
-  // others get a hidden per-instance scale (same convention as the
-  // existing ProfileHistogramIndicator).
+  // Helper: create one HistogramSeries in this indicator's own LWC pane.
+  // Every cohort series of a single indicator targets the SAME paneIndex,
+  // so they stack correctly within one pane (z-order alone does the
+  // visible stacking trick).
   _addStackSeries(color) {
-    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
-    const isVisibleScale = (_visibleScaleOwner === this.id);
-    const scaleId = isVisibleScale ? "right" : this.id;
+    const paneIdx = _bottomPaneIndexOf(this);
     const s = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-      priceScaleId: scaleId,
+      priceScaleId: "right",
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
       title: "",
       color,
-    });
-    if (!isVisibleScale) {
-      bottomChart.priceScale(scaleId).applyOptions({
-        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
-      });
-    }
+    }, paneIdx);
     this.series.push(s);
     return s;
   }
@@ -1786,14 +1782,14 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
       try { s.setData(data); } catch (e) {}
     }
 
-    // Apply right-scale options once the visible-scale owner is created.
-    if (_visibleScaleOwner === this.id) {
-      try {
-        bottomChart.priceScale("right").applyOptions({
-          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
-        });
-      } catch (e) {}
-    }
+    // Apply right-scale options on this indicator's own pane. Every
+    // bottom-pane indicator owns its own pane and its own visible right
+    // scale — no shared-scale ownership to manage.
+    try {
+      bottomChart.priceScale("right", _bottomPaneIndexOf(this)).applyOptions({
+        autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    } catch (e) {}
 
     try {
       bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
@@ -1878,6 +1874,35 @@ const INDICATOR_TYPES = [
 // ───────────────────────────────────────────────────────────────────────────
 const activeIndicators = new Map(); // id → Indicator
 let currentDateStr = document.getElementById("date-input").value;
+
+// Maximum bottom-pane indicators allowed before the picker refuses new adds.
+// 7 bottom panes + 1 top (BTC) = 8 total panes — the cap requested for the
+// multi-pane refactor.
+const MAX_BOTTOM_PANES = 7;
+
+// Compute the LWC pane index for a bottom-pane indicator based on its
+// position in `activeIndicators` insertion order. Recomputed on every call
+// (no stored field) so removals automatically renumber the remaining
+// indicators without our code having to fix anything up. Returns -1 for
+// top-pane indicators (they don't get a paneIndex on bottomChart).
+function _bottomPaneIndexOf(indicator) {
+  let i = 0;
+  for (const [, ind] of activeIndicators) {
+    if (ind.pane() !== "bottom") continue;
+    if (ind === indicator) return i;
+    i++;
+  }
+  return -1;
+}
+
+// Number of currently-active bottom-pane indicators.
+function _bottomPaneCount() {
+  let n = 0;
+  for (const ind of activeIndicators.values()) {
+    if (ind.pane() === "bottom") n++;
+  }
+  return n;
+}
 
 function refreshIndicatorPanel() {
   // The side panel (#ind-panel) has been removed — indicator management
@@ -1976,6 +2001,10 @@ function refreshPaneHeaders() {
       const bEl = document.getElementById("chart-bottom");
       if (bEl && bottomChart && bottomChart.resize) bottomChart.resize(bEl.clientWidth, bEl.clientHeight);
     } catch (e) {}
+    // Re-apply right-scale minimumWidth to every pane (count may have just
+    // changed if an indicator was added/removed). Cheap; no-op if widths
+    // already match.
+    try { alignRightScales(); } catch (e) {}
   });
 
   // Keep the keyboard-navigation instruction always visible while a bottom-
@@ -2144,6 +2173,16 @@ function openAddModal() {
         document.getElementById("status").textContent = `Removed: ${T.displayName}`;
         _rerenderPickerBody();
       }
+      return;
+    }
+
+    // Cap bottom-pane indicators at MAX_BOTTOM_PANES so the chart never
+    // gets so crowded that LWC's pane allocator runs out of vertical
+    // space. 1 top (BTC) + 7 bottom = 8 total panes.
+    if (T.pane === "bottom" && _bottomPaneCount() >= MAX_BOTTOM_PANES) {
+      bg.classList.remove("show");
+      document.getElementById("status").textContent =
+        `Pane cap reached (${MAX_BOTTOM_PANES} bottom panes max). Remove one first.`;
       return;
     }
 
