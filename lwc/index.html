@@ -1530,20 +1530,25 @@ class ProfileHistogramIndicator extends Indicator {
 
     // Replace the histogram series in our own pane. Each bottom-pane
     // indicator owns its own LWC pane (paneIndex = position in
-    // activeIndicators), so we always use the visible "right" scale of
-    // that pane — no more sharing-the-axis ownership juggling.
+    // activeIndicators). Important: add the NEW series BEFORE removing
+    // the old one — if we remove first, the pane briefly has zero
+    // series and LWC collapses it to a default (small) height, which
+    // shrinks/disappears the pane during navigation. Adding new before
+    // remove keeps the pane non-empty throughout the swap, so its
+    // height stays put.
     const paneIdx = _bottomPaneIndexOf(this);
-    if (this._series) {
-      try { bottomChart.removeSeries(this._series); } catch (e) {}
-      const idx = this.series.indexOf(this._series);
-      if (idx >= 0) this.series.splice(idx, 1);
-    }
+    const oldSeries = this._series;
     this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
       priceScaleId: "right",
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
       title: "",
     }, paneIdx);
+    if (oldSeries) {
+      try { bottomChart.removeSeries(oldSeries); } catch (e) {}
+      const idx = this.series.indexOf(oldSeries);
+      if (idx >= 0) this.series.splice(idx, 1);
+    }
     // Cap the Y-axis at the 99th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram. LWC v5's price-scale
     // API has no setVisibleRange — the only reliable way to cap is to clip
@@ -1738,10 +1743,18 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 
   async onDateChange(dateStr) {
     // Same nav-mode gate as the rest of the bottom-pane indicators.
+    // When leaving nav mode we transition from N stacked series to a
+    // single anchor — add the anchor BEFORE removing the old stack so
+    // the pane is never empty (avoids LWC collapsing it).
     if (typeof _navMode !== "undefined" && !_navMode) {
-      this._disposeStack();
+      const oldSeries = this.series.slice();
       const anchor = this._addStackSeries("rgba(0,0,0,0)");
       try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+      for (const s of oldSeries) {
+        try { bottomChart.removeSeries(s); } catch (e) {}
+      }
+      this.series = [anchor];
+      this._series = anchor;
       this._stats = null;
       return;
     }
@@ -1827,18 +1840,23 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     const times = new Array(TARGET_BINS);
     for (let b = 0; b < TARGET_BINS; b++) times[b] = minPrice + b * binWidth;
 
-    // Tear down whatever's currently on the chart for this indicator.
-    this._disposeStack();
-
     let totalWeight = 0;
     for (const t of cohortTotals) totalWeight += t;
 
+    // Snapshot the OLD series so we can remove them only AFTER the new
+    // ones are rendered. If we wiped them first via _disposeStack, the
+    // pane briefly held zero series and LWC would collapse it (causing
+    // the "3rd pane disappears during navigation" bug).
+    const oldSeries = this.series.slice();
+
     // Render: from oldest cumulative (largest, drawn FIRST → bottom of z)
-    // down to youngest (smallest, drawn LAST → top of z). The first series
-    // added becomes the visible-scale owner if no other claims it.
+    // down to youngest (smallest, drawn LAST → top of z). New series are
+    // pushed onto this.series; we'll trim back to just them once the old
+    // ones are removed.
+    const newSeries = [];
     for (let drawIdx = 0; drawIdx < N; drawIdx++) {
       const k = N - 1 - drawIdx; // k iterates N-1, N-2, ..., 0
-      const s = this._addStackSeries(colors[k]);
+      const s = this._addStackSeries(colors[k]); // pushes onto this.series
       const data = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }];
       for (let b = 0; b < TARGET_BINS; b++) {
         let v = cum[k][b];
@@ -1846,7 +1864,15 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
         data.push({ time: times[b], value: v, color: colors[k] });
       }
       try { s.setData(data); } catch (e) {}
+      newSeries.push(s);
     }
+    // Now safe to remove the old series — pane has the new ones to keep
+    // it alive. Drop the old refs from this.series too.
+    for (const s of oldSeries) {
+      try { bottomChart.removeSeries(s); } catch (e) {}
+    }
+    this.series = newSeries;
+    this._series = null;
 
     // Apply right-scale options on this indicator's own pane. Every
     // bottom-pane indicator owns its own pane and its own visible right
