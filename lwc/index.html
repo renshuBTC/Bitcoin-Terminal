@@ -1946,6 +1946,38 @@ function refreshPaneHeaders() {
   const headerBot = document.getElementById("header-bottom");
   if (headerBot) headerBot.style.display = hasAnyBottom ? "" : "none";
 
+  // Collapse the entire bottom-pane area (chart + divider) when no bottom-
+  // pane indicator is active. The top chart's flex container then grows to
+  // fill the freed vertical space, so the BTC chart isn't stuck inside a
+  // 60% strip of an otherwise empty viewport. We also nudge each chart's
+  // `.resize()` so LWC repaints at the new pixel dimensions immediately.
+  const bottomWrap = document.getElementById("chart-bottom-wrap");
+  const dividerEl = document.getElementById("chart-divider");
+  const topWrap   = document.getElementById("chart-top-wrap");
+  if (bottomWrap) bottomWrap.style.display = hasAnyBottom ? "" : "none";
+  if (dividerEl)  dividerEl.style.display  = hasAnyBottom ? "" : "none";
+  if (topWrap) {
+    // When the bottom pane is hidden, let the top wrap grow freely to fill;
+    // when shown, restore the configured 60% (50% on the smaller breakpoint)
+    // so the user's manual divider drag still applies once they have a
+    // bottom indicator again.
+    topWrap.style.flex = hasAnyBottom ? "" : "1 1 auto";
+  }
+  // Trigger LWC repaints once the layout has settled so the chart canvases
+  // match their new container heights. requestAnimationFrame waits one
+  // frame for the flex reflow to commit, then `chart.resize` reads the
+  // post-reflow client rect.
+  requestAnimationFrame(() => {
+    try {
+      const tEl = document.getElementById("chart-top");
+      if (tEl && topChart && topChart.resize) topChart.resize(tEl.clientWidth, tEl.clientHeight);
+    } catch (e) {}
+    try {
+      const bEl = document.getElementById("chart-bottom");
+      if (bEl && bottomChart && bottomChart.resize) bottomChart.resize(bEl.clientWidth, bEl.clientHeight);
+    } catch (e) {}
+  });
+
   // Keep the keyboard-navigation instruction always visible while a bottom-
   // pane indicator (URPD/SOPD) is loaded, so users see how to interact
   // before they ever click the chart.
