@@ -103,6 +103,11 @@ window.__loadMp4Muxer = function() {
   /* No "primary" treatment in this minimal toolbar */
   #toolbar button.primary { background: transparent; color: #d4d4d4; border: none; font-weight: 400; }
   #toolbar button.primary:hover { background: #1a1a1a; color: #fff; }
+  /* Undo / Redo icon buttons */
+  #toolbar button.icon-btn { padding: 7px 8px; display: inline-flex; align-items: center; justify-content: center; }
+  #toolbar button.icon-btn svg { display: block; }
+  #toolbar button.icon-btn:disabled { color: #444; cursor: default; background: transparent; }
+  #toolbar button.icon-btn:disabled:hover { background: transparent; color: #444; }
   /* Lookback button group */
   #lb-group { display: flex; gap: 0; }
   #lb-group button { padding: 5px 8px; font-size: 11px; border-radius: 0; min-width: 36px; }
@@ -267,6 +272,8 @@ window.__loadMp4Muxer = function() {
       <div id="chart-type-menu"></div>
     </div>
     <button id="btn-add" class="primary"><svg class="ind-icon" width="17" height="17" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
+    <button id="btn-undo" class="icon-btn" title="Undo (Ctrl+Z)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 7v6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button id="btn-redo" class="icon-btn" title="Redo (Ctrl+Y)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 7v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <span class="spacer"></span>
   </div>
 
@@ -1792,9 +1799,11 @@ function saveStateToURL() {
   if (_saveStateTimer) clearTimeout(_saveStateTimer);
   _saveStateTimer = setTimeout(() => {
     const state = {
-      v: 1, // version, in case we need to migrate later
+      v: 2, // version, in case we need to migrate later
       d: currentDateStr,
       lb: currentLookback,
+      ct: typeof currentChartType !== "undefined" ? currentChartType : undefined,
+      iv: typeof currentInterval   !== "undefined" ? currentInterval   : undefined,
       ind: [...activeIndicators.values()]
         .filter(ind => ind.constructor.type !== "btc_price") // BTC is always-present, not part of state
         .map(ind => ({ t: ind.constructor.type, c: ind.config })),
@@ -1826,6 +1835,13 @@ async function restoreState(state) {
     currentDateStr = state.d;
     document.getElementById("date-input").value = state.d;
   }
+  if (state.ct) {
+    try { setChartType(state.ct); } catch (e) { console.warn("restore chart type:", e); }
+  }
+  if (state.iv) {
+    const opt = document.querySelector(`#interval-menu .opt[data-interval="${state.iv}"]`);
+    if (opt) opt.click();
+  }
   if (state.lb !== undefined) applyLookback(state.lb);
   let restored = 0;
   for (const i of state.ind) {
@@ -1852,6 +1868,7 @@ const _origRefreshPanel = refreshIndicatorPanel;
 refreshIndicatorPanel = function() {
   _origRefreshPanel();
   saveStateToURL();
+  recordHistory();
 };
 
 const _origSetCurrentDate = setCurrentDate;
@@ -1861,7 +1878,163 @@ setCurrentDate = function(dateStr) {
   const dateSpan = document.getElementById("header-bottom-date");
   if (dateSpan) dateSpan.textContent = dateStr || "—";
   saveStateToURL();
+  // NOTE: don't recordHistory here — date changes from crosshair scrub are too noisy.
 };
+
+// ───────────────────────────────────────────────────────────────────────────
+// Undo / Redo — history stack of state snapshots, replays via applyState.
+// History is captured on discrete user actions (indicator add/remove/edit,
+// chart type, interval, lookback). Date scrubs are NOT captured (too noisy).
+// ───────────────────────────────────────────────────────────────────────────
+const HISTORY_LIMIT = 100;
+let historyPast = [];
+let historyFuture = [];
+let _suppressHistory = false;
+let _lastRecordedState = null;
+
+function snapshotState() {
+  return {
+    v: 2,
+    d: currentDateStr,
+    lb: currentLookback,
+    ct: currentChartType,
+    iv: currentInterval,
+    ind: [...activeIndicators.values()]
+      .filter(ind => ind.constructor.type !== "btc_price")
+      .map(ind => ({ t: ind.constructor.type, c: ind.config })),
+  };
+}
+
+function _statesEqual(a, b) {
+  try { return JSON.stringify(a) === JSON.stringify(b); } catch (e) { return false; }
+}
+
+function recordHistory() {
+  if (_suppressHistory) return;
+  const s = snapshotState();
+  if (_lastRecordedState && _statesEqual(s, _lastRecordedState)) return;
+  if (_lastRecordedState) {
+    historyPast.push(_lastRecordedState);
+    if (historyPast.length > HISTORY_LIMIT) historyPast.shift();
+  }
+  _lastRecordedState = s;
+  historyFuture = [];
+  refreshUndoRedoButtons();
+}
+
+function refreshUndoRedoButtons() {
+  const u = document.getElementById("btn-undo");
+  const r = document.getElementById("btn-redo");
+  if (u) u.disabled = historyPast.length === 0;
+  if (r) r.disabled = historyFuture.length === 0;
+}
+
+// Apply a state snapshot — tear down current indicators, rebuild from snapshot.
+async function applyState(state) {
+  _suppressHistory = true;
+  try {
+    // Remove all non-BTC indicators
+    const toRemove = [...activeIndicators.values()]
+      .filter(ind => ind.constructor.type !== "btc_price");
+    for (const ind of toRemove) {
+      try { ind.remove(); } catch (e) { console.warn("apply: remove failed", e); }
+      activeIndicators.delete(ind.id);
+    }
+    // Chart type
+    if (state.ct && state.ct !== currentChartType) {
+      try { setChartType(state.ct); } catch (e) { console.warn("apply: chart type", e); }
+    }
+    // Interval (UI-only at this point)
+    if (state.iv && state.iv !== currentInterval) {
+      const opt = document.querySelector(`#interval-menu .opt[data-interval="${state.iv}"]`);
+      if (opt) opt.click();
+    }
+    // Lookback
+    if (state.lb !== undefined) {
+      try { applyLookback(state.lb); } catch (e) { console.warn("apply: lookback", e); }
+    }
+    // Date
+    if (state.d) {
+      try { setCurrentDate(state.d); } catch (e) { console.warn("apply: date", e); }
+    }
+    // Re-add indicators in order
+    for (const i of state.ind || []) {
+      const T = INDICATOR_TYPES.find(t => t.type === i.t);
+      if (!T) { console.warn("apply: unknown indicator", i.t); continue; }
+      const ind = new T(i.c || {});
+      activeIndicators.set(ind.id, ind);
+      try {
+        await ind.load();
+      } catch (e) {
+        console.error("apply: ind.load failed", i.t, e);
+        try { ind.remove(); } catch (e2) {}
+        activeIndicators.delete(ind.id);
+      }
+    }
+    _origRefreshPanel();
+  } finally {
+    _suppressHistory = false;
+  }
+  _lastRecordedState = snapshotState();
+  refreshUndoRedoButtons();
+  saveStateToURL();
+}
+
+async function undo() {
+  if (historyPast.length === 0) return;
+  if (_lastRecordedState) historyFuture.push(_lastRecordedState);
+  const prev = historyPast.pop();
+  await applyState(prev);
+}
+
+async function redo() {
+  if (historyFuture.length === 0) return;
+  if (_lastRecordedState) historyPast.push(_lastRecordedState);
+  const next = historyFuture.pop();
+  await applyState(next);
+}
+
+// Wire button click handlers
+document.getElementById("btn-undo").addEventListener("click", () => undo());
+document.getElementById("btn-redo").addEventListener("click", () => redo());
+
+// Keyboard shortcuts: Ctrl+Z = undo, Ctrl+Y or Ctrl+Shift+Z = redo (Cmd on macOS)
+document.addEventListener("keydown", (e) => {
+  // Skip when typing in inputs
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  const mod = e.ctrlKey || e.metaKey;
+  if (!mod) return;
+  if (e.key === "z" || e.key === "Z") {
+    e.preventDefault();
+    if (e.shiftKey) redo(); else undo();
+  } else if (e.key === "y" || e.key === "Y") {
+    e.preventDefault();
+    redo();
+  }
+});
+
+// Hook chart-type change into history
+const _origSetChartType = setChartType;
+setChartType = function(type) {
+  _origSetChartType(type);
+  recordHistory();
+};
+
+// Hook interval menu click into history
+document.querySelectorAll("#interval-menu .opt").forEach(el => {
+  el.addEventListener("click", () => {
+    // Wait for the existing handler to apply, then record
+    setTimeout(recordHistory, 0);
+  });
+});
+
+// Hook lookback button click into history
+document.querySelectorAll("#lb-group button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    setTimeout(recordHistory, 0);
+  });
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // MP4 export — animates through a date range, captures each frame,
@@ -2124,6 +2297,8 @@ document.getElementById("btn-copy-link").addEventListener("click", async () => {
 // Boot
 // ───────────────────────────────────────────────────────────────────────────
 (async function boot() {
+  // Suppress history recording during boot — initial state is not user-driven
+  _suppressHistory = true;
   try {
     document.getElementById("status").textContent = "Loading BTC price…";
     const resp = await fetchJSON(BASE + "/api/series/price_close/day1");
@@ -2152,6 +2327,13 @@ document.getElementById("btn-copy-link").addEventListener("click", async () => {
     console.error("Boot failed:", e);
     document.getElementById("status").textContent = "Boot failed: " + e.message;
     document.getElementById("status").style.color = "#ff5c5c";
+  } finally {
+    // Seed history baseline — initial post-boot state, with empty undo/redo stacks
+    _suppressHistory = false;
+    _lastRecordedState = snapshotState();
+    historyPast = [];
+    historyFuture = [];
+    refreshUndoRedoButtons();
   }
 
   async function loadDefaults() {
