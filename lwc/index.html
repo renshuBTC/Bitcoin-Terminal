@@ -358,16 +358,23 @@ window.__loadMp4Muxer = function() {
   #modal .ind-option .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
   #modal .ind-option .name { color: #d4d4d4; flex: 1; font-size: 13px; }
   #modal .ind-option .pane-tag { color: #555; font-size: 10px; }
-  /* Already-added rows: dim the swatch+name, drop hover highlight, show
-     a small grey "Added" tag on the right. Click handler short-circuits
-     so the user can't stack duplicates. */
-  #modal .ind-option.is-added { cursor: default; opacity: 0.45; }
-  #modal .ind-option.is-added:hover { background: transparent; }
+  /* Already-added rows: dim by default with a grey "Added" tag. Hovering
+     re-brightens the row and the tag flips to a red "Remove" — clicking
+     removes that indicator from the chart in place, without closing the
+     picker so users can keep editing. */
+  #modal .ind-option.is-added { cursor: pointer; opacity: 0.45; }
+  #modal .ind-option.is-added:hover { background: #1a1a1a; opacity: 0.95; }
   #modal .ind-option .added-tag {
     color: #666; font-size: 10px; text-transform: uppercase;
     letter-spacing: 0.5px; padding: 2px 6px; border: 1px solid #2a2a2a;
     border-radius: 2px; flex-shrink: 0;
   }
+  #modal .ind-option .added-tag .t-hover { display: none; }
+  #modal .ind-option.is-added:hover .added-tag {
+    color: #ff5c5c; border-color: #5a1f1f; background: #2a1010;
+  }
+  #modal .ind-option.is-added:hover .added-tag .t-default { display: none; }
+  #modal .ind-option.is-added:hover .added-tag .t-hover { display: inline; }
   /* Edit-mode (Configure) — keep existing actions row */
   #modal .section { padding: 0 18px; margin-bottom: 10px; }
   #modal .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px;
@@ -2092,35 +2099,61 @@ function openAddModal() {
   // Click an option → add the indicator immediately with defaults.
   // The configure dialog is skipped — user can re-pick to swap or remove
   // via the in-chart hover trash button.
-  modal.querySelectorAll(".ind-option").forEach(el => {
-    el.addEventListener("click", async () => {
-      const typeName = el.getAttribute("data-type");
-      const T = INDICATOR_TYPES.find(t => t.type === typeName);
-      if (!T) return;
-      // Block duplicates: one instance per indicator type. The row is
-      // already styled `.is-added` and shows a badge — clicking it just
-      // closes the modal with a status hint instead of stacking another
-      // identical line on the chart.
-      if (_indicatorTypeIsActive(typeName)) {
-        bg.classList.remove("show");
-        document.getElementById("status").textContent = `Already added: ${T.displayName}`;
-        return;
+  // In-place rebuild of the row list — used after add/remove so the
+  // "Added" / "Remove" state stays in sync without closing+reopening the
+  // modal (preserves search input & scroll). The search filter is
+  // re-applied via a synthetic input event after the rebuild.
+  function _rerenderPickerBody() {
+    const body = modal.querySelector("#modal-body");
+    if (!body) return;
+    body.innerHTML = all.map(renderTypeOption).join("");
+    const si = modal.querySelector("#modal-search-input");
+    if (si) si.dispatchEvent(new Event("input"));
+  }
+
+  // Event delegation on #modal-body so we don't have to re-attach per-row
+  // listeners after a remove rebuilds the rows.
+  const bodyEl = modal.querySelector("#modal-body");
+  bodyEl.addEventListener("click", async (ev) => {
+    const el = ev.target.closest(".ind-option");
+    if (!el) return;
+    const typeName = el.getAttribute("data-type");
+    const T = INDICATOR_TYPES.find(t => t.type === typeName);
+    if (!T) return;
+
+    // Already-added rows: clicking removes that indicator from the chart
+    // and stays in the picker so the user can immediately re-add or pick
+    // something else.
+    if (_indicatorTypeIsActive(typeName)) {
+      let target = null;
+      for (const ind of activeIndicators.values()) {
+        if (ind.constructor.type === typeName) { target = ind; break; }
       }
-      bg.classList.remove("show");
-      const ind = new T(/* defaults from configSchema */);
-      activeIndicators.set(ind.id, ind);
-      refreshIndicatorPanel();
-      try {
-        await ind.load();
-        document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
-      } catch (e) {
-        console.error("Add indicator failed:", e);
-        document.getElementById("status").textContent = "Failed: " + e.message;
-        try { ind.remove(); } catch (_) {}
-        activeIndicators.delete(ind.id);
+      if (target) {
+        try { target.remove(); } catch (e) { console.warn("remove:", e); }
+        activeIndicators.delete(target.id);
         refreshIndicatorPanel();
+        document.getElementById("status").textContent = `Removed: ${T.displayName}`;
+        _rerenderPickerBody();
       }
-    });
+      return;
+    }
+
+    // Otherwise: add a fresh instance.
+    bg.classList.remove("show");
+    const ind = new T(/* defaults from configSchema */);
+    activeIndicators.set(ind.id, ind);
+    refreshIndicatorPanel();
+    try {
+      await ind.load();
+      document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
+    } catch (e) {
+      console.error("Add indicator failed:", e);
+      document.getElementById("status").textContent = "Failed: " + e.message;
+      try { ind.remove(); } catch (_) {}
+      activeIndicators.delete(ind.id);
+      refreshIndicatorPanel();
+    }
   });
 
   // Search filter — case-insensitive substring match on the type's displayName
@@ -2151,7 +2184,11 @@ function renderTypeOption(T) {
     : "#888";
   const isActive = _indicatorTypeIsActive(T.type);
   const cls = isActive ? "ind-option is-added" : "ind-option";
-  const tag = isActive ? `<span class="added-tag">Added</span>` : "";
+  // Two-text badge: "Added" by default, swaps to "Remove" on row hover via
+  // pure CSS — keeps the click handler dead-simple (no JS title juggling).
+  const tag = isActive
+    ? `<span class="added-tag"><span class="t-default">Added</span><span class="t-hover">Remove</span></span>`
+    : "";
   return `<div class="${cls}" data-type="${T.type}">` +
     `<span class="swatch" style="background:${swatch}"></span>` +
     `<span class="name">${T.displayName}</span>` +
