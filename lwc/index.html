@@ -434,6 +434,8 @@ window.__loadMp4Muxer = function() {
     <button id="btn-add" class="primary"><svg class="ind-icon" width="17" height="17" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
     <button id="btn-undo" class="icon-btn" title="Undo (Ctrl+Z)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 7v6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-redo" class="icon-btn" title="Redo (Ctrl+Y)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 7v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button id="btn-fullscreen" class="icon-btn" title="Fullscreen mode (Shift+F)" aria-label="Fullscreen mode"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+    <button id="btn-png" class="icon-btn" title="Take a snapshot" aria-label="Take a snapshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8.5a2 2 0 0 1 2-2h2.2l1.4-1.8a1 1 0 0 1 .8-.4h5.2a1 1 0 0 1 .8.4l1.4 1.8H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
     <span class="spacer"></span>
   </div>
 
@@ -4896,6 +4898,44 @@ document.addEventListener("keydown", (e) => {
   } else if (e.key === "y" || e.key === "Y") {
     e.preventDefault();
     redo();
+  }
+});
+
+// Fullscreen mode — toggles the document's fullscreen state. Browser API
+// is async + permission-gated, so wrap in try/catch and update the
+// status bar on failure (e.g. iframe without allowfullscreen).
+function _toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    const root = document.documentElement;
+    const req = root.requestFullscreen || root.webkitRequestFullscreen
+              || root.mozRequestFullScreen || root.msRequestFullscreen;
+    if (!req) {
+      const status = document.getElementById("status");
+      if (status) status.textContent = "Fullscreen not supported in this browser.";
+      return;
+    }
+    req.call(root).catch((e) => {
+      const status = document.getElementById("status");
+      if (status) status.textContent = "Fullscreen blocked: " + (e && e.message || e);
+    });
+  } else {
+    const exit = document.exitFullscreen || document.webkitExitFullscreen
+               || document.mozCancelFullScreen || document.msExitFullscreen;
+    if (exit) exit.call(document).catch(() => {});
+  }
+}
+document.getElementById("btn-fullscreen")?.addEventListener("click", _toggleFullscreen);
+
+// Shift+F shortcut for fullscreen — same gate as undo/redo (skip while
+// typing into inputs). Plain F (no Shift) is left alone so it doesn't
+// conflict with browser/page hotkeys.
+document.addEventListener("keydown", (e) => {
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  if (e.shiftKey && (e.key === "F" || e.key === "f")) {
+    e.preventDefault();
+    _toggleFullscreen();
   }
 });
 
