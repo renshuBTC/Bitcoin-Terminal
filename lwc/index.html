@@ -2024,6 +2024,10 @@ function _renderBottomPaneDividers() {
   const wrapTop = wrap.getBoundingClientRect().top;
 
   // Collect distinct pane top Y positions from each pane's canvases.
+  // LWC includes a time-axis canvas at the very bottom whose top edge
+  // counts as an extra Y position; we cap to the number of actual
+  // bottom-pane indicators below so we don't draw a phantom divider
+  // between the last pane and the time-axis area.
   const yTops = new Set();
   chartBottom.querySelectorAll("canvas").forEach(c => {
     const r = c.getBoundingClientRect();
@@ -2036,8 +2040,14 @@ function _renderBottomPaneDividers() {
   // computed from the updated canvas rects.
   botHost.querySelectorAll(".bottom-pane-divider").forEach(el => el.remove());
 
+  // Number of REAL panes = number of bottom-pane indicator rows. Use that
+  // (not sortedY.length) to bound the divider loop, so the time-axis Y
+  // doesn't get treated as a pane boundary.
+  const rowCount = botHost.querySelectorAll(".ind-row").length;
+  if (rowCount < 2) return; // 0 or 1 panes → no inter-pane dividers needed
+
   // One divider per gap (between pane i-1 and pane i, for i = 1..N-1).
-  for (let i = 1; i < sortedY.length; i++) {
+  for (let i = 1; i < rowCount && i < sortedY.length; i++) {
     const div = document.createElement("div");
     div.className = "bottom-pane-divider";
     div.dataset.aboveIdx = String(i - 1);
