@@ -254,7 +254,7 @@ window.__loadMp4Muxer = function() {
   <div id="toolbar">
     <span class="brand">BITCOINTERMINAL.NET</span>
     <div id="interval-wrap" title="Time interval">
-      <button id="btn-interval"><span id="interval-label">1D</span><span class="arrow">▾</span></button>
+      <button id="btn-interval"><span id="interval-label">D</span><span class="arrow">▾</span></button>
       <div id="interval-menu">
         <div class="opt active" data-interval="1d">1 day</div>
         <div class="opt" data-interval="1w">1 week</div>
@@ -275,7 +275,7 @@ window.__loadMp4Muxer = function() {
       <div class="pane-label" id="header-top">
         <span class="pane-title">
           <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
-          <span class="sep">·</span><span>1D</span>
+          <span class="sep">·</span><span>D</span>
           <span class="sep">·</span><span class="source">BRK</span>
         </span>
         <span class="hover-readout" id="hover-top"></span>
@@ -1636,7 +1636,7 @@ document.addEventListener("click", (e) => {
 
 // Interval dropdown — UI-only for now (data-resolution change comes later)
 let currentInterval = "1d";
-const intervalLabels = { "1d": "1D", "1w": "1W", "1m": "1M" };
+const intervalLabels = { "1d": "D", "1w": "W", "1m": "M" };
 const intervalBtn = document.getElementById("btn-interval");
 const intervalMenu = document.getElementById("interval-menu");
 const intervalLabel = document.getElementById("interval-label");
@@ -1657,7 +1657,7 @@ intervalMenu.querySelectorAll(".opt").forEach(el => {
     intervalMenu.classList.remove("show");
     // Also update the pane label timeframe text
     document.querySelectorAll("#header-top .pane-title span").forEach(s => {
-      if (s.textContent === "1D" || s.textContent === "1W" || s.textContent === "1M") {
+      if (s.textContent === "D" || s.textContent === "W" || s.textContent === "M") {
         s.textContent = intervalLabels[v];
       }
     });
