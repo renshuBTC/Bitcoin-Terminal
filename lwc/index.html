@@ -358,6 +358,16 @@ window.__loadMp4Muxer = function() {
   #modal .ind-option .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
   #modal .ind-option .name { color: #d4d4d4; flex: 1; font-size: 13px; }
   #modal .ind-option .pane-tag { color: #555; font-size: 10px; }
+  /* Already-added rows: dim the swatch+name, drop hover highlight, show
+     a small grey "Added" tag on the right. Click handler short-circuits
+     so the user can't stack duplicates. */
+  #modal .ind-option.is-added { cursor: default; opacity: 0.45; }
+  #modal .ind-option.is-added:hover { background: transparent; }
+  #modal .ind-option .added-tag {
+    color: #666; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; padding: 2px 6px; border: 1px solid #2a2a2a;
+    border-radius: 2px; flex-shrink: 0;
+  }
   /* Edit-mode (Configure) — keep existing actions row */
   #modal .section { padding: 0 18px; margin-bottom: 10px; }
   #modal .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px;
@@ -2022,6 +2032,15 @@ function openAddModal() {
       const typeName = el.getAttribute("data-type");
       const T = INDICATOR_TYPES.find(t => t.type === typeName);
       if (!T) return;
+      // Block duplicates: one instance per indicator type. The row is
+      // already styled `.is-added` and shows a badge — clicking it just
+      // closes the modal with a status hint instead of stacking another
+      // identical line on the chart.
+      if (_indicatorTypeIsActive(typeName)) {
+        bg.classList.remove("show");
+        document.getElementById("status").textContent = `Already added: ${T.displayName}`;
+        return;
+      }
       bg.classList.remove("show");
       const ind = new T(/* defaults from configSchema */);
       activeIndicators.set(ind.id, ind);
@@ -2051,13 +2070,27 @@ function openAddModal() {
   // Auto-focus search input
   setTimeout(() => searchInput.focus(), 50);
 }
+// Is an indicator of this exact type already on the chart? Used to grey-out
+// the picker entry and short-circuit the click handler so users can't add
+// duplicates of the same indicator type.
+function _indicatorTypeIsActive(typeName) {
+  for (const ind of activeIndicators.values()) {
+    if (ind.constructor.type === typeName) return true;
+  }
+  return false;
+}
+
 function renderTypeOption(T) {
   const swatch = T.prototype.swatchColor ?
     (T.configSchema.find(f => f.key === "color") ? T.configSchema.find(f => f.key === "color").default : "#888")
     : "#888";
-  return `<div class="ind-option" data-type="${T.type}">` +
+  const isActive = _indicatorTypeIsActive(T.type);
+  const cls = isActive ? "ind-option is-added" : "ind-option";
+  const tag = isActive ? `<span class="added-tag">Added</span>` : "";
+  return `<div class="${cls}" data-type="${T.type}">` +
     `<span class="swatch" style="background:${swatch}"></span>` +
     `<span class="name">${T.displayName}</span>` +
+    tag +
     `</div>`;
 }
 
