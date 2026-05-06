@@ -39,6 +39,34 @@ window.__loadMp4Muxer = function() {
   #app { display: flex; flex-direction: column; height: 100vh; }
   #toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px;
     background: #111; border-bottom: 1px solid #222; flex-wrap: wrap; }
+  /* Bottom toolbar — secondary controls (date / lookback / export) */
+  #bottom-toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 14px;
+    background: #111; border-top: 1px solid #222; flex-wrap: wrap; flex-shrink: 0;
+    font-size: 11px; }
+  #bottom-toolbar label { color: #888; font-size: 11px; }
+  #bottom-toolbar input[type="date"], #bottom-toolbar select {
+    background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 4px 8px; font-family: inherit; font-size: 11px; }
+  #bottom-toolbar button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 4px 9px; cursor: pointer; font-family: inherit; font-size: 11px; border-radius: 2px; }
+  #bottom-toolbar button:hover { border-color: #444; color: #fff; }
+  #bottom-toolbar input[type="checkbox"] { vertical-align: middle; }
+  #bottom-toolbar .spacer { flex: 1; }
+  /* Interval dropdown (top toolbar) */
+  #interval-wrap { position: relative; display: inline-block; }
+  #btn-interval { display: inline-flex; align-items: center; gap: 4px;
+    background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 5px 10px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 2px;
+    min-width: 50px; justify-content: space-between; }
+  #btn-interval:hover { border-color: #444; }
+  #btn-interval .arrow { color: #666; font-size: 9px; }
+  #interval-menu { position: absolute; top: 100%; left: 0; margin-top: 4px;
+    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 110px;
+    z-index: 50; display: none; }
+  #interval-menu.show { display: block; }
+  #interval-menu .opt { padding: 6px 12px; cursor: pointer; color: #d4d4d4; font-size: 12px; }
+  #interval-menu .opt:hover { background: #1a1a1a; }
+  #interval-menu .opt.active { background: #ff8c00; color: #0a0a0a; font-weight: 700; }
   #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; }
   #toolbar .spacer { flex: 1; }
   #toolbar input[type="date"] { background: #1a1a1a; color: #d4d4d4;
@@ -182,35 +210,18 @@ window.__loadMp4Muxer = function() {
 <div id="app">
   <div id="toolbar">
     <span class="brand">BITCOINTERMINAL.NET</span>
-    <span style="color:#666">| Indicator Framework</span>
     <span style="background:#ff8c00;color:#0a0a0a;font-weight:700;padding:2px 6px;border-radius:2px;font-size:10px;letter-spacing:0.5px">BETA</span>
     <a href="/" style="color:#888;text-decoration:none;font-size:11px;border:1px solid #2a2a2a;padding:4px 8px;border-radius:2px" title="Back to the classic Plotly version">← classic</a>
     <span class="spacer"></span>
-    <label>Date:</label>
-    <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
-    <select id="cycle-select" title="Jump to a cycle top or bottom">
-      <option value="">CYCLE TOP/BTM…</option>
-      <option value="2011-06-08">Cycle 1 Top — 2011-06-08</option>
-      <option value="2011-11-18">Cycle 1 Bottom — 2011-11-18</option>
-      <option value="2013-11-29">Cycle 2 Top — 2013-11-29</option>
-      <option value="2015-01-14">Cycle 2 Bottom — 2015-01-14</option>
-      <option value="2017-12-17">Cycle 3 Top — 2017-12-17</option>
-      <option value="2018-12-15">Cycle 3 Bottom — 2018-12-15</option>
-      <option value="2021-11-10">Cycle 4 Top — 2021-11-10</option>
-      <option value="2022-11-21">Cycle 4 Bottom — 2022-11-21</option>
-      <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
-    </select>
-    <label><input type="checkbox" id="scrub-toggle" checked> Scrub</label>
-    <div id="lb-group" title="Lookback window for the price chart">
-      <button data-lb="365">1Y</button>
-      <button data-lb="1825">5Y</button>
-      <button data-lb="3650">10Y</button>
-      <button data-lb="all" class="active">ALL</button>
+    <div id="interval-wrap" title="Time interval">
+      <button id="btn-interval"><span id="interval-label">1D</span><span class="arrow">▾</span></button>
+      <div id="interval-menu">
+        <div class="opt active" data-interval="1d">1 day</div>
+        <div class="opt" data-interval="1w">1 week</div>
+        <div class="opt" data-interval="1m">1 month</div>
+      </div>
     </div>
-    <button id="btn-add" class="primary">+ Add Indicator</button>
-    <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy Link</button>
-    <button id="btn-png" title="Download a PNG snapshot of the current chart">📷 PNG</button>
-    <button id="btn-mp4" title="Animate through a date range and export as MP4">▶ MP4</button>
+    <button id="btn-add" class="primary">ƒₓ Indicators</button>
   </div>
 
   <div id="chart-stack">
@@ -240,6 +251,35 @@ window.__loadMp4Muxer = function() {
       </div>
       <div id="status">Loading…</div>
     </div>
+  </div>
+
+  <div id="bottom-toolbar">
+    <div id="lb-group" title="Lookback window for the price chart">
+      <button data-lb="365">1Y</button>
+      <button data-lb="1825">5Y</button>
+      <button data-lb="3650">10Y</button>
+      <button data-lb="all" class="active">ALL</button>
+    </div>
+    <span style="color:#444">|</span>
+    <label>Date:</label>
+    <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
+    <select id="cycle-select" title="Jump to a cycle top or bottom">
+      <option value="">CYCLE TOP/BTM…</option>
+      <option value="2011-06-08">Cycle 1 Top — 2011-06-08</option>
+      <option value="2011-11-18">Cycle 1 Bottom — 2011-11-18</option>
+      <option value="2013-11-29">Cycle 2 Top — 2013-11-29</option>
+      <option value="2015-01-14">Cycle 2 Bottom — 2015-01-14</option>
+      <option value="2017-12-17">Cycle 3 Top — 2017-12-17</option>
+      <option value="2018-12-15">Cycle 3 Bottom — 2018-12-15</option>
+      <option value="2021-11-10">Cycle 4 Top — 2021-11-10</option>
+      <option value="2022-11-21">Cycle 4 Bottom — 2022-11-21</option>
+      <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
+    </select>
+    <label><input type="checkbox" id="scrub-toggle" checked> Scrub on hover</label>
+    <span class="spacer"></span>
+    <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy Link</button>
+    <button id="btn-png" title="Download a PNG snapshot of the current chart">📷 PNG</button>
+    <button id="btn-mp4" title="Animate through a date range and export as MP4">▶ MP4</button>
   </div>
 </div>
 
@@ -1232,6 +1272,38 @@ function openConfigModal(typeName, existingIndicator) {
 }
 
 document.getElementById("btn-add").addEventListener("click", openAddModal);
+
+// Interval dropdown — UI-only for now (data-resolution change comes later)
+let currentInterval = "1d";
+const intervalLabels = { "1d": "1D", "1w": "1W", "1m": "1M" };
+const intervalBtn = document.getElementById("btn-interval");
+const intervalMenu = document.getElementById("interval-menu");
+const intervalLabel = document.getElementById("interval-label");
+intervalBtn.addEventListener("click", (e) => {
+  e.stopPropagation();
+  intervalMenu.classList.toggle("show");
+});
+document.addEventListener("click", (e) => {
+  if (!intervalMenu.contains(e.target) && e.target !== intervalBtn) intervalMenu.classList.remove("show");
+});
+intervalMenu.querySelectorAll(".opt").forEach(el => {
+  el.addEventListener("click", () => {
+    const v = el.getAttribute("data-interval");
+    currentInterval = v;
+    intervalLabel.textContent = intervalLabels[v] || v.toUpperCase();
+    intervalMenu.querySelectorAll(".opt").forEach(o =>
+      o.classList.toggle("active", o.getAttribute("data-interval") === v));
+    intervalMenu.classList.remove("show");
+    // Also update the pane label timeframe text
+    document.querySelectorAll("#header-top .pane-title span").forEach(s => {
+      if (s.textContent === "1D" || s.textContent === "1W" || s.textContent === "1M") {
+        s.textContent = intervalLabels[v];
+      }
+    });
+    // TODO: re-sample data for the new interval. For now this is UI-only.
+    document.getElementById("status").textContent = `Interval set to ${intervalLabels[v]} (data resolution unchanged for this iteration)`;
+  });
+});
 document.getElementById("modal-bg").addEventListener("click", (e) => {
   if (e.target.id === "modal-bg") document.getElementById("modal-bg").classList.remove("show");
 });
