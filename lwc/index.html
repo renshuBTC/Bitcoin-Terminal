@@ -2147,6 +2147,24 @@ function openAddModal() {
       return;
     }
 
+    // Cap: only one bottom-pane indicator allowed at a time. The chart
+    // architecture supports just two visible panes (BTC top + URPD-style
+    // bottom); adding a 2nd bottom-pane indicator would require a 3rd
+    // pane, which we don't render. Refuse with a status hint so the
+    // user knows to remove the current one before swapping.
+    if (T.pane === "bottom") {
+      let bottomCount = 0;
+      for (const ind of activeIndicators.values()) {
+        if (ind.pane() === "bottom") bottomCount++;
+      }
+      if (bottomCount >= 1) {
+        bg.classList.remove("show");
+        document.getElementById("status").textContent =
+          `Only 2 panes allowed (1 top + 1 bottom). Remove the existing bottom indicator first.`;
+        return;
+      }
+    }
+
     // Otherwise: add a fresh instance.
     bg.classList.remove("show");
     const ind = new T(/* defaults from configSchema */);
