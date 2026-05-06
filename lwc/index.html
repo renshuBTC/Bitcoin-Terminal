@@ -1246,23 +1246,28 @@ class ProfileHistogramIndicator extends Indicator {
         visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
       });
     }
-    this._series.setData(dataPoints);
-    this.series.push(this._series);
-    bottomChart.timeScale().fitContent();
-
     // Cap the Y-axis at the 97th-percentile bar height so a few outlier
-    // peaks don't flatten the rest of the histogram.
+    // peaks don't flatten the rest of the histogram. LWC v5's price-scale
+    // API has no setVisibleRange — the only reliable way to cap is to clip
+    // the values themselves before sending to the series, then let
+    // autoScale fit naturally to [0, p97]. The full-precision totals/stats
+    // are read from this._stats below, so the hover tooltip is unaffected.
+    let renderPoints = dataPoints;
     if (isVisibleScale && dataPoints.length >= 5) {
       const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
       const p97 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.97))];
+      if (p97 > 0) {
+        renderPoints = dataPoints.map(d => d.value > p97 ? { ...d, value: p97 } : d);
+      }
       try {
-        const ps = bottomChart.priceScale("right");
-        ps.applyOptions({ autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } });
-        if (typeof ps.setVisibleRange === "function") {
-          ps.setVisibleRange({ from: 0, to: p97 });
-        }
+        bottomChart.priceScale("right").applyOptions({
+          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
       } catch (e) {}
     }
+    this._series.setData(renderPoints);
+    this.series.push(this._series);
+    bottomChart.timeScale().fitContent();
 
     // Stash per-indicator stats. The hover handler shows these in a small
     // tooltip near the cursor when the user mouses over a histogram bar
