@@ -279,8 +279,11 @@ window.__loadMp4Muxer = function() {
      full height — same coordinate frame LWC uses for pane layout. Now
      `top: i/N * 100%` lines up exactly with the pane boundaries. */
   #ind-rows-bottom { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block; }
-  #ind-rows-bottom .ind-row { position: absolute; left: 12px; right: 12px;
-    margin-top: 8px; }
+  #ind-rows-bottom .ind-row { position: absolute; left: 12px; right: 12px; }
+  /* Labels in the bottom pane don't need the colored swatch — the pane
+     itself is the indicator's identity, and the swatch tends to read as
+     a stray block on top of histogram bars. */
+  #ind-rows-bottom .ind-row .swatch { display: none; }
   .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
     font-size: 13px; line-height: 1.4; padding: 0; }
   .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
@@ -2063,13 +2066,16 @@ function refreshPaneHeaders() {
   if (botHost) {
     const N = Math.max(1, botRowsList.length);
     botHost.innerHTML = botRowsList.map((ind, i) => {
-      // Inline `top: %` instead of CSS variables so we don't depend on
-      // browser support for arithmetic in `top: calc(var(...) * ...)`.
-      const topPct = (i / N) * 100;
+      // `calc(% + 8px)` pins the label 8px BELOW the LWC pane's top edge.
+      // Plain `top: i/N * 100%` lands exactly on the pane boundary, which
+      // visually reads as "above / on top of the divider line" rather
+      // than inside the pane. The 8px offset clears the 1-pixel pane
+      // separator LWC draws between panes.
+      const topVal = `calc(${(i / N * 100).toFixed(4)}% + 8px)`;
       const html = indRowHTML(ind);
       // Inject the inline style into the outer div tag of the row.
       return html.replace('<div class="ind-row',
-        `<div style="top:${topPct}%" class="ind-row`);
+        `<div style="top:${topVal}" class="ind-row`);
     }).join("");
   }
 }
