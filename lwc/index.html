@@ -2428,6 +2428,18 @@ function openAddModal() {
   const HIDDEN_FROM_PICKER = new Set(["spot_line"]);
   const all = INDICATOR_TYPES.filter(t => !HIDDEN_FROM_PICKER.has(t.type));
 
+  // Active indicators rise to the top of the list. Array.prototype.sort is
+  // stable on every modern engine, so this preserves the catalog order
+  // within the active and inactive groups respectively. Re-evaluated on
+  // every rerender so the order updates as users add/remove rows.
+  function _sortedForPicker() {
+    return all.slice().sort((a, b) => {
+      const aActive = _indicatorTypeIsActive(a.type) ? 0 : 1;
+      const bActive = _indicatorTypeIsActive(b.type) ? 0 : 1;
+      return aActive - bActive;
+    });
+  }
+
   let html =
     `<div class="modal-header">` +
       `<h3>Indicators</h3>` +
@@ -2438,7 +2450,7 @@ function openAddModal() {
       `<input type="text" id="modal-search-input" placeholder="Search" autocomplete="off">` +
     `</div>` +
     `<div class="modal-body" id="modal-body">`;
-  for (const T of all) html += renderTypeOption(T);
+  for (const T of _sortedForPicker()) html += renderTypeOption(T);
   html += `</div>`;
 
   modal.innerHTML = html;
@@ -2457,7 +2469,7 @@ function openAddModal() {
   function _rerenderPickerBody() {
     const body = modal.querySelector("#modal-body");
     if (!body) return;
-    body.innerHTML = all.map(renderTypeOption).join("");
+    body.innerHTML = _sortedForPicker().map(renderTypeOption).join("");
     const si = modal.querySelector("#modal-search-input");
     if (si) si.dispatchEvent(new Event("input"));
   }
@@ -2501,18 +2513,21 @@ function openAddModal() {
         if (ind.pane() === "bottom") bottomCount++;
       }
       if (bottomCount >= 1) {
-        bg.classList.remove("show");
+        // Picker stays open — user explicitly asked to keep it open until
+        // they hit X — so we just surface the cap as a status hint.
         document.getElementById("status").textContent =
           `Only 2 panes allowed (1 top + 1 bottom). Remove the existing bottom indicator first.`;
         return;
       }
     }
 
-    // Otherwise: add a fresh instance.
-    bg.classList.remove("show");
+    // Otherwise: add a fresh instance. Picker stays open so users can add
+    // more in one trip; the row flips to "Added" + rises to the top via
+    // _rerenderPickerBody().
     const ind = new T(/* defaults from configSchema */);
     activeIndicators.set(ind.id, ind);
     refreshIndicatorPanel();
+    _rerenderPickerBody();
     try {
       await ind.load();
       document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
@@ -2522,6 +2537,7 @@ function openAddModal() {
       try { ind.remove(); } catch (_) {}
       activeIndicators.delete(ind.id);
       refreshIndicatorPanel();
+      _rerenderPickerBody();
     }
   });
 
