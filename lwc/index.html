@@ -488,6 +488,12 @@ const THEME = {
   background: "#000", text: "#d4d4d4", grid: "rgba(255,255,255,0.05)", border: "#222",
   crosshair: "rgba(255,140,0,0.9)", priceLine: "rgba(255,255,255,0.85)",
   spot: "#ff8c00", profit: "#2ecc71", loss: "#e74c3c",
+  // `mean` = MEAN_COLOR from the previous Plotly site (rp.js: #00e676).
+  // Used for: Realised Price (top-pane line), Realised Price in Profit,
+  // and Realised Price in Loss — all three share this single colour, with
+  // the in-Profit/in-Loss distinction conveyed by line style (solid vs
+  // dashed), not hue.
+  mean: "#00e676",
   // LTH / STH match the previous Plotly site (rp.js: LTH_COLOR / STH_COLOR).
   // Used for: LTH/STH Realised Price (top-pane lines) AND all 8 LTH/STH
   // Realised-Price-in-Profit/Loss filtered variants (BTC + USD weighted).
@@ -1088,7 +1094,7 @@ class RealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "realised_price";
   static displayName = "Realised Price";
   static configSchema = [
-    { key: "color", label: "Color", type: "color", default: THEME.cyan },
+    { key: "color", label: "Color", type: "color", default: THEME.mean },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
@@ -1226,7 +1232,10 @@ function _rpFilteredSchema(defaultColor) {
 // coindays/valuedays field on the URPD bin response.
 const _RP_FILTERED_VARIANTS = [];
 const _RP_COHORTS = [
-  { key: "all", prefix: "",    color: "profit" }, // profit color for in-Profit, loss color for in-Loss
+  // Previous Plotly site used a single colour per cohort for the in-Profit /
+  // in-Loss filtered means (the P/L distinction came from line style, not
+  // hue). "all" cohort → MEAN_COLOR; LTH cohort → LTH_COLOR; STH → STH_COLOR.
+  { key: "all", prefix: "",    color: "mean" },
   { key: "lth", prefix: "LTH ", color: "lth" },
   { key: "sth", prefix: "STH ", color: "sth" },
 ];
@@ -1241,9 +1250,12 @@ const _RP_WEIGHTS = [
 for (const c of _RP_COHORTS) {
   for (const pl of _RP_PL) {
     for (const w of _RP_WEIGHTS) {
-      const colorKey = c.color === "profit"
-        ? (pl.profit ? THEME.profit : THEME.loss)
-        : (c.color === "lth" ? THEME.lth : THEME.sth);
+      // Single colour per cohort — matches the previous Plotly site, where
+      // in-Profit and in-Loss share a hue and are differentiated by line
+      // style (solid vs dashed) on the chart.
+      const colorKey = c.color === "mean" ? THEME.mean
+                     : c.color === "lth"  ? THEME.lth
+                     : THEME.sth;
       const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}${pl.suffix}_${w.short}`;
       const display = `${c.prefix}Realised Price ${pl.label} (${w.label}-weighted)`;
       const Cls = class extends RealisedPriceFilteredIndicator {
