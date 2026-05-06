@@ -300,11 +300,9 @@ window.__loadMp4Muxer = function() {
   #modal .modal-search { padding: 10px 18px; border-bottom: 1px solid #1f1f1f; flex-shrink: 0;
     position: relative; }
   #modal .modal-search input { width: 100%; background: #0a0a0a; color: #d4d4d4;
-    border: 1px solid #2a2a2a; padding: 8px 10px 8px 32px; font-family: inherit; font-size: 13px;
+    border: 1px solid #2a2a2a; padding: 8px 10px; font-family: inherit; font-size: 13px;
     border-radius: 2px; }
   #modal .modal-search input::placeholder { color: #888; }
-  #modal .modal-search .search-icon { position: absolute; left: 28px; top: 50%; transform: translateY(-50%);
-    color: #888; font-size: 13px; pointer-events: none; line-height: 1; }
   /* Modal scrollable body */
   #modal .modal-body { padding: 8px 0; overflow-y: auto; flex: 1; min-height: 200px; }
   #modal .section-title { color: #888; font-size: 10px; padding: 8px 18px 4px;
@@ -1615,8 +1613,11 @@ async function editIndicatorConfig(id, newConfig) {
 function openAddModal() {
   const modal = document.getElementById("modal");
   const bg = document.getElementById("modal-bg");
-  const top = INDICATOR_TYPES.filter(t => t.pane === "top");
-  const bot = INDICATOR_TYPES.filter(t => t.pane === "bottom");
+  // Catalog: hide internal helpers (Spot Price Line is a passive crosshair
+  // marker the user can't manage from the picker — same rule we apply to
+  // the in-chart indicator rows).
+  const HIDDEN_FROM_PICKER = new Set(["spot_line"]);
+  const all = INDICATOR_TYPES.filter(t => !HIDDEN_FROM_PICKER.has(t.type));
 
   let html =
     `<div class="modal-header">` +
@@ -1624,18 +1625,10 @@ function openAddModal() {
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-search">` +
-      `<span class="search-icon">🔍</span>` +
       `<input type="text" id="modal-search-input" placeholder="Search" autocomplete="off">` +
     `</div>` +
     `<div class="modal-body" id="modal-body">`;
-  if (top.length) {
-    html += `<div class="section-title">Top pane — price chart</div>`;
-    for (const T of top) html += renderTypeOption(T);
-  }
-  if (bot.length) {
-    html += `<div class="section-title">Bottom pane — URPD / SOPD</div>`;
-    for (const T of bot) html += renderTypeOption(T);
-  }
+  for (const T of all) html += renderTypeOption(T);
   html += `</div>`;
 
   modal.innerHTML = html;
@@ -1657,28 +1650,9 @@ function openAddModal() {
   const searchInput = modal.querySelector("#modal-search-input");
   searchInput.addEventListener("input", () => {
     const q = searchInput.value.trim().toLowerCase();
-    let lastVisibleSection = null;
-    let anySectionVisible = false;
-    modal.querySelectorAll("#modal-body > *").forEach(el => {
-      if (el.classList.contains("section-title")) {
-        // Hide section title if no following options match — handled by second pass
-        el.dataset._isSection = "1";
-        el.style.display = ""; // tentative
-        if (lastVisibleSection) lastVisibleSection.dataset._anyVisible = anySectionVisible ? "1" : "";
-        lastVisibleSection = el;
-        anySectionVisible = false;
-      } else if (el.classList.contains("ind-option")) {
-        const name = el.querySelector(".name").textContent.toLowerCase();
-        const visible = q === "" || name.includes(q);
-        el.style.display = visible ? "" : "none";
-        if (visible) anySectionVisible = true;
-      }
-    });
-    // Final section's visibility
-    if (lastVisibleSection) lastVisibleSection.dataset._anyVisible = anySectionVisible ? "1" : "";
-    // Hide section titles that have no visible options under them
-    modal.querySelectorAll("#modal-body > .section-title").forEach(el => {
-      if (el.dataset._anyVisible !== "1") el.style.display = "none";
+    modal.querySelectorAll("#modal-body .ind-option").forEach(el => {
+      const name = el.querySelector(".name").textContent.toLowerCase();
+      el.style.display = (q === "" || name.includes(q)) ? "" : "none";
     });
   });
   // Auto-focus search input
@@ -1691,7 +1665,6 @@ function renderTypeOption(T) {
   return `<div class="ind-option" data-type="${T.type}">` +
     `<span class="swatch" style="background:${swatch}"></span>` +
     `<span class="name">${T.displayName}</span>` +
-    `<span class="pane-tag">${T.pane}</span>` +
     `</div>`;
 }
 
