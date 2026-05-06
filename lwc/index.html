@@ -1160,19 +1160,13 @@ class RealisedPriceFilteredIndicator extends Indicator {
   seriesTitle() { return this.constructor.displayName; }
 
   async onDateChange(dateStr) {
-    // The in-Profit/in-Loss filtered means are derived from URPD bins,
-    // so they share the same nav-mode gate as the URPD histogram itself —
-    // no network calls and no price-line render unless the tracer is active.
-    if (typeof _navMode !== "undefined" && !_navMode) {
-      if (this._priceLine) {
-        const btcInd = activeIndicators.values().next().value;
-        if (btcInd && btcInd.getPriceSeries) {
-          try { btcInd.getPriceSeries().removePriceLine(this._priceLine); } catch (e) {}
-        }
-        this._priceLine = null;
-      }
-      return;
-    }
+    // These horizontal price lines are reference markers — they should be
+    // visible the moment the indicator is added, anchored at the currently
+    // selected date (= today by default). They also update when the tracer
+    // navigates in nav mode, which works through the same setCurrentDate
+    // path. URPD fetches are deduped per (cohort, date) by inflight+cache
+    // in getURPDCohort, so 12 simultaneous filtered indicators add up to
+    // just 3 actual network requests (one per cohort: all/lth/sth).
     const spot = getSpotForDate(dateStr);
     if (!spot) return;
     let resp;
