@@ -1250,16 +1250,16 @@ class ProfileHistogramIndicator extends Indicator {
     this.series.push(this._series);
     bottomChart.timeScale().fitContent();
 
-    // Cap the Y-axis at the 99th-percentile bar height so a few outlier
+    // Cap the Y-axis at the 98th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram.
     if (isVisibleScale && dataPoints.length >= 5) {
       const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
-      const p99 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99))];
+      const p98 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
       try {
         const ps = bottomChart.priceScale("right");
         ps.applyOptions({ autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } });
         if (typeof ps.setVisibleRange === "function") {
-          ps.setVisibleRange({ from: 0, to: p99 });
+          ps.setVisibleRange({ from: 0, to: p98 });
         }
       } catch (e) {}
     }
