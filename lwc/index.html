@@ -3815,15 +3815,17 @@ function openAddModal() {
   const HIDDEN_FROM_PICKER = new Set(["spot_line"]);
   const all = INDICATOR_TYPES.filter(t => !HIDDEN_FROM_PICKER.has(t.type));
 
-  // Active indicators rise to the top of the list. Array.prototype.sort is
-  // stable on every modern engine, so this preserves the catalog order
-  // within the active and inactive groups respectively. Re-evaluated on
-  // every rerender so the order updates as users add/remove rows.
+  // Active indicators rise to the top of the list; within each group
+  // (active / inactive) rows are sorted alphabetically by displayName so
+  // the catalog reads in dictionary order. localeCompare is used so
+  // case-insensitive ordering works regardless of the user's locale.
   function _sortedForPicker() {
     return all.slice().sort((a, b) => {
       const aActive = _indicatorTypeIsActive(a.type) ? 0 : 1;
       const bActive = _indicatorTypeIsActive(b.type) ? 0 : 1;
-      return aActive - bActive;
+      if (aActive !== bActive) return aActive - bActive;
+      return String(a.displayName).localeCompare(String(b.displayName),
+        undefined, { sensitivity: "base", numeric: true });
     });
   }
 
