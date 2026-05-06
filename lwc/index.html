@@ -59,9 +59,26 @@ window.__loadMp4Muxer = function() {
   #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222; }
-  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0; }
-  #chart-top, #chart-bottom { width: 100%; height: 100%; }
+  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222;
+    display: flex; flex-direction: column; }
+  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0;
+    display: flex; flex-direction: column; }
+  #chart-top, #chart-bottom { width: 100%; flex: 1; min-height: 0; }
+
+  /* Pane header bar — sits above each chart, TradingView-style */
+  .pane-header { display: flex; align-items: center; gap: 10px; padding: 5px 10px;
+    background: rgba(15,15,15,0.95); border-bottom: 1px solid #1f1f1f;
+    font-size: 11px; color: #888; min-height: 28px; flex-wrap: wrap; flex-shrink: 0; }
+  .pane-header .pane-title { color: #d4d4d4; font-weight: 700; letter-spacing: 0.4px;
+    display: inline-flex; align-items: center; gap: 6px; }
+  .pane-header .pane-title .sep { color: #555; font-weight: 400; }
+  .pane-header .pane-title .source { color: #ff8c00; }
+  .pane-header .ind-badge { display: inline-flex; align-items: center; gap: 5px;
+    padding: 2px 7px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 2px; font-size: 10px; line-height: 1.4; }
+  .pane-header .ind-badge .dot { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; }
+  .pane-header .ind-badge .ind-label { color: #d4d4d4; }
+  .pane-header .ind-badge .ind-value { color: #fff; font-weight: 700; }
 
   #status { position: absolute; bottom: 6px; left: 14px; color: #666; font-size: 11px; pointer-events: none; }
 
@@ -193,9 +210,24 @@ window.__loadMp4Muxer = function() {
 
   <div id="chart-stack">
     <div id="chart-top-wrap">
+      <div class="pane-header" id="header-top">
+        <span class="pane-title">
+          <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
+          <span class="sep">·</span><span>D</span>
+          <span class="sep">·</span><span class="source">BRK</span>
+        </span>
+        <span id="header-top-badges" style="display:contents"></span>
+      </div>
       <div id="chart-top"></div>
     </div>
     <div id="chart-bottom-wrap">
+      <div class="pane-header" id="header-bottom">
+        <span class="pane-title">
+          <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
+          <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
+        </span>
+        <span id="header-bottom-badges" style="display:contents"></span>
+      </div>
       <div id="chart-bottom"></div>
       <div id="stats-stack"></div>
       <div id="ind-panel">
@@ -990,6 +1022,7 @@ function refreshIndicatorPanel() {
         `<button class="ip-x" data-id="${id}" title="Remove">×</button>`);
     list.appendChild(row);
   }
+  refreshPaneHeaders();
   list.querySelectorAll(".ip-x").forEach(btn => {
     btn.addEventListener("click", () => {
       const id = btn.getAttribute("data-id");
@@ -1004,6 +1037,53 @@ function refreshIndicatorPanel() {
       if (ind) openConfigModal(ind.constructor.type, ind);
     });
   });
+}
+
+// Per-pane header bars: render a colored badge for each indicator in the pane.
+// For top-pane indicators, badge label is the short displayName. For bottom-pane,
+// the title section also gets the current date and a guess at what kind of profile
+// is being shown (URPD / SOPD / mixed).
+function shortDisplayName(ind) {
+  // Compress the displayName a bit so badges stay narrow
+  const name = typeof ind.displayName === "function" ? ind.displayName() : ind.constructor.displayName;
+  return name
+    .replace(/Realised Price/gi, "RP")
+    .replace(/URPD Profile/gi, "URPD")
+    .replace(/SOPD Profile/gi, "SOPD")
+    .replace(/URPD Age Bands/gi, "URPD Age")
+    .replace(/Spot Price Line/gi, "Spot");
+}
+function badgeHTML(ind) {
+  const swatch = ind.swatchColor();
+  // Use linear-gradient swatches as background, solid colors as background too
+  const dotStyle = swatch.startsWith("linear-gradient")
+    ? `background:${swatch}` : `background:${swatch}`;
+  return `<span class="ind-badge"><span class="dot" style="${dotStyle}"></span>` +
+    `<span class="ind-label">${shortDisplayName(ind)}</span></span>`;
+}
+function refreshPaneHeaders() {
+  const topBadges = [];
+  const botBadges = [];
+  let hasURPD = false, hasSOPD = false;
+  for (const ind of activeIndicators.values()) {
+    if (ind.pane() === "top") {
+      topBadges.push(badgeHTML(ind));
+    } else {
+      botBadges.push(badgeHTML(ind));
+      const t = ind.constructor.type;
+      if (t.startsWith("urpd")) hasURPD = true;
+      if (t.startsWith("sopd")) hasSOPD = true;
+    }
+  }
+  document.getElementById("header-top-badges").innerHTML = topBadges.join("");
+  document.getElementById("header-bottom-badges").innerHTML = botBadges.join("");
+  // Bottom pane title flips based on what's loaded
+  let botTitle;
+  if (hasURPD && hasSOPD) botTitle = "URPD + SOPD";
+  else if (hasSOPD)        botTitle = "SOPD (1d diff)";
+  else                     botTitle = "REALIZED PRICE DISTRIBUTION";
+  document.getElementById("header-bottom-title").textContent = botTitle;
+  document.getElementById("header-bottom-date").textContent = currentDateStr || "—";
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1315,6 +1395,9 @@ refreshIndicatorPanel = function() {
 const _origSetCurrentDate = setCurrentDate;
 setCurrentDate = function(dateStr) {
   _origSetCurrentDate(dateStr);
+  // Update the date in the bottom-pane header
+  const dateSpan = document.getElementById("header-bottom-date");
+  if (dateSpan) dateSpan.textContent = dateStr || "—";
   saveStateToURL();
 };
 
