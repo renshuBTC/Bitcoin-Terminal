@@ -1780,7 +1780,7 @@ for (const c of _RP_COHORTS) {
   // Unfiltered: "Spent Price (BTC|USD) (FLOW)"
   for (const w of _RP_WEIGHTS) {
     const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}_${w.short}`;
-    const display = `${c.prefix}Spent Price (${w.label}) (FLOW)`;
+    const display = `${c.prefix}Spent Price (${w.label}) (FLOW) (Derived from Approximated SOPD)`;
     const fieldName = w.short; // "btc" or "usd"
     const Cls = class extends SpentPriceFilteredIndicator {
       static type = typeName;
@@ -1797,7 +1797,7 @@ for (const c of _RP_COHORTS) {
   for (const pl of _RP_PL) {
     for (const w of _RP_WEIGHTS) {
       const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}${pl.suffix}_${w.short}`;
-      const display = `${c.prefix}Spent Price ${pl.label} (${w.label}) (FLOW)`;
+      const display = `${c.prefix}Spent Price ${pl.label} (${w.label}) (FLOW) (Derived from Approximated SOPD)`;
       const fieldName = w.short + (pl.profit ? "Profit" : "Loss"); // e.g. "btcProfit"
       const Cls = class extends SpentPriceFilteredIndicator {
         static type = typeName;
