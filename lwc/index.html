@@ -2253,11 +2253,16 @@ function exitNavMode() {
   _navMode = false;
   dateTracerEl.classList.remove("show");
   clearPathOverlay();                 // remove orange traversed-path segment
-  // Instruction stays visible — it's not tied to nav mode anymore.
-  // Snap back to the most recent date so URPD/SOPD reflect "now"
-  if (priceDateStrs && priceDateStrs.length) {
-    setCurrentDate(priceDateStrs[priceDateStrs.length - 1]);
+  // Clear all bottom-pane (URPD/SOPD) indicator data so the histogram pane
+  // is empty when the tracer is unfixed. The indicators themselves stay
+  // loaded; their data refills the moment a new tracer date is chosen.
+  for (const ind of activeIndicators.values()) {
+    if (ind.pane() === "bottom" && ind._series) {
+      try { ind._series.setData([]); } catch (e) {}
+      ind._stats = null;
+    }
   }
+  // Instruction stays visible — it's not tied to nav mode anymore.
 }
 
 // Double-click on the BTC chart toggles the tracer:
