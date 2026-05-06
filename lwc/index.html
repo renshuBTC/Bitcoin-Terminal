@@ -117,8 +117,8 @@ window.__loadMp4Muxer = function() {
   #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; }
-  #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; }
+  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
+  #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
   /* Draggable splitter between the two chart panes — TradingView-style.
      8px hit area, dark fill so it's obvious it's grab-able; blue when hovered/held. */
@@ -2453,6 +2453,14 @@ document.getElementById("btn-png").addEventListener("click", async () => {
     if (pct < MIN_PCT) pct = MIN_PCT;
     if (pct > MAX_PCT) pct = MAX_PCT;
     topWrap.style.flex = `0 0 ${pct.toFixed(2)}%`;
+    // Tell LWC to re-layout immediately so the canvas tracks the new container
+    // size synchronously instead of one frame later (which causes overlap).
+    try {
+      const topEl = document.getElementById("chart-top");
+      const botEl = document.getElementById("chart-bottom");
+      if (topEl && topChart  && topChart.resize)    topChart.resize(topEl.clientWidth, topEl.clientHeight);
+      if (botEl && bottomChart && bottomChart.resize) bottomChart.resize(botEl.clientWidth, botEl.clientHeight);
+    } catch (err) {}
   }
 
   function endDrag(e) {
