@@ -535,6 +535,7 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     rightOffset: 0, barSpacing: 4,
     tickMarkFormatter: (time) => {
       const v = typeof time === "number" ? time : 0;
+      if (v <= 0)         return `$0`;
       if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`;
       if (v >= 1_000)     return `$${Math.round(v/1_000)}K`;
       if (v >= 1)         return `$${v.toFixed(0)}`;
@@ -1325,9 +1326,19 @@ class ProfileHistogramIndicator extends Indicator {
         });
       } catch (e) {}
     }
-    this._series.setData(renderPoints);
+    // Pin a synthetic zero-weight bar at $0 so the histogram's X-axis
+    // always starts at zero (and the "$0" tick is visible) regardless of
+    // the lowest real cost-basis bin.
+    const renderWithZero = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }, ...renderPoints];
+    this._series.setData(renderWithZero);
     this.series.push(this._series);
-    bottomChart.timeScale().fitContent();
+    // Force visible range to start at $0 so the zero tick is anchored on
+    // the left edge no matter where real bars start.
+    try {
+      bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
+    } catch (e) {
+      bottomChart.timeScale().fitContent();
+    }
 
     // Stash per-indicator stats. The hover handler shows these in a small
     // tooltip near the cursor when the user mouses over a histogram bar
@@ -1603,9 +1614,15 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
         visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
       });
     }
-    this._series.setData(dataPoints);
+    // Pin a $0 anchor so the X-axis always starts at zero
+    const dpWithZero = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }, ...dataPoints];
+    this._series.setData(dpWithZero);
     this.series.push(this._series);
-    bottomChart.timeScale().fitContent();
+    try {
+      bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
+    } catch (e) {
+      bottomChart.timeScale().fitContent();
+    }
 
     // Update stats box with top-3 dominant cohorts
     const fmtCount = (n) => weightField === "supply" ? `${(n/1e6).toFixed(2)}M BTC` : `$${(n/1e9).toFixed(2)}B`;
