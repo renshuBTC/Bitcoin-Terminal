@@ -1275,7 +1275,7 @@ class ProfileHistogramIndicator extends Indicator {
       priceScaleId: scaleId,
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
-      title: weightField === "supply" ? "BTC supply" : "USD realised cap",
+      title: "",
     });
     if (!isVisibleScale) {
       bottomChart.priceScale(scaleId).applyOptions({
@@ -1575,7 +1575,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
       priceScaleId: scaleId,
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
-      title: weightField === "supply" ? "BTC supply" : "USD realised cap",
+      title: "",
     });
     if (!isVisibleScale) {
       bottomChart.priceScale(scaleId).applyOptions({
