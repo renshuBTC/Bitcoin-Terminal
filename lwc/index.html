@@ -198,17 +198,20 @@ window.__loadMp4Muxer = function() {
      5px hit area; the visible line sits in the middle via a ::before
      pseudo-element so the actual divider element can stay transparent and
      just paint blue when active. */
-  /* Top↔bottom divider: matches the LWC native pane separators inside
-     bottomChart — thin grey line by default, orange on hover/drag.
-     The flex element itself stays a 5px hit zone for easy grabbing,
-     but the visible part is just the 1px ::before line; hover doesn't
-     paint the full 5px band, only flips the line orange. */
+  /* Top↔bottom divider: 5px hit zone with a 1px grey line at rest;
+     hover/drag paints the full 5px band Bloomberg orange so the divider
+     visibly "lights up" — same intent as LWC's resize-enabled pane
+     separators on hover (paired with `panes.separatorHoverColor` in the
+     bottomChart config so all dividers light up the same orange). */
   #chart-divider { flex: 0 0 5px; position: relative; cursor: row-resize;
-    background: transparent; z-index: 10; touch-action: none; }
+    background: transparent; z-index: 10; touch-action: none;
+    transition: background 0.08s ease; }
   #chart-divider::before { content: ""; position: absolute; left: 0; right: 0;
     top: 50%; transform: translateY(-50%); height: 1px; background: #222;
-    pointer-events: none; transition: background 0.08s ease, height 0.08s ease; }
+    pointer-events: none; transition: background 0.08s ease; }
+  #chart-divider:hover { background: #ff8c00; }
   #chart-divider:hover::before { background: #ff8c00; }
+  #chart-divider.is-dragging { background: #ff8c00; }
   #chart-divider.is-dragging::before { background: #ff8c00; }
   /* While dragging, prevent text selection and force the resize cursor everywhere. */
   body.is-resizing-pane { user-select: none; cursor: row-resize !important; }
