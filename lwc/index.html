@@ -39,19 +39,57 @@ window.__loadMp4Muxer = function() {
   #app { display: flex; flex-direction: column; height: 100vh; }
   #toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
     background: #000; flex-wrap: wrap; }
-  /* Bottom toolbar — secondary controls (date / lookback / export) */
-  #bottom-toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 14px;
-    background: #111; border-top: 1px solid #222; flex-wrap: wrap; flex-shrink: 0;
-    font-size: 11px; }
-  #bottom-toolbar label { color: #888; font-size: 11px; }
-  #bottom-toolbar input[type="date"], #bottom-toolbar select {
-    background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
-    padding: 4px 8px; font-family: inherit; font-size: 11px; }
-  #bottom-toolbar button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
-    padding: 4px 9px; cursor: pointer; font-family: inherit; font-size: 11px; border-radius: 2px; }
-  #bottom-toolbar button:hover { border-color: #444; color: #fff; }
-  #bottom-toolbar input[type="checkbox"] { vertical-align: middle; }
+  /* Bottom toolbar — TradingView-style minimal status row */
+  #bottom-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 10px;
+    background: #000; border-top: 1px solid #1a1a1a; flex-wrap: wrap; flex-shrink: 0;
+    font-size: 12px; color: #888; }
   #bottom-toolbar .spacer { flex: 1; }
+  #bottom-toolbar .bb-sep { width: 1px; align-self: stretch; background: #1a1a1a; margin: 4px 4px; }
+  /* Generic TV-style minimal button — transparent until hover */
+  #bottom-toolbar .bb-btn { background: transparent; color: #d4d4d4; border: none;
+    padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 12px;
+    border-radius: 3px; transition: background-color 0.08s ease, color 0.08s ease; }
+  #bottom-toolbar .bb-btn:hover { background: #1a1a1a; color: #fff; }
+  #bottom-toolbar .bb-btn.active { background: #1a1a1a; color: #fff; }
+  /* Lookback buttons share .bb-btn styling — keep them as a tight group */
+  #bottom-toolbar #lb-group { display: inline-flex; gap: 0; }
+  #bottom-toolbar #lb-group button { padding: 5px 9px; min-width: 32px; font-weight: 400; }
+  /* Icon-only button (calendar / kebab) */
+  #bottom-toolbar .bb-icon-btn { background: transparent; color: #d4d4d4; border: none;
+    padding: 5px 7px; cursor: pointer; border-radius: 3px;
+    display: inline-flex; align-items: center; justify-content: center;
+    transition: background-color 0.08s ease, color 0.08s ease; }
+  #bottom-toolbar .bb-icon-btn:hover { background: #1a1a1a; color: #fff; }
+  #bottom-toolbar .bb-icon-btn svg { display: block; }
+  /* UTC clock — monospace, dim, no background */
+  #bottom-toolbar #utc-clock { color: #888; font-variant-numeric: tabular-nums;
+    padding: 5px 8px; cursor: default; }
+  /* Cycle dropdown — minimal styled select to match the bar */
+  #bottom-toolbar #cycle-select { background: transparent; color: #d4d4d4;
+    border: none; padding: 5px 9px; font-family: inherit; font-size: 12px;
+    cursor: pointer; border-radius: 3px;
+    -webkit-appearance: none; -moz-appearance: none; appearance: none;
+    transition: background-color 0.08s ease; }
+  #bottom-toolbar #cycle-select:hover { background: #1a1a1a; color: #fff; }
+  /* Hidden native date input — popped open by the calendar icon button */
+  #bottom-toolbar #date-input { position: absolute; opacity: 0; pointer-events: none;
+    width: 0; height: 0; }
+  /* Scrub checkbox — compact label */
+  #bottom-toolbar .bb-check { display: inline-flex; align-items: center; gap: 5px;
+    padding: 5px 8px; cursor: pointer; color: #888; user-select: none;
+    border-radius: 3px; transition: background-color 0.08s ease, color 0.08s ease; }
+  #bottom-toolbar .bb-check:hover { background: #1a1a1a; color: #fff; }
+  #bottom-toolbar .bb-check input { vertical-align: middle; }
+  /* Kebab "more" menu pop-up */
+  #bottom-toolbar #export-wrap { position: relative; }
+  #bottom-toolbar #export-menu { position: absolute; bottom: 100%; right: 0;
+    margin-bottom: 4px; background: #111; border: 1px solid #2a2a2a;
+    padding: 4px 0; min-width: 130px; z-index: 50; display: none; border-radius: 2px; }
+  #bottom-toolbar #export-menu.show { display: block; }
+  #bottom-toolbar #export-menu button { display: block; width: 100%; text-align: left;
+    background: transparent; color: #d4d4d4; border: none; padding: 6px 12px;
+    cursor: pointer; font-family: inherit; font-size: 12px; }
+  #bottom-toolbar #export-menu button:hover { background: #1a1a1a; color: #fff; }
   /* Interval dropdown (top toolbar) — same Bloomberg minimal pattern as siblings */
   #interval-wrap { position: relative; display: inline-block; }
   #btn-interval { display: inline-flex; align-items: center; gap: 6px;
@@ -109,12 +147,7 @@ window.__loadMp4Muxer = function() {
   #toolbar button.icon-btn:disabled { color: #444; cursor: default; background: transparent; }
   #toolbar button.icon-btn:disabled:hover { background: transparent; color: #444; }
   /* Lookback button group */
-  #lb-group { display: flex; gap: 0; }
-  #lb-group button { padding: 5px 8px; font-size: 11px; border-radius: 0; min-width: 36px; }
-  #lb-group button:not(:first-child) { border-left: none; }
-  #lb-group button:first-child { border-radius: 2px 0 0 2px; }
-  #lb-group button:last-child { border-radius: 0 2px 2px 0; }
-  #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+  /* (lookback button base styles now scoped under #bottom-toolbar above) */
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
@@ -355,17 +388,21 @@ window.__loadMp4Muxer = function() {
   </div>
 
   <div id="bottom-toolbar">
-    <div id="lb-group" title="Lookback window for the price chart">
-      <button data-lb="365">1Y</button>
-      <button data-lb="1825">5Y</button>
-      <button data-lb="3650">10Y</button>
-      <button data-lb="all" class="active">ALL</button>
+    <div id="lb-group" title="Lookback window">
+      <button class="bb-btn" data-lb="30"   title="1 Month">1M</button>
+      <button class="bb-btn" data-lb="90"   title="3 Months">3M</button>
+      <button class="bb-btn" data-lb="180"  title="6 Months">6M</button>
+      <button class="bb-btn" data-lb="365"  title="1 Year">1Y</button>
+      <button class="bb-btn" data-lb="1825" title="5 Years">5Y</button>
+      <button class="bb-btn" data-lb="3650" title="10 Years">10Y</button>
+      <button class="bb-btn active" data-lb="all" title="All">All</button>
     </div>
-    <span style="color:#444">|</span>
-    <label>Date:</label>
+    <button id="btn-date-picker" class="bb-icon-btn" title="Go to date" aria-label="Go to date">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+    </button>
     <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
     <select id="cycle-select" title="Jump to a cycle top or bottom">
-      <option value="">CYCLE TOP/BTM…</option>
+      <option value="">Cycles ▾</option>
       <option value="2011-06-08">Cycle 1 Top — 2011-06-08</option>
       <option value="2011-11-18">Cycle 1 Bottom — 2011-11-18</option>
       <option value="2013-11-29">Cycle 2 Top — 2013-11-29</option>
@@ -376,11 +413,25 @@ window.__loadMp4Muxer = function() {
       <option value="2022-11-21">Cycle 4 Bottom — 2022-11-21</option>
       <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
     </select>
-    <label><input type="checkbox" id="scrub-toggle" checked> Scrub on hover</label>
     <span class="spacer"></span>
-    <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy Link</button>
-    <button id="btn-png" title="Download a PNG snapshot of the current chart">📷 PNG</button>
-    <button id="btn-mp4" title="Animate through a date range and export as MP4">▶ MP4</button>
+    <label class="bb-check" title="Update charts as you hover over them"><input type="checkbox" id="scrub-toggle" checked> Scrub</label>
+    <span class="bb-sep"></span>
+    <span id="utc-clock" title="Timezone (UTC)">--:--:-- UTC</span>
+    <span class="bb-sep"></span>
+    <button id="btn-pct"  class="bb-btn" title="Toggle Percentage">%</button>
+    <button id="btn-log"  class="bb-btn active" title="Toggle Log Scale">log</button>
+    <button id="btn-auto" class="bb-btn active" title="Toggle Auto Scale">auto</button>
+    <span class="bb-sep"></span>
+    <div id="export-wrap">
+      <button id="btn-export" class="bb-icon-btn" title="Export / share" aria-label="Export menu">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+      </button>
+      <div id="export-menu">
+        <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy link</button>
+        <button id="btn-png" title="Download a PNG snapshot of the current chart">Save PNG</button>
+        <button id="btn-mp4" title="Animate through a date range and export as MP4">Export MP4</button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -1411,14 +1462,19 @@ function indRowHTML(ind) {
 }
 
 function refreshPaneHeaders() {
-  // Bottom pane title flips based on what's loaded
-  let hasURPD = false, hasSOPD = false;
+  // Bottom pane title flips based on what's loaded — and the entire bottom
+  // pane label hides when there's no URPD/SOPD profile indicator (since the
+  // "cost basis / distribution" UI only makes sense when a profile is shown).
+  let hasURPD = false, hasSOPD = false, hasAnyBottom = false;
   for (const ind of activeIndicators.values()) {
     if (ind.pane() !== "bottom") continue;
+    hasAnyBottom = true;
     const t = ind.constructor.type;
     if (t.startsWith("urpd")) hasURPD = true;
     if (t.startsWith("sopd")) hasSOPD = true;
   }
+  const headerBot = document.getElementById("header-bottom");
+  if (headerBot) headerBot.style.display = hasURPD || hasSOPD ? "" : "none";
   let botTitle;
   if (hasURPD && hasSOPD) botTitle = "URPD + SOPD";
   else if (hasSOPD)        botTitle = "SOPD (1d diff)";
@@ -2502,6 +2558,94 @@ document.getElementById("btn-copy-link").addEventListener("click", async () => {
     window.prompt("Copy this link:", url);
   }
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Bottom-bar: TradingView-style status row controls
+// ───────────────────────────────────────────────────────────────────────────
+
+// Live UTC clock
+(function startUTCClock() {
+  const el = document.getElementById("utc-clock");
+  if (!el) return;
+  function tick() {
+    const d = new Date();
+    const hh = String(d.getUTCHours()).padStart(2, "0");
+    const mm = String(d.getUTCMinutes()).padStart(2, "0");
+    const ss = String(d.getUTCSeconds()).padStart(2, "0");
+    el.textContent = `${hh}:${mm}:${ss} UTC`;
+  }
+  tick();
+  setInterval(tick, 1000);
+})();
+
+// Calendar icon button — opens the native date picker. The hidden date input
+// is the one wired to setCurrentDate, so opening it via showPicker() preserves
+// every existing onChange handler.
+document.getElementById("btn-date-picker").addEventListener("click", () => {
+  const d = document.getElementById("date-input");
+  if (!d) return;
+  if (typeof d.showPicker === "function") {
+    try { d.showPicker(); return; } catch (e) {}
+  }
+  // Fallback for browsers without showPicker support
+  d.style.position = "static";
+  d.style.opacity = "1";
+  d.style.width = "auto";
+  d.style.height = "auto";
+  d.style.pointerEvents = "auto";
+  d.focus();
+  d.click();
+});
+
+// Price-scale toggles — operate on the top chart's right price scale.
+// % and log are mutually exclusive modes; auto is independent.
+const PSM = LightweightCharts.PriceScaleMode || { Normal: 0, Logarithmic: 1, Percentage: 2, IndexedTo100: 3 };
+let psState = { pct: false, log: true, auto: true };
+function applyPriceScale() {
+  const scale = topChart.priceScale("right");
+  let mode = PSM.Normal;
+  if (psState.pct) mode = PSM.Percentage;
+  else if (psState.log) mode = PSM.Logarithmic;
+  try { scale.applyOptions({ mode, autoScale: psState.auto }); } catch (e) { console.warn("priceScale:", e); }
+  // Reflect state in the toolbar
+  document.getElementById("btn-pct").classList.toggle("active", psState.pct);
+  document.getElementById("btn-log").classList.toggle("active", psState.log);
+  document.getElementById("btn-auto").classList.toggle("active", psState.auto);
+}
+document.getElementById("btn-pct").addEventListener("click", () => {
+  psState.pct = !psState.pct;
+  if (psState.pct) psState.log = false; // mutually exclusive
+  applyPriceScale();
+});
+document.getElementById("btn-log").addEventListener("click", () => {
+  psState.log = !psState.log;
+  if (psState.log) psState.pct = false; // mutually exclusive
+  applyPriceScale();
+});
+document.getElementById("btn-auto").addEventListener("click", () => {
+  psState.auto = !psState.auto;
+  applyPriceScale();
+});
+// Apply initial state once topChart exists
+applyPriceScale();
+
+// Export kebab menu — toggles a popover with Copy link / Save PNG / Export MP4
+(function wireExportMenu() {
+  const btn = document.getElementById("btn-export");
+  const menu = document.getElementById("export-menu");
+  if (!btn || !menu) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("show");
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.contains(e.target) && e.target !== btn) menu.classList.remove("show");
+  });
+  // Close after picking any action
+  menu.querySelectorAll("button").forEach(b => {
+    b.addEventListener("click", () => menu.classList.remove("show"));
+  });
+})();
 
 // ───────────────────────────────────────────────────────────────────────────
 // Boot
