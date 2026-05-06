@@ -732,37 +732,6 @@ async function getURPDCohort(dateStr, cohort /* "all" | "lth" | "sth" */) {
 }
 const getURPD = (d) => getURPDCohort(d, "all"); // back-compat shorthand
 
-// Yesterday's date string (used by SOPD which is the daily URPD diff)
-function prevDateStrOf(dateStr) {
-  const d = new Date(dateStr + "T00:00:00");
-  d.setDate(d.getDate() - 1);
-  return d.toISOString().slice(0, 10);
-}
-
-// Bin-level diff: SOPD = URPD(today) − URPD(yesterday), preserving spending at
-// raw price_floor resolution before any aggregation. Mirrors the diffAggRaw fn
-// in rp.js (task #227 — fixed bin-level cancellation).
-function diffAggRaw(prevBuckets, currBuckets) {
-  const prevMap = {}, currMap = {};
-  prevBuckets.forEach(b => prevMap[b.price_floor] = b);
-  currBuckets.forEach(b => currMap[b.price_floor] = b);
-  const allPrices = new Set();
-  prevBuckets.forEach(b => allPrices.add(b.price_floor));
-  currBuckets.forEach(b => allPrices.add(b.price_floor));
-  const result = [];
-  allPrices.forEach(p => {
-    const prev = prevMap[p] || { supply: 0, realized_cap: 0 };
-    const curr = currMap[p] || { supply: 0, realized_cap: 0 };
-    const dSup = prev.supply - curr.supply;
-    const dRC  = prev.realized_cap - curr.realized_cap;
-    if (dSup > 0) {
-      result.push({ price_floor: p, supply: dSup, realized_cap: dRC > 0 ? dRC : dSup * p });
-    }
-  });
-  result.sort((a, b) => a.price_floor - b.price_floor);
-  return result;
-}
-
 // ───────────────────────────────────────────────────────────────────────────
 // Realised-price filtered means — supply- and USD-weighted means of URPD
 // bins, split by spot price (in-Profit: p ≤ spot, in-Loss: p > spot).
@@ -1587,7 +1556,7 @@ let _visibleScaleOwner = null;
 // ───────────────────────────────────────────────────────────────────────────
 class URPDProfileIndicator extends ProfileHistogramIndicator {
   static type = "urpd_profile";
-  static displayName = "URPD Profile";
+  static displayName = "URPD History - Profit/Loss";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -1599,281 +1568,13 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
     return resp.buckets;
   }
   swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
-  displayName() { return `URPD Profile (${this.config.weight.toUpperCase()})`; }
-}
-
-class URPDLTHProfileIndicator extends ProfileHistogramIndicator {
-  static type = "urpd_lth_profile";
-  static displayName = "URPD Profile — LTH";
-  static configSchema = [
-    { key: "weight", label: "Weight", type: "select",
-      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
-    { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
-  ];
-  async fetchBuckets(dateStr) {
-    const resp = await getURPDCohort(dateStr, "lth");
-    return resp.buckets;
-  }
-  swatchColor() { return THEME.lth; }
-  displayName() { return `URPD LTH (${this.config.weight.toUpperCase()})`; }
-}
-
-class URPDSTHProfileIndicator extends ProfileHistogramIndicator {
-  static type = "urpd_sth_profile";
-  static displayName = "URPD Profile — STH";
-  static configSchema = [
-    { key: "weight", label: "Weight", type: "select",
-      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
-    { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
-  ];
-  async fetchBuckets(dateStr) {
-    const resp = await getURPDCohort(dateStr, "sth");
-    return resp.buckets;
-  }
-  swatchColor() { return THEME.sth; }
-  displayName() { return `URPD STH (${this.config.weight.toUpperCase()})`; }
-}
-
-class SOPDProfileIndicator extends ProfileHistogramIndicator {
-  static type = "sopd_profile";
-  static displayName = "SOPD Profile (1d diff)";
-  static configSchema = [
-    { key: "weight", label: "Weight", type: "select",
-      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
-    { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
-    { key: "cohort", label: "Cohort", type: "select",
-      options: [{v:"all",l:"All"},{v:"lth",l:"LTH only"},{v:"sth",l:"STH only"}], default: "all" },
-  ];
-  async fetchBuckets(dateStr) {
-    const prev = prevDateStrOf(dateStr);
-    const cohort = this.config.cohort || "all";
-    const [currResp, prevResp] = await Promise.all([
-      getURPDCohort(dateStr, cohort),
-      getURPDCohort(prev, cohort),
-    ]);
-    if (!currResp || !currResp.buckets || !prevResp || !prevResp.buckets) return [];
-    return diffAggRaw(prevResp.buckets, currResp.buckets);
-  }
-  swatchColor() { return THEME.yellow; }
-  displayName() {
-    const c = (this.config.cohort || "all").toUpperCase();
-    return `SOPD ${c} (${this.config.weight.toUpperCase()})`;
-  }
+  displayName() { return `URPD History - Profit/Loss (${this.config.weight.toUpperCase()})`; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// 21 UTXO age cohorts + matching rainbow palette (mirrors live site)
+// (Removed: URPDLTH/STH Profile, SOPD Profile, AGE-band Profile — only the
+// `URPD History - Profit/Loss` indicator above is exposed.)
 // ───────────────────────────────────────────────────────────────────────────
-const AGE_BANDS = [
-  { cohort: "utxos_under_1h_old",   label: "<1h"    },
-  { cohort: "utxos_1h_to_1d_old",   label: "1h-1d"  },
-  { cohort: "utxos_1d_to_1w_old",   label: "1d-1w"  },
-  { cohort: "utxos_1w_to_1m_old",   label: "1w-1m"  },
-  { cohort: "utxos_1m_to_2m_old",   label: "1m-2m"  },
-  { cohort: "utxos_2m_to_3m_old",   label: "2m-3m"  },
-  { cohort: "utxos_3m_to_4m_old",   label: "3m-4m"  },
-  { cohort: "utxos_4m_to_5m_old",   label: "4m-5m"  },
-  { cohort: "utxos_5m_to_6m_old",   label: "5m-6m"  },
-  { cohort: "utxos_6m_to_1y_old",   label: "6m-1y"  },
-  { cohort: "utxos_1y_to_2y_old",   label: "1y-2y"  },
-  { cohort: "utxos_2y_to_3y_old",   label: "2y-3y"  },
-  { cohort: "utxos_3y_to_4y_old",   label: "3y-4y"  },
-  { cohort: "utxos_4y_to_5y_old",   label: "4y-5y"  },
-  { cohort: "utxos_5y_to_6y_old",   label: "5y-6y"  },
-  { cohort: "utxos_6y_to_7y_old",   label: "6y-7y"  },
-  { cohort: "utxos_7y_to_8y_old",   label: "7y-8y"  },
-  { cohort: "utxos_8y_to_10y_old",  label: "8y-10y" },
-  { cohort: "utxos_10y_to_12y_old", label: "10y-12y" },
-  { cohort: "utxos_12y_to_15y_old", label: "12y-15y" },
-  { cohort: "utxos_over_15y_old",   label: ">15y"   },
-];
-const AGE_BAND_COLORS = [
-  "#FF3B2E", "#FF5A2E", "#FF7A2E", "#FF9A2E", "#FFB82E",
-  "#FFD42E", "#E8D834", "#C8D43A", "#A0C840", "#5AAF54",
-  "#3A9A6A", "#2E8878", "#287888", "#226898", "#1C58A8",
-  "#1848B8", "#2040C0", "#4858C8", "#6878D8", "#90A0E8",
-  "#B8C8F0",
-];
-
-// ───────────────────────────────────────────────────────────────────────────
-// AGE-band URPD: fetches all 21 cohort URPDs in parallel, colors each bar by
-// the dominant cohort at that price level. Overrides onDateChange entirely so
-// per-cohort breakdown survives aggregation (the base class only tracks total
-// weight per agg bin).
-// ───────────────────────────────────────────────────────────────────────────
-class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
-  static type = "urpd_age_band";
-  static displayName = "URPD Profile — Age Bands";
-  static configSchema = [
-    { key: "weight", label: "Weight", type: "select",
-      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
-    { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
-  ];
-
-  // fetchBuckets is unused for this indicator (we override onDateChange instead)
-  async fetchBuckets() { return []; }
-
-  async onDateChange(dateStr) {
-    // Same nav-mode gate as the base ProfileHistogramIndicator: don't
-    // touch the network or render bars unless the tracer is active.
-    if (typeof _navMode !== "undefined" && !_navMode) {
-      if (this._series) {
-        try { this._series.setData([]); } catch (e) {}
-      }
-      this._stats = null;
-      return;
-    }
-    if (this._statBox) {
-      this._statBox.querySelector(".date").textContent = dateStr;
-    }
-    // Fetch all 21 cohorts in parallel, ignore individual failures
-    const cohortResps = await Promise.all(AGE_BANDS.map(b =>
-      getURPDCohort(dateStr, b.cohort).catch(() => null)
-    ));
-    const fetched = cohortResps.filter(r => r && r.buckets).length;
-    if (fetched === 0) {
-      if (this._statBox) {
-        this._statBox.innerHTML = `<div class="title-row">` +
-          `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
-          `<span class="name">${this.displayName()}</span></div>` +
-          `<div style="color:#ff5c5c">no cohort data for ${dateStr}</div>`;
-      }
-      return;
-    }
-
-    const spot = getSpotForDate(dateStr) || 0;
-    const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
-    const TARGET_BINS = this.config.bins || 600;
-
-    // Find combined min/max price across all cohorts
-    let minPrice = Infinity, maxPrice = -Infinity;
-    for (const resp of cohortResps) {
-      if (!resp || !resp.buckets) continue;
-      for (const b of resp.buckets) {
-        if (!b[weightField] || b[weightField] <= 0) continue;
-        if (b.price_floor < minPrice) minPrice = b.price_floor;
-        if (b.price_floor > maxPrice) maxPrice = b.price_floor;
-      }
-    }
-    if (!isFinite(minPrice) || !isFinite(maxPrice) || maxPrice <= minPrice) return;
-    if (minPrice < 1) minPrice = 1;
-    const binWidth = (maxPrice - minPrice) / TARGET_BINS;
-
-    // Aggregate: per agg bin, accumulate weight per band so we can pick dominant
-    const agg = new Array(TARGET_BINS).fill(0).map((_, i) => ({
-      price: minPrice + i * binWidth,
-      total: 0,
-      perBand: new Array(AGE_BANDS.length).fill(0),
-    }));
-    for (let bandIdx = 0; bandIdx < AGE_BANDS.length; bandIdx++) {
-      const resp = cohortResps[bandIdx];
-      if (!resp || !resp.buckets) continue;
-      for (const b of resp.buckets) {
-        const w = b[weightField];
-        if (!w || w <= 0) continue;
-        if (b.price_floor < minPrice) continue;
-        let idx = Math.floor((b.price_floor - minPrice) / binWidth);
-        if (idx >= TARGET_BINS) idx = TARGET_BINS - 1;
-        if (idx < 0) continue;
-        agg[idx].total += w;
-        agg[idx].perBand[bandIdx] += w;
-      }
-    }
-
-    // Build LWC data points + per-band total tally for the stats box.
-    // Include EVERY bin (zero-weight ones become invisible transparent bars)
-    // so all 600 time slots are reserved on the X-axis — this prevents the
-    // "spiky / isolated bars" look that comes from LWC's HistogramSeries
-    // placing bars only at populated time positions.
-    const dataPoints = [];
-    let total = 0;
-    let lastTime = -Infinity;
-    let nonEmptyBins = 0;
-    const bandTotals = new Array(AGE_BANDS.length).fill(0);
-    for (const a of agg) {
-      let t = a.price;
-      if (t <= lastTime) t = lastTime + 0.0001;
-      lastTime = t;
-      if (a.total > 0) {
-        total += a.total;
-        // Find dominant band at this bin
-        let maxIdx = 0, maxV = a.perBand[0];
-        for (let i = 1; i < a.perBand.length; i++) {
-          if (a.perBand[i] > maxV) { maxV = a.perBand[i]; maxIdx = i; }
-          bandTotals[i] += a.perBand[i];
-        }
-        bandTotals[0] += a.perBand[0];
-        dataPoints.push({ time: t, value: a.total, color: AGE_BAND_COLORS[maxIdx] });
-        nonEmptyBins++;
-      } else {
-        dataPoints.push({ time: t, value: 0, color: "rgba(0,0,0,0)" });
-      }
-    }
-
-    // Replace series + own a unique price scale
-    if (this._series) {
-      try { bottomChart.removeSeries(this._series); } catch (e) {}
-      const idx = this.series.indexOf(this._series);
-      if (idx >= 0) this.series.splice(idx, 1);
-    }
-    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
-    const isVisibleScale = (_visibleScaleOwner === this.id);
-    const scaleId = isVisibleScale ? "right" : this.id;
-    this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-      priceScaleId: scaleId,
-      priceFormat: { type: "volume" },
-      priceLineVisible: false, lastValueVisible: false,
-      title: "",
-    });
-    if (!isVisibleScale) {
-      bottomChart.priceScale(scaleId).applyOptions({
-        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
-      });
-    }
-    // Pin a $0 anchor so the X-axis always starts at zero
-    const dpWithZero = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }, ...dataPoints];
-    this._series.setData(dpWithZero);
-    this.series.push(this._series);
-    try {
-      bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
-    } catch (e) {
-      bottomChart.timeScale().fitContent();
-    }
-
-    // Update stats box with top-3 dominant cohorts
-    const fmtCount = (n) => weightField === "supply" ? `${(n/1e6).toFixed(2)}M BTC` : `$${(n/1e9).toFixed(2)}B`;
-    const ranked = bandTotals.map((v, i) => ({ v, i }))
-      .filter(x => x.v > 0)
-      .sort((a, b) => b.v - a.v)
-      .slice(0, 5);
-    const topRows = ranked.map(r =>
-      `<div><span style="color:${AGE_BAND_COLORS[r.i]}">█</span> ` +
-      `<span class="label">${AGE_BANDS[r.i].label}</span> ` +
-      `<span class="value">${fmtCount(r.v)} (${(100*r.v/total).toFixed(1)}%)</span></div>`
-    ).join("");
-    if (this._statBox) {
-      this._statBox.innerHTML = `<div class="title-row">` +
-        `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
-        `<span class="name">${this.displayName()}</span>` +
-        `<span class="date">${dateStr}</span></div>` +
-        `<div><span class="label">Cohorts loaded</span> <span class="value">${fetched}/21</span></div>` +
-        `<div><span class="label">Total</span> <span class="value">${fmtCount(total)}</span> &nbsp;` +
-          `<span class="label">Bins</span> <span class="value">${nonEmptyBins}</span></div>` +
-        `<div style="margin-top:3px;color:#888">Top cohorts (by ${weightField === "supply" ? "BTC" : "USD"}):</div>` +
-        topRows;
-    }
-  }
-
-  swatchColor() {
-    // Show a small rainbow gradient as the indicator's swatch
-    return `linear-gradient(90deg, ${AGE_BAND_COLORS[0]}, ${AGE_BAND_COLORS[10]}, ${AGE_BAND_COLORS[20]})`;
-  }
-  displayName() { return `URPD Age Bands (${this.config.weight.toUpperCase()})`; }
-}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Indicator registry — all addable types live here.
@@ -1888,13 +1589,8 @@ const INDICATOR_TYPES = [
   // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
   ..._RP_FILTERED_VARIANTS,
   SpotPriceLineIndicator,
-  // Bottom-pane profile histograms (point-in-time, follow crosshair scrub)
+  // Bottom-pane profile histogram (point-in-time, follows tracer in nav mode)
   URPDProfileIndicator,
-  URPDLTHProfileIndicator,
-  URPDSTHProfileIndicator,
-  URPDAgeBandProfileIndicator,
-  SOPDProfileIndicator,
-  // Future: BOTH-mode P/L 9-line variants, etc.
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
