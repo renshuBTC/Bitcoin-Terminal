@@ -44,7 +44,8 @@ window.__loadMp4Muxer = function() {
     background: #000; border-top: 1px solid #1a1a1a; flex-wrap: wrap; flex-shrink: 0;
     font-size: 12px; color: #888; }
   #bottom-toolbar .spacer { flex: 1; }
-  #bottom-toolbar .bb-sep { width: 1px; align-self: stretch; background: #1a1a1a; margin: 4px 4px; }
+  /* Section separators — hidden so the bar reads as one seamless row of items */
+  #bottom-toolbar .bb-sep { display: none; }
   /* Generic TV-style minimal button — transparent until hover */
   #bottom-toolbar .bb-btn { background: transparent; color: #d4d4d4; border: none;
     padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 12px;
@@ -65,9 +66,11 @@ window.__loadMp4Muxer = function() {
     transition: background-color 0.08s ease, color 0.08s ease; }
   #bottom-toolbar .bb-icon-btn:hover { background: #1a1a1a; color: #fff; }
   #bottom-toolbar .bb-icon-btn svg { display: block; }
-  /* UTC clock — monospace, dim, click to open timezone menu */
+  /* UTC clock — same colour/font as every other bottom-toolbar item; the
+     tabular-nums variant just keeps the digits aligned so the seconds
+     don't visually jiggle. */
   #bottom-toolbar #tz-wrap { position: relative; }
-  #bottom-toolbar #utc-clock { color: #888; font-variant-numeric: tabular-nums;
+  #bottom-toolbar #utc-clock { color: #d4d4d4; font-variant-numeric: tabular-nums;
     padding: 5px 8px; cursor: pointer; background: transparent; border: none;
     font-family: inherit; font-size: 12px; border-radius: 3px;
     transition: background-color 0.08s ease, color 0.08s ease; }
@@ -112,7 +115,7 @@ window.__loadMp4Muxer = function() {
     width: 0; height: 0; }
   /* Scrub checkbox — compact label */
   #bottom-toolbar .bb-check { display: inline-flex; align-items: center; gap: 5px;
-    padding: 5px 8px; cursor: pointer; color: #888; user-select: none;
+    padding: 5px 8px; cursor: pointer; color: #d4d4d4; user-select: none;
     border-radius: 3px; transition: background-color 0.08s ease, color 0.08s ease; }
   #bottom-toolbar .bb-check:hover { background: #1a1a1a; color: #fff; }
   #bottom-toolbar .bb-check input { vertical-align: middle; }
