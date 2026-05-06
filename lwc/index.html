@@ -1948,6 +1948,44 @@ function _equaliseBottomPanes() {
   }
 }
 
+// Set each bottom-pane label's `top` to an absolute pixel position based
+// on the actual pane heights LWC reports. The `calc(% + 2px)` placeholder
+// set in `refreshPaneHeaders` gets overwritten here once LWC has finished
+// laying out (panes have real heights). Call from the same rAF block as
+// `_equaliseBottomPanes` so the post-equalise pane sizes are read.
+function _positionBottomLabels() {
+  const botHost = document.getElementById("ind-rows-bottom");
+  if (!botHost) return;
+  const rows = botHost.querySelectorAll(".ind-row");
+  if (rows.length === 0) return;
+  const wrap = document.getElementById("chart-bottom-wrap");
+  if (!wrap) return;
+  const totalH = wrap.clientHeight;
+  if (totalH < 20) return;
+  const sepPx = 1;
+  const inset = 2; // 2px below each pane's top edge — tight but legible
+  // Prefer the LWC pane API if available (handles unequal pane heights).
+  // Fall back to equal share when panes() / getHeight() aren't accessible.
+  let cumTop = 0;
+  let useApi = false;
+  let panes = null;
+  if (bottomChart && typeof bottomChart.panes === "function") {
+    panes = bottomChart.panes();
+    useApi = panes && panes.length >= rows.length &&
+             typeof panes[0].getHeight === "function";
+  }
+  rows.forEach((row, i) => {
+    row.style.top = `${Math.round(cumTop + inset)}px`;
+    if (useApi) {
+      let h = 0;
+      try { h = panes[i].getHeight() || 0; } catch (e) {}
+      cumTop += h + sepPx;
+    } else {
+      cumTop += (totalH - (rows.length - 1) * sepPx) / rows.length + sepPx;
+    }
+  });
+}
+
 function refreshIndicatorPanel() {
   // The side panel (#ind-panel) has been removed — indicator management
   // happens via the in-chart hover rows under each pane title. Keep this
@@ -2048,10 +2086,13 @@ function refreshPaneHeaders() {
     // Force every bottom-pane pane to the same pixel height. LWC v5
     // doesn't auto-equalise — newly-added panes inherit a default height
     // and existing panes keep their previous size, which leaves the chart
-    // visually lopsided (pane 0 taller than pane 1, etc.). Explicit
-    // setHeight makes the layout match the `top: i/N * 100%` math the
-    // label renderer relies on.
+    // visually lopsided (pane 0 taller than pane 1, etc.).
     try { _equaliseBottomPanes(); } catch (e) {}
+    // Position each bottom-pane label at its actual pane top + 2px (read
+    // from LWC's pane API after equalise). Overrides the `calc(% + 2px)`
+    // placeholder set during render so the label always lands inside the
+    // correct pane regardless of LWC's pane-height interpretation.
+    try { _positionBottomLabels(); } catch (e) {}
     // Re-apply right-scale minimumWidth to every pane (count may have just
     // changed if an indicator was added/removed). Cheap; no-op if widths
     // already match.
@@ -2097,12 +2138,13 @@ function refreshPaneHeaders() {
   if (botHost) {
     const N = Math.max(1, botRowsList.length);
     botHost.innerHTML = botRowsList.map((ind, i) => {
-      // `calc(% + 8px)` pins the label 8px BELOW the LWC pane's top edge.
-      // Plain `top: i/N * 100%` lands exactly on the pane boundary, which
-      // visually reads as "above / on top of the divider line" rather
-      // than inside the pane. The 8px offset clears the 1-pixel pane
-      // separator LWC draws between panes.
-      const topVal = `calc(${(i / N * 100).toFixed(4)}% + 8px)`;
+      // Initial top is a `calc(% + 2px)` placeholder so the row has a
+      // sensible position before `_positionBottomLabels()` runs in the
+      // next rAF (which reads each pane's actual pixel height from LWC
+      // and overwrites these values). The 2px inset stays tight against
+      // the pane separator instead of dropping the label into the body
+      // of the pane.
+      const topVal = `calc(${(i / N * 100).toFixed(4)}% + 2px)`;
       const html = indRowHTML(ind);
       // Inject the inline style into the outer div tag of the row.
       return html.replace('<div class="ind-row',
