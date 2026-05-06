@@ -572,6 +572,13 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
       return `$${v.toFixed(2)}`;
     },
   },
+  // Hide the floating "cost basis $X" label that follows the crosshair —
+  // the X-axis already labels its own right-edge tick, which is enough.
+  crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
+    vertLine: { color: THEME.crosshair, width: 1,
+      style: LightweightCharts.LineStyle.Dotted, labelVisible: false },
+    horzLine: { color: THEME.crosshair, width: 1,
+      style: LightweightCharts.LineStyle.Dotted } },
   localization: {
     priceFormatter: shortPriceFormat,
     timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
