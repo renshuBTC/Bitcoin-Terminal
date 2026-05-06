@@ -229,11 +229,13 @@ window.__loadMp4Muxer = function() {
     display: none; }
   #date-tracer.show { display: block; }
   #date-tracer .line { display: none; }
-  /* Keyboard-nav instruction — sits inline inside the bottom-pane label,
-     just below the URPD/SOPD indicator rows. Hidden by default; shown
-     while the click-locked tracer is active. */
+  /* Keyboard-nav instruction — pinned just under the first pane's
+     indicator-row label inside the bottom-pane area. Hidden by default;
+     shown while the click-locked tracer is active. Absolute-positioned
+     because the parent `#header-bottom` spans the full bottom container
+     for per-pane row placement. */
   #nav-instruction { display: none; color: #888; font-size: 12px;
-    margin-top: 4px; padding-left: 14px; }
+    position: absolute; top: 30px; left: 12px; right: 12px; }
   #nav-instruction.show { display: block; }
   #nav-instruction kbd { background: #0a0a0a; border: 1px solid #444;
     border-radius: 2px; padding: 1px 5px; font-family: inherit;
@@ -264,6 +266,16 @@ window.__loadMp4Muxer = function() {
 
   /* Per-indicator rows below the pane title — TradingView-style with hover actions. */
   .ind-rows { display: flex; flex-direction: column; gap: 2px; }
+  /* Bottom-pane label container is special: it spans the full height of
+     `#chart-bottom-wrap` so each indicator row can be absolutely positioned
+     at the top of its corresponding LWC pane (panes split the bottom chart
+     into N equal vertical strips). Override the .pane-label defaults
+     (top: 8px / left: 12px / max-width) — we use padding for the inset
+     and need full container width to position rows by percentage. */
+  #header-bottom { top: 0; left: 0; right: 0; bottom: 0; padding: 8px 12px;
+    display: block; pointer-events: none; max-width: none; }
+  #ind-rows-bottom { position: relative; width: 100%; height: 100%; display: block; }
+  #ind-rows-bottom .ind-row { position: absolute; left: 0; right: 0; }
   .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
     font-size: 13px; line-height: 1.4; padding: 0; }
   .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
@@ -2025,17 +2037,36 @@ function refreshPaneHeaders() {
   // itself, so we skip rendering a row for it. We also skip the Spot Price
   // Line — it's a passive helper marker that follows the crosshair date,
   // not something the user manages with hover hide/remove.
-  const topRows = [], botRows = [];
   const SKIP_TYPES = new Set(["btc_price", "spot_line"]);
+  const topRows = [];
+  // Bottom rows are positioned absolutely, one per LWC pane. The Nth
+  // bottom-pane indicator's label sits at top: (N / paneCount) * 100% so
+  // it aligns with the start of its corresponding pane (LWC splits the
+  // bottom container into equal-height panes by default).
+  const botRowsList = [];
   for (const ind of activeIndicators.values()) {
     if (SKIP_TYPES.has(ind.constructor.type)) continue;
-    const html = indRowHTML(ind);
-    if (ind.pane() === "top") topRows.push(html); else botRows.push(html);
+    if (ind.pane() === "top") {
+      topRows.push(indRowHTML(ind));
+    } else {
+      botRowsList.push(ind);
+    }
   }
   const topHost = document.getElementById("ind-rows-top");
   const botHost = document.getElementById("ind-rows-bottom");
   if (topHost) topHost.innerHTML = topRows.join("");
-  if (botHost) botHost.innerHTML = botRows.join("");
+  if (botHost) {
+    const N = Math.max(1, botRowsList.length);
+    botHost.innerHTML = botRowsList.map((ind, i) => {
+      // Inline `top: %` instead of CSS variables so we don't depend on
+      // browser support for arithmetic in `top: calc(var(...) * ...)`.
+      const topPct = (i / N) * 100;
+      const html = indRowHTML(ind);
+      // Inject the inline style into the outer div tag of the row.
+      return html.replace('<div class="ind-row',
+        `<div style="top:${topPct}%" class="ind-row`);
+    }).join("");
+  }
 }
 
 // Delegated click handler for the in-chart per-indicator action buttons.
