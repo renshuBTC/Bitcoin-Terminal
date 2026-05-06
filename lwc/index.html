@@ -213,10 +213,9 @@ window.__loadMp4Muxer = function() {
       <div class="pane-label" id="header-top">
         <span class="pane-title">
           <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
-          <span class="sep">·</span><span>D</span>
+          <span class="sep">·</span><span>1D</span>
           <span class="sep">·</span><span class="source">BRK</span>
         </span>
-        <span id="header-top-badges" style="display:contents"></span>
       </div>
     </div>
     <div id="chart-bottom-wrap">
@@ -226,7 +225,6 @@ window.__loadMp4Muxer = function() {
           <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
           <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
         </span>
-        <span id="header-bottom-badges" style="display:contents"></span>
       </div>
       <div id="stats-stack"></div>
       <div id="ind-panel">
@@ -1061,22 +1059,14 @@ function badgeHTML(ind) {
     `<span class="ind-label">${shortDisplayName(ind)}</span></span>`;
 }
 function refreshPaneHeaders() {
-  const topBadges = [];
-  const botBadges = [];
+  // Bottom pane title flips based on what's loaded
   let hasURPD = false, hasSOPD = false;
   for (const ind of activeIndicators.values()) {
-    if (ind.pane() === "top") {
-      topBadges.push(badgeHTML(ind));
-    } else {
-      botBadges.push(badgeHTML(ind));
-      const t = ind.constructor.type;
-      if (t.startsWith("urpd")) hasURPD = true;
-      if (t.startsWith("sopd")) hasSOPD = true;
-    }
+    if (ind.pane() !== "bottom") continue;
+    const t = ind.constructor.type;
+    if (t.startsWith("urpd")) hasURPD = true;
+    if (t.startsWith("sopd")) hasSOPD = true;
   }
-  document.getElementById("header-top-badges").innerHTML = topBadges.join("");
-  document.getElementById("header-bottom-badges").innerHTML = botBadges.join("");
-  // Bottom pane title flips based on what's loaded
   let botTitle;
   if (hasURPD && hasSOPD) botTitle = "URPD + SOPD";
   else if (hasSOPD)        botTitle = "SOPD (1d diff)";
