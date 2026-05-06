@@ -1765,12 +1765,28 @@ function openAddModal() {
   // Wire up close
   modal.querySelector("#modal-x").addEventListener("click", () => bg.classList.remove("show"));
 
-  // Click an option → open config modal
+  // Click an option → add the indicator immediately with defaults.
+  // The configure dialog is skipped — user can re-pick to swap or remove
+  // via the in-chart hover trash button.
   modal.querySelectorAll(".ind-option").forEach(el => {
-    el.addEventListener("click", () => {
-      const type = el.getAttribute("data-type");
+    el.addEventListener("click", async () => {
+      const typeName = el.getAttribute("data-type");
+      const T = INDICATOR_TYPES.find(t => t.type === typeName);
+      if (!T) return;
       bg.classList.remove("show");
-      openConfigModal(type);
+      const ind = new T(/* defaults from configSchema */);
+      activeIndicators.set(ind.id, ind);
+      refreshIndicatorPanel();
+      try {
+        await ind.load();
+        document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
+      } catch (e) {
+        console.error("Add indicator failed:", e);
+        document.getElementById("status").textContent = "Failed: " + e.message;
+        try { ind.remove(); } catch (_) {}
+        activeIndicators.delete(ind.id);
+        refreshIndicatorPanel();
+      }
     });
   });
 
