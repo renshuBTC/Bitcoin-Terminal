@@ -254,21 +254,6 @@ window.__loadMp4Muxer = function() {
   .stat-box .title-row .name { color: #ff8c00; font-weight: 700; flex: 1; }
   .stat-box .title-row .date { color: #d4d4d4; font-size: 10px; }
 
-  /* Indicator panel — right side */
-  #ind-panel { position: absolute; top: 8px; right: 8px;
-    background: rgba(0,0,0,0.85); border: 1px solid #222; padding: 6px 8px;
-    font-size: 11px; min-width: 240px; z-index: 5; }
-  #ind-panel .ip-title { color: #ff8c00; font-weight: 700; margin-bottom: 4px; }
-  #ind-panel .ip-row { display: flex; align-items: center; gap: 6px; padding: 3px 0;
-    border-bottom: 1px solid rgba(255,255,255,0.05); }
-  #ind-panel .ip-row:last-child { border-bottom: none; }
-  #ind-panel .ip-swatch { width: 10px; height: 10px; border-radius: 1px; flex-shrink: 0; }
-  #ind-panel .ip-name { flex: 1; color: #d4d4d4; }
-  #ind-panel .ip-pane { color: #666; font-size: 10px; }
-  #ind-panel .ip-x, #ind-panel .ip-cog { background: none; border: none; color: #888; cursor: pointer;
-    font-family: inherit; font-size: 12px; padding: 0 3px; }
-  #ind-panel .ip-x:hover { color: #ff5c5c; }
-  #ind-panel .ip-cog:hover { color: #ff8c00; }
 
   /* ─────────────────────────────────────────────────────────────────────
    * Mobile responsiveness — viewports ≤768px wide.
@@ -287,10 +272,6 @@ window.__loadMp4Muxer = function() {
     /* Stat boxes: smaller, scroll if many */
     #stats-stack { top: 6px; left: 6px; max-width: calc(100% - 12px); gap: 4px; }
     .stat-box { font-size: 10px; padding: 5px 6px; min-width: 0; max-width: 100%; }
-    /* Indicator panel becomes a horizontal strip at the bottom-right */
-    #ind-panel { right: 4px; top: auto; bottom: 4px; min-width: 0; max-width: 60%;
-      max-height: 40%; overflow-y: auto; padding: 4px 6px; font-size: 10px; }
-    #ind-panel .ip-pane { display: none; } /* hide the "top"/"bottom" tag to save width */
     #status { font-size: 10px; }
     /* Modal: full-width on mobile */
     #modal { min-width: 0; width: calc(100vw - 24px); padding: 12px; }
@@ -299,8 +280,6 @@ window.__loadMp4Muxer = function() {
     /* Smallest phones: even tighter */
     #toolbar { padding: 4px 6px; gap: 4px; }
     #toolbar button, #toolbar select { font-size: 10px; padding: 5px 6px; }
-    /* On tiny screens, indicator panel covers the bottom; show only count */
-    #ind-panel { max-height: 30%; }
   }
 
   /* Add-indicator modal */
@@ -400,10 +379,6 @@ window.__loadMp4Muxer = function() {
         <div class="ind-rows" id="ind-rows-bottom"></div>
       </div>
       <div id="stats-stack"></div>
-      <div id="ind-panel">
-        <div class="ip-title">INDICATORS</div>
-        <div id="ip-list"></div>
-      </div>
       <div id="status">Loading…</div>
     </div>
   </div>
@@ -1478,37 +1453,11 @@ const activeIndicators = new Map(); // id → Indicator
 let currentDateStr = document.getElementById("date-input").value;
 
 function refreshIndicatorPanel() {
-  const list = document.getElementById("ip-list");
-  list.innerHTML = "";
-  for (const [id, ind] of activeIndicators) {
-    const row = document.createElement("div");
-    row.className = "ip-row";
-    const isBTC = ind.constructor.type === "btc_price";
-    const hasConfig = ind.constructor.configSchema && ind.constructor.configSchema.length > 0;
-    row.innerHTML =
-      `<span class="ip-swatch" style="background:${ind.swatchColor()}"></span>` +
-      `<span class="ip-name">${ind.displayName()}</span>` +
-      `<span class="ip-pane">${ind.pane()}</span>` +
-      (isBTC ? "" :
-        (hasConfig ? `<button class="ip-cog" data-id="${id}" title="Settings">⚙</button>` : "") +
-        `<button class="ip-x" data-id="${id}" title="Remove">×</button>`);
-    list.appendChild(row);
-  }
+  // The side panel (#ind-panel) has been removed — indicator management
+  // happens via the in-chart hover rows under each pane title. Keep this
+  // function around as the central "indicator state changed" hook so the
+  // wrapped saveStateToURL + recordHistory + refreshPaneHeaders still fire.
   refreshPaneHeaders();
-  list.querySelectorAll(".ip-x").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      const ind = activeIndicators.get(id);
-      if (ind) { ind.remove(); activeIndicators.delete(id); refreshIndicatorPanel(); }
-    });
-  });
-  list.querySelectorAll(".ip-cog").forEach(btn => {
-    btn.addEventListener("click", () => {
-      const id = btn.getAttribute("data-id");
-      const ind = activeIndicators.get(id);
-      if (ind) openConfigModal(ind.constructor.type, ind);
-    });
-  });
 }
 
 // Per-pane header bars: render a colored badge for each indicator in the pane.
