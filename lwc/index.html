@@ -1246,18 +1246,18 @@ class ProfileHistogramIndicator extends Indicator {
         visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
       });
     }
-    // Cap the Y-axis at the 97th-percentile bar height so a few outlier
+    // Cap the Y-axis at the 98th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram. LWC v5's price-scale
     // API has no setVisibleRange — the only reliable way to cap is to clip
     // the values themselves before sending to the series, then let
-    // autoScale fit naturally to [0, p97]. The full-precision totals/stats
+    // autoScale fit naturally to [0, p98]. The full-precision totals/stats
     // are read from this._stats below, so the hover tooltip is unaffected.
     let renderPoints = dataPoints;
     if (isVisibleScale && dataPoints.length >= 5) {
       const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
-      const p97 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.97))];
-      if (p97 > 0) {
-        renderPoints = dataPoints.map(d => d.value > p97 ? { ...d, value: p97 } : d);
+      const p98 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
+      if (p98 > 0) {
+        renderPoints = dataPoints.map(d => d.value > p98 ? { ...d, value: p98 } : d);
       }
       try {
         bottomChart.priceScale("right").applyOptions({
