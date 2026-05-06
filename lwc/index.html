@@ -184,7 +184,7 @@ window.__loadMp4Muxer = function() {
     align-items: center; justify-content: center; pointer-events: none;
     z-index: 1; font-family: 'Roboto Condensed', 'Arial Narrow', sans-serif;
     font-weight: 700; letter-spacing: 4px; text-transform: uppercase;
-    color: rgba(255, 255, 255, 0.15); white-space: nowrap;
+    color: rgba(255, 140, 0, 0.15); white-space: nowrap;
     user-select: none; overflow: hidden; }
   #chart-top-wrap     .chart-watermark { font-size: clamp(28px, 4.5vw, 56px); }
   #chart-bottom-wrap  .chart-watermark { font-size: clamp(22px, 3.6vw, 44px); }
@@ -204,10 +204,10 @@ window.__loadMp4Muxer = function() {
   #chart-divider::before { content: ""; position: absolute; left: 0; right: 0;
     top: 50%; transform: translateY(-50%); height: 1px; background: #222;
     pointer-events: none; transition: background 0.08s ease; }
-  #chart-divider:hover { background: #2962ff; }
-  #chart-divider:hover::before { background: #2962ff; }
-  #chart-divider.is-dragging { background: #2962ff; }
-  #chart-divider.is-dragging::before { background: #2962ff; }
+  #chart-divider:hover { background: #ff8c00; }
+  #chart-divider:hover::before { background: #ff8c00; }
+  #chart-divider.is-dragging { background: #ff8c00; }
+  #chart-divider.is-dragging::before { background: #ff8c00; }
   /* While dragging, prevent text selection and force the resize cursor everywhere. */
   body.is-resizing-pane { user-select: none; cursor: row-resize !important; }
   body.is-resizing-pane * { cursor: row-resize !important; pointer-events: none; }
