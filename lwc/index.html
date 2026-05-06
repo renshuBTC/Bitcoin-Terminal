@@ -510,7 +510,12 @@ const timeAxisChart = LightweightCharts.createChart(timeAxisContainer, {
     fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11,
     attributionLogo: false },
   grid:  { vertLines: { visible: false }, horzLines: { visible: false } },
-  rightPriceScale: { visible: false },
+  // Right scale is "visible" but blank — we keep it on so the time-axis
+  // chart reserves the same right-edge gutter width as top/bottom, so
+  // their right edges align. ticksVisible:false hides the tick marks,
+  // and the inline series has lastValueVisible:false so no number prints.
+  rightPriceScale: { visible: true, borderVisible: false, ticksVisible: false,
+    entireTextOnly: true, scaleMargins: { top: 0, bottom: 0 } },
   leftPriceScale:  { visible: false },
   timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false,
     rightOffset: 12, barSpacing: 2, visible: true, fixLeftEdge: false, fixRightEdge: false },
@@ -546,6 +551,19 @@ function syncSizes() {
     timeAxisChart.resize(timeAxisContainer.clientWidth, timeAxisContainer.clientHeight);
   }
 }
+
+// Force the top + bottom + time-axis charts to share the same right-axis
+// width so their right edges align cleanly. LWC sizes the price scale
+// based on the widest tick label by default, which means a chart with
+// big numbers (URPD bars in the millions) will indent more than the
+// price chart. minimumWidth pads the narrower scale up to match.
+const RIGHT_SCALE_MIN_WIDTH = 80;
+function alignRightScales() {
+  try { topChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+  try { bottomChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+  try { timeAxisChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
+}
+alignRightScales();
 window.addEventListener("resize", syncSizes);
 
 // ─── Time-axis sync ────────────────────────────────────────────────────────
