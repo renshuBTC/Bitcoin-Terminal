@@ -88,7 +88,7 @@ window.__loadMp4Muxer = function() {
   #chart-type-menu .opt.active { background: #fff; color: #000; }
   #chart-type-menu .opt svg { flex-shrink: 0; }
   #chart-type-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
-  #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; }
+  #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; margin-right: 12px; }
   #toolbar .spacer { flex: 1; }
   #toolbar input[type="date"] { background: #1a1a1a; color: #d4d4d4;
     border: 1px solid #2a2a2a; padding: 4px 8px; font-family: inherit; font-size: 12px; }
@@ -179,7 +179,6 @@ window.__loadMp4Muxer = function() {
     body { font-size: 12px; }
     #toolbar { padding: 6px 8px; gap: 6px; }
     #toolbar .brand { font-size: 12px; }
-    #toolbar > span:nth-of-type(2) { display: none; } /* hide subtitle to save space */
     #toolbar button, #toolbar select, #toolbar input[type="date"] { font-size: 11px; padding: 6px 8px; }
     #lb-group button { min-width: 30px; padding: 5px 4px; }
     /* Top chart shrinks slightly so the histogram has more room */
@@ -253,6 +252,7 @@ window.__loadMp4Muxer = function() {
 
 <div id="app">
   <div id="toolbar">
+    <span class="brand">BITCOINTERMINAL.NET</span>
     <div id="interval-wrap" title="Time interval">
       <button id="btn-interval"><span id="interval-label">1D</span><span class="arrow">▾</span></button>
       <div id="interval-menu">
@@ -267,9 +267,6 @@ window.__loadMp4Muxer = function() {
     </div>
     <button id="btn-add" class="primary"><svg class="ind-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
     <span class="spacer"></span>
-    <span class="brand">BITCOINTERMINAL.NET</span>
-    <span style="background:#ff8c00;color:#0a0a0a;font-weight:700;padding:2px 6px;border-radius:2px;font-size:10px;letter-spacing:0.5px">BETA</span>
-    <a href="/" style="color:#888;text-decoration:none;font-size:11px;border:1px solid #2a2a2a;padding:4px 8px;border-radius:2px" title="Back to the classic Plotly version">← classic</a>
   </div>
 
   <div id="chart-stack">
