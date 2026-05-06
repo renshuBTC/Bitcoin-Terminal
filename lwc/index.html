@@ -988,6 +988,52 @@ class Indicator {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Cycle top/bottom landmarks on the BTC price chart. Verbatim from
+// version 1 (rp.js LANDMARKS list, lines 3064-3074) so the dates and prices
+// match what the dropdown jumps to. Rendered as small triangle markers
+// with the full "Cycle N Top" / "Cycle N Bottom" text — the version-1
+// look. Tops sit above the price line (downward arrow); bottoms below
+// (upward arrow).
+// ───────────────────────────────────────────────────────────────────────────
+const CYCLE_LANDMARKS = [
+  { time: "2011-06-08", top: true,  text: "Cycle 1 Top" },
+  { time: "2011-11-18", top: false, text: "Cycle 1 Bottom" },
+  { time: "2013-11-29", top: true,  text: "Cycle 2 Top" },
+  { time: "2015-01-14", top: false, text: "Cycle 2 Bottom" },
+  { time: "2017-12-17", top: true,  text: "Cycle 3 Top" },
+  { time: "2018-12-15", top: false, text: "Cycle 3 Bottom" },
+  { time: "2021-11-10", top: true,  text: "Cycle 4 Top" },
+  { time: "2022-11-21", top: false, text: "Cycle 4 Bottom" },
+  { time: "2025-10-06", top: true,  text: "Cycle 5 Top" },
+];
+
+// Attach the landmark markers to the supplied price series. v5.0 moved
+// markers out of the series API into a standalone plugin
+// (LightweightCharts.createSeriesMarkers); fall back to the legacy
+// series.setMarkers() if the plugin isn't on the build.
+function _attachCycleLandmarkMarkers(series) {
+  const markers = CYCLE_LANDMARKS.map(lm => ({
+    time: lm.time,
+    position: lm.top ? "aboveBar" : "belowBar",
+    shape: lm.top ? "arrowDown" : "arrowUp",
+    color: "rgba(255,255,255,0.85)",
+    text: lm.text,
+    size: 1,
+  }));
+  try {
+    if (typeof LightweightCharts.createSeriesMarkers === "function") {
+      return LightweightCharts.createSeriesMarkers(series, markers);
+    }
+    if (typeof series.setMarkers === "function") {
+      series.setMarkers(markers);
+    }
+  } catch (e) {
+    console.warn("cycle landmark markers:", e);
+  }
+  return null;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator: BTC Price — always present, always first
 // ───────────────────────────────────────────────────────────────────────────
 class BTCPriceIndicator extends Indicator {
@@ -1001,6 +1047,9 @@ class BTCPriceIndicator extends Indicator {
     const series = createBTCPriceSeries(chartType);
     this.series.push(series);
     this._priceSeries = series;
+    // Cycle Top/Bottom labels on the price line, full spelling
+    // ("Cycle 1 Top", "Cycle 1 Bottom", …) — matches version 1.
+    this._cycleMarkersPrim = _attachCycleLandmarkMarkers(series);
     topChart.timeScale().fitContent();
     // Mirror the BTC dates into the shared time-axis chart so the bottom
     // strip below the URPD pane shows years/months synced with the price chart.
