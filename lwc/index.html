@@ -337,7 +337,12 @@ window.__loadMp4Muxer = function() {
   #modal .modal-header { display: flex; align-items: center; padding: 14px 18px 10px;
     border-bottom: 1px solid #1f1f1f; flex-shrink: 0; }
   #modal h3 { color: #d4d4d4; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;
-    margin: 0; flex: 1; }
+    margin: 0; }
+  /* Disclaimer next to the title — small grey caption explaining the
+     2-pane cap so users know up-front why a second bottom-pane add will
+     be refused. `flex: 1` so it pushes the close button to the right. */
+  #modal .modal-disclaimer { flex: 1; color: #888; font-size: 11px;
+    margin-left: 12px; letter-spacing: 0.2px; }
   #modal .modal-x { background: none; border: none; color: #888; font-size: 20px;
     cursor: pointer; padding: 0 4px; line-height: 1; }
   #modal .modal-x:hover { color: #fff; }
@@ -2426,6 +2431,7 @@ function openAddModal() {
   let html =
     `<div class="modal-header">` +
       `<h3>Indicators</h3>` +
+      `<span class="modal-disclaimer">Only 2 panels allowed at a time</span>` +
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-search">` +
