@@ -1400,9 +1400,12 @@ function refreshPaneHeaders() {
   document.getElementById("header-bottom-title").textContent = botTitle;
   document.getElementById("header-bottom-date").textContent = currentDateStr || "—";
 
-  // Build per-indicator rows, one per pane
+  // Build per-indicator rows, one per pane. BTC/USD is shown in the pane title
+  // itself, so we skip rendering a separate row for the always-present BTC
+  // indicator — the hover hide/remove controls only apply to user-added indicators.
   const topRows = [], botRows = [];
   for (const ind of activeIndicators.values()) {
+    if (ind.constructor.type === "btc_price") continue;
     const html = indRowHTML(ind);
     if (ind.pane() === "top") topRows.push(html); else botRows.push(html);
   }
