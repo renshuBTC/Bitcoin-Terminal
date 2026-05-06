@@ -1183,23 +1183,53 @@ class TopPaneSeriesIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      // Dotted horizontal connector at the last value — so when the
-      // realised-price line ends a few bars before the chart's right
-      // edge, the user can still trace the value across to the right-
-      // axis label. The portion that overlaps the data line is hidden
-      // beneath it; the visible part is the bit between the line tip
-      // and the label.
-      priceLineVisible: true,
-      priceLineStyle: LightweightCharts.LineStyle.Dotted,
-      priceLineWidth: 1,
-      priceLineColor: this.config.color,
+      // priceLineVisible draws across the WHOLE chart (a horizontal
+      // line at the last value from left edge to right). Disabled
+      // here — instead we draw a tip-to-right-edge leader as its
+      // own 2-point dotted series below.
+      priceLineVisible: false,
       lastValueVisible: true,
       title: this.seriesTitle(),
     });
     series.setData(points);
     this.series.push(series);
+
+    // Tip-to-right-edge leader: a separate 2-point series, styled
+    // dotted in the indicator's colour, going horizontally from the
+    // line's last data point to the latest BTC date. This is what
+    // gives the user a clean dotted connector to the right-axis
+    // label without painting across the rest of the chart.
+    const leader = _addRightLeader(points, this.config.color);
+    if (leader) this.series.push(leader);
   }
   swatchColor() { return this.config.color; }
+}
+
+// Helper: draw a dotted leader from a line series' last data point
+// horizontally to the latest BTC date (rightmost edge of the chart's
+// real data). Returns the new series so the caller can track it on
+// the parent indicator's `series` array for cleanup. Returns null if
+// there's no gap to bridge.
+function _addRightLeader(points, color) {
+  if (!points || points.length === 0) return null;
+  if (!priceDateStrs || priceDateStrs.length === 0) return null;
+  const lastPt = points[points.length - 1];
+  const rightEdgeDate = priceDateStrs[priceDateStrs.length - 1];
+  // String compare is fine for ISO yyyy-mm-dd dates.
+  if (!rightEdgeDate || rightEdgeDate <= lastPt.time) return null;
+  const leader = topChart.addSeries(LightweightCharts.LineSeries, {
+    color,
+    lineWidth: 1,
+    lineStyle: LightweightCharts.LineStyle.Dotted,
+    priceLineVisible: false,
+    lastValueVisible: false,
+    crosshairMarkerVisible: false,
+  });
+  leader.setData([
+    { time: lastPt.time, value: lastPt.value },
+    { time: rightEdgeDate, value: lastPt.value },
+  ]);
+  return leader;
 }
 
 class RealisedPriceIndicator extends TopPaneSeriesIndicator {
@@ -1264,19 +1294,17 @@ class RealisedPriceUSDBaseIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      // Same dotted-leader-to-axis-label treatment as the BTC versions
-      // (TopPaneSeriesIndicator). Useful here because the URPD-derived
-      // sample dates can lag a few bars behind the chart's right edge,
-      // leaving a gap between the line tip and the right-axis label.
-      priceLineVisible: true,
-      priceLineStyle: LightweightCharts.LineStyle.Dotted,
-      priceLineWidth: 1,
-      priceLineColor: this.config.color,
+      // Disable LWC's full-chart price line — see the BTC base for
+      // why. We add a tip-to-right-edge dotted leader as its own
+      // 2-point series instead.
+      priceLineVisible: false,
       lastValueVisible: true,
       title: this.constructor.displayName,
     });
     series.setData(points);
     this.series.push(series);
+    const leader = _addRightLeader(points, this.config.color);
+    if (leader) this.series.push(leader);
   }
 }
 
