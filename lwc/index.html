@@ -5156,7 +5156,13 @@ function openMp4Modal() {
 
 document.getElementById("btn-mp4")?.addEventListener("click", openMp4Modal);
 
-// PNG snapshot button — uses html2canvas to rasterize chart-stack
+// PNG snapshot button — uses html2canvas to rasterize chart-stack and
+// the date-axis strip below it, then composites both onto a single
+// canvas so the exported image includes everything the user sees on
+// the page (price/histogram panes + date labels). The two parts are
+// sibling DOM nodes, not nested, so a single html2canvas pass on
+// `chart-stack` alone misses the date labels — see the structure
+// around line 442. We capture them separately and stitch.
 document.getElementById("btn-png")?.addEventListener("click", async () => {
   const status = document.getElementById("status");
   status.textContent = "Loading PNG export library…";
@@ -5177,14 +5183,34 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
   try { timeAxisChart.clearCrosshairPosition(); } catch (e) {}
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
-    const target = document.getElementById("chart-stack");
-    const canvas = await h2c(target, {
+    const stackEl = document.getElementById("chart-stack");
+    const axisEl  = document.getElementById("chart-time-axis");
+    const scale = window.devicePixelRatio > 1 ? 2 : 1.5;
+    const opts = {
       backgroundColor: THEME.background,
-      // Higher pixel ratio = crisper text and chart lines
-      scale: window.devicePixelRatio > 1 ? 2 : 1.5,
+      scale,
       useCORS: true,
       logging: false,
-    });
+    };
+    // Capture the panes and the date-axis strip in parallel.
+    const [stackCanvas, axisCanvas] = await Promise.all([
+      h2c(stackEl, opts),
+      axisEl ? h2c(axisEl, opts) : Promise.resolve(null),
+    ]);
+    // Composite onto a single canvas — panes on top, date axis below.
+    let canvas;
+    if (axisCanvas) {
+      canvas = document.createElement("canvas");
+      canvas.width  = Math.max(stackCanvas.width, axisCanvas.width);
+      canvas.height = stackCanvas.height + axisCanvas.height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = THEME.background;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(stackCanvas, 0, 0);
+      ctx.drawImage(axisCanvas, 0, stackCanvas.height);
+    } else {
+      canvas = stackCanvas;
+    }
     canvas.toBlob((blob) => {
       if (!blob) { status.textContent = "PNG blob conversion failed"; status.style.color = "#ff5c5c"; return; }
       const url = URL.createObjectURL(blob);
