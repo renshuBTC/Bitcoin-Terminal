@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://bitview.space" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&family=Roboto+Condensed:wght@700&display=swap">
-<script src="https://unpkg.com/lightweight-charts@5.0.7/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
 <!-- html2canvas for PNG export. Loaded on first click via dynamic import to avoid up-front cost. -->
 <script>
 window.__loadHtml2canvas = function() {
@@ -198,11 +198,6 @@ window.__loadMp4Muxer = function() {
      5px hit area; the visible line sits in the middle via a ::before
      pseudo-element so the actual divider element can stay transparent and
      just paint blue when active. */
-  /* Top↔bottom divider: 5px hit zone with a 1px grey line at rest;
-     hover/drag paints the full 5px band Bloomberg orange so the divider
-     visibly "lights up" — same intent as LWC's resize-enabled pane
-     separators on hover (paired with `panes.separatorHoverColor` in the
-     bottomChart config so all dividers light up the same orange). */
   #chart-divider { flex: 0 0 5px; position: relative; cursor: row-resize;
     background: transparent; z-index: 10; touch-action: none;
     transition: background 0.08s ease; }
@@ -234,31 +229,13 @@ window.__loadMp4Muxer = function() {
     display: none; }
   #date-tracer.show { display: block; }
   #date-tracer .line { display: none; }
-  /* Custom inter-pane dividers — overlaid on top of LWC's built-in
-     separators (which we disabled via panes.enableResize:false because
-     LWC's drag redistributes ALL panes proportionally instead of just
-     the two adjacent). Drag math here only touches the panes either
-     side of the dragged gap. Visual style matches #chart-divider. */
-  .bottom-pane-divider { position: absolute; left: 0; right: 0; height: 5px;
-    cursor: row-resize; background: transparent; z-index: 11;
-    pointer-events: auto; touch-action: none;
-    transition: background 0.08s ease; }
-  .bottom-pane-divider::before { content: ""; position: absolute; left: 0; right: 0;
-    top: 50%; transform: translateY(-50%); height: 1px; background: #222;
-    pointer-events: none; transition: background 0.08s ease; }
-  .bottom-pane-divider:hover { background: #ff8c00; }
-  .bottom-pane-divider:hover::before { background: #ff8c00; }
-  .bottom-pane-divider.is-dragging { background: #ff8c00; }
-  .bottom-pane-divider.is-dragging::before { background: #ff8c00; }
-
-  /* Keyboard-nav instruction — one copy per bottom-pane indicator,
-     pinned just under each pane's label so users see the activation
-     hint inside every URPD pane (not just the first). Absolute-
-     positioned within #ind-rows-bottom; the JS sets `top` per pane in
-     `_positionBottomLabels`. */
-  .pane-nav-instruction { color: #888; font-size: 12px; position: absolute;
-    left: 12px; right: 12px; pointer-events: none; }
-  .pane-nav-instruction kbd { background: #0a0a0a; border: 1px solid #444;
+  /* Keyboard-nav instruction — sits inline inside the bottom-pane label,
+     just below the URPD/SOPD indicator rows. Hidden by default; shown
+     while the click-locked tracer is active. */
+  #nav-instruction { display: none; color: #888; font-size: 12px;
+    margin-top: 4px; padding-left: 14px; }
+  #nav-instruction.show { display: block; }
+  #nav-instruction kbd { background: #0a0a0a; border: 1px solid #444;
     border-radius: 2px; padding: 1px 5px; font-family: inherit;
     font-size: 10px; color: #d4d4d4; margin: 0 1px; }
 
@@ -287,24 +264,6 @@ window.__loadMp4Muxer = function() {
 
   /* Per-indicator rows below the pane title — TradingView-style with hover actions. */
   .ind-rows { display: flex; flex-direction: column; gap: 2px; }
-  /* Bottom-pane label container spans the full height of #chart-bottom-wrap
-     so per-pane labels can be absolutely positioned at the top of their
-     corresponding LWC pane (panes split the bottom chart into N equal
-     vertical strips). Override the .pane-label defaults — no padding here,
-     because padding would shrink the rows' coordinate frame and push
-     `top: i/N * 100%` slightly above the actual pane boundaries. Inset is
-     applied per-row (left: 12px, top offset baked into the % value). */
-  #header-bottom { top: 0; left: 0; right: 0; bottom: 0; padding: 0;
-    display: block; pointer-events: none; max-width: none; }
-  /* Absolute fill so #ind-rows-bottom's height equals the chart wrap's
-     full height — same coordinate frame LWC uses for pane layout. Now
-     `top: i/N * 100%` lines up exactly with the pane boundaries. */
-  #ind-rows-bottom { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block; }
-  #ind-rows-bottom .ind-row { position: absolute; left: 12px; right: 12px; }
-  /* Labels in the bottom pane don't need the colored swatch — the pane
-     itself is the indicator's identity, and the swatch tends to read as
-     a stray block on top of histogram bars. */
-  #ind-rows-bottom .ind-row .swatch { display: none; }
   .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
     font-size: 13px; line-height: 1.4; padding: 0; }
   .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
@@ -475,6 +434,7 @@ window.__loadMp4Muxer = function() {
       <div class="chart-watermark">BITCOINTERMINAL.NET</div>
       <div class="pane-label" id="header-bottom">
         <div class="ind-rows" id="ind-rows-bottom"></div>
+        <div id="nav-instruction"></div>
       </div>
       <div id="stats-stack"></div>
       <div id="status">Loading…</div>
@@ -672,33 +632,7 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     priceFormatter: shortPriceFormat,
     timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
   },
-  // Pane separators between bottom-pane indicators. We DON'T use LWC's
-  // built-in resize: it redistributes proportionally across ALL panes
-  // when you drag a single separator (so dragging gap 1↔2 also moves
-  // pane 3), which isn't the local-only behaviour we want. Instead we
-  // overlay our own divider divs (.bottom-pane-divider) and drag math
-  // that only touches the two adjacent panes. The colour tokens are
-  // still set so LWC's underlying separator line matches our divider.
-  panes: {
-    separatorColor: "#222",
-    separatorHoverColor: "#222",
-    enableResize: false,
-  },
 }));
-
-// Re-apply the pane separator options post-construction. LWC 5.0.0 didn't
-// honour `panes` at construction time; later 5.0.x versions do. Calling
-// `applyOptions` after the chart is built makes the styling stick on
-// either branch — silently no-ops on builds that don't recognise the key.
-try {
-  bottomChart.applyOptions({
-    panes: {
-      separatorColor: "#222",
-      separatorHoverColor: "#222",
-      enableResize: false,
-    },
-  });
-} catch (e) {}
 
 function syncSizes() {
   topChart.applyOptions({ width: topContainer.clientWidth, height: topContainer.clientHeight });
@@ -716,18 +650,7 @@ function syncSizes() {
 const RIGHT_SCALE_MIN_WIDTH = 80;
 function alignRightScales() {
   try { topChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
-  // Each LWC pane on bottomChart has its own right scale — apply the same
-  // minimumWidth to every pane so the right edges line up across all
-  // bottom-pane indicators (whatever the number of panes).
-  try {
-    const panes = bottomChart.panes ? bottomChart.panes() : [];
-    for (let i = 0; i < Math.max(1, panes.length); i++) {
-      try { bottomChart.priceScale("right", i).applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
-    }
-  } catch (e) {
-    // Fallback for older LWC builds without panes(): just align pane 0.
-    try { bottomChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
-  }
+  try { bottomChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
   try { timeAxisChart.priceScale("right").applyOptions({ minimumWidth: RIGHT_SCALE_MIN_WIDTH }); } catch (e) {}
 }
 alignRightScales();
@@ -1431,19 +1354,25 @@ class ProfileHistogramIndicator extends Indicator {
   async load() {
     // No permanent stats box — stats are shown via hover tooltip only.
     this._stats = null;
-    // Create the histogram series upfront, in this indicator's own LWC
-    // pane, and seed it with the Y-axis anchor so the right-side weight
-    // scale (180K, 160K, ..., 0) is labelled even before the user
-    // activates nav mode. The X-axis tick labels stay hidden via the
-    // tickMarkFormatter's nav-mode gate.
+    // Create the histogram series upfront and seed it with the Y-axis
+    // anchor so the right-side weight scale (180K, 160K, ..., 0) is
+    // labelled even before the user activates the chart. The X-axis
+    // tick labels stay hidden via the tickMarkFormatter's nav-mode gate.
     if (!this._series) {
-      const paneIdx = _bottomPaneIndexOf(this);
+      if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+      const isVisibleScale = (_visibleScaleOwner === this.id);
+      const scaleId = isVisibleScale ? "right" : this.id;
       this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-        priceScaleId: "right",
+        priceScaleId: scaleId,
         priceFormat: { type: "volume" },
         priceLineVisible: false, lastValueVisible: false,
         title: "",
-      }, paneIdx);
+      });
+      if (!isVisibleScale) {
+        bottomChart.priceScale(scaleId).applyOptions({
+          visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      }
       this.series.push(this._series);
       try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
     }
@@ -1528,26 +1457,26 @@ class ProfileHistogramIndicator extends Indicator {
       }
     }
 
-    // Replace the histogram series in our own pane. Each bottom-pane
-    // indicator owns its own LWC pane (paneIndex = position in
-    // activeIndicators). Important: add the NEW series BEFORE removing
-    // the old one — if we remove first, the pane briefly has zero
-    // series and LWC collapses it to a default (small) height, which
-    // shrinks/disappears the pane during navigation. Adding new before
-    // remove keeps the pane non-empty throughout the swap, so its
-    // height stays put.
-    const paneIdx = _bottomPaneIndexOf(this);
-    const oldSeries = this._series;
+    // Replace series; per-instance price scale (first profile claims visible right axis)
+    if (this._series) {
+      try { bottomChart.removeSeries(this._series); } catch (e) {}
+      const idx = this.series.indexOf(this._series);
+      if (idx >= 0) this.series.splice(idx, 1);
+    }
+    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+    const isVisibleScale = (_visibleScaleOwner === this.id);
+    const scaleId = isVisibleScale ? "right" : this.id;
+
     this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-      priceScaleId: "right",
+      priceScaleId: scaleId,
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
       title: "",
-    }, paneIdx);
-    if (oldSeries) {
-      try { bottomChart.removeSeries(oldSeries); } catch (e) {}
-      const idx = this.series.indexOf(oldSeries);
-      if (idx >= 0) this.series.splice(idx, 1);
+    });
+    if (!isVisibleScale) {
+      bottomChart.priceScale(scaleId).applyOptions({
+        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
     }
     // Cap the Y-axis at the 99th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram. LWC v5's price-scale
@@ -1561,7 +1490,7 @@ class ProfileHistogramIndicator extends Indicator {
     // Compute the cap over NON-ZERO bars only — zero-weight placeholders
     // were added to fill every time slot, so including them in the
     // percentile would drag p99 toward 0 and over-clip real bars.
-    if (nonEmptyCount >= 5) {
+    if (isVisibleScale && nonEmptyCount >= 5) {
       const sorted = dataPoints
         .filter(d => d.value > 0)
         .map(d => d.value)
@@ -1571,12 +1500,12 @@ class ProfileHistogramIndicator extends Indicator {
         yCapValue = p99;
         renderPoints = dataPoints.map(d => d.value > p99 ? { ...d, value: p99 } : d);
       }
+      try {
+        bottomChart.priceScale("right").applyOptions({
+          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      } catch (e) {}
     }
-    try {
-      bottomChart.priceScale("right", paneIdx).applyOptions({
-        autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
-      });
-    } catch (e) {}
     // Pin a synthetic zero-weight bar at $0 so the histogram's X-axis
     // always starts at zero (and the "$0" tick is visible) regardless of
     // the lowest real cost-basis bin.
@@ -1584,9 +1513,7 @@ class ProfileHistogramIndicator extends Indicator {
     this._series.setData(renderWithZero);
     this.series.push(this._series);
     // Force visible range to start at $0 so the zero tick is anchored on
-    // the left edge no matter where real bars start. The time scale is
-    // shared across all bottom-pane panes, so this lines them all up at
-    // the same X positions — exactly what we want for cohort comparisons.
+    // the left edge no matter where real bars start.
     try {
       bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
     } catch (e) {
@@ -1606,24 +1533,23 @@ class ProfileHistogramIndicator extends Indicator {
   }
 
   remove() {
-    // The pane index this indicator owns at remove-time. We capture it
-    // BEFORE super.remove() (which clears `this.series` and would cause
-    // _bottomPaneIndexOf to skip this instance and return the wrong index
-    // for siblings). super.remove() also iterates and removes our series
-    // from the chart; LWC's empty-pane behaviour kicks in when the last
-    // series leaves a pane.
-    const paneIdx = _bottomPaneIndexOf(this);
+    if (_visibleScaleOwner === this.id) {
+      _visibleScaleOwner = null;
+      for (const ind of activeIndicators.values()) {
+        if (ind !== this && ind instanceof ProfileHistogramIndicator) {
+          _visibleScaleOwner = ind.id;
+          if (typeof ind.onDateChange === "function") ind.onDateChange(currentDateStr);
+          break;
+        }
+      }
+    }
     this._stats = null;
     super.remove();
-    // Explicit pane removal in case LWC leaves an empty pane behind. Wrap
-    // in try/catch since `removePane` was added in a recent v5 release —
-    // if it isn't available the pane is just an empty strip until the user
-    // adds another indicator that reuses the slot.
-    if (paneIdx >= 0 && bottomChart.removePane) {
-      try { bottomChart.removePane(paneIdx); } catch (e) {}
-    }
   }
 }
+
+// Tracks which bottom-pane indicator owns the visible right Y-axis.
+let _visibleScaleOwner = null;
 
 // ───────────────────────────────────────────────────────────────────────────
 // Concrete profile indicators — each is just a different fetchBuckets()
@@ -1713,19 +1639,26 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     this._series = null;
   }
 
-  // Helper: create one HistogramSeries in this indicator's own LWC pane.
-  // Every cohort series of a single indicator targets the SAME paneIndex,
-  // so they stack correctly within one pane (z-order alone does the
-  // visible stacking trick).
+  // Helper: create one HistogramSeries on this indicator's price scale.
+  // The first instance to load on the chart owns the visible right axis;
+  // others get a hidden per-instance scale (same convention as the
+  // existing ProfileHistogramIndicator).
   _addStackSeries(color) {
-    const paneIdx = _bottomPaneIndexOf(this);
+    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+    const isVisibleScale = (_visibleScaleOwner === this.id);
+    const scaleId = isVisibleScale ? "right" : this.id;
     const s = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-      priceScaleId: "right",
+      priceScaleId: scaleId,
       priceFormat: { type: "volume" },
       priceLineVisible: false, lastValueVisible: false,
       title: "",
       color,
-    }, paneIdx);
+    });
+    if (!isVisibleScale) {
+      bottomChart.priceScale(scaleId).applyOptions({
+        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    }
     this.series.push(s);
     return s;
   }
@@ -1743,18 +1676,10 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 
   async onDateChange(dateStr) {
     // Same nav-mode gate as the rest of the bottom-pane indicators.
-    // When leaving nav mode we transition from N stacked series to a
-    // single anchor — add the anchor BEFORE removing the old stack so
-    // the pane is never empty (avoids LWC collapsing it).
     if (typeof _navMode !== "undefined" && !_navMode) {
-      const oldSeries = this.series.slice();
+      this._disposeStack();
       const anchor = this._addStackSeries("rgba(0,0,0,0)");
       try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
-      for (const s of oldSeries) {
-        try { bottomChart.removeSeries(s); } catch (e) {}
-      }
-      this.series = [anchor];
-      this._series = anchor;
       this._stats = null;
       return;
     }
@@ -1840,23 +1765,18 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     const times = new Array(TARGET_BINS);
     for (let b = 0; b < TARGET_BINS; b++) times[b] = minPrice + b * binWidth;
 
+    // Tear down whatever's currently on the chart for this indicator.
+    this._disposeStack();
+
     let totalWeight = 0;
     for (const t of cohortTotals) totalWeight += t;
 
-    // Snapshot the OLD series so we can remove them only AFTER the new
-    // ones are rendered. If we wiped them first via _disposeStack, the
-    // pane briefly held zero series and LWC would collapse it (causing
-    // the "3rd pane disappears during navigation" bug).
-    const oldSeries = this.series.slice();
-
     // Render: from oldest cumulative (largest, drawn FIRST → bottom of z)
-    // down to youngest (smallest, drawn LAST → top of z). New series are
-    // pushed onto this.series; we'll trim back to just them once the old
-    // ones are removed.
-    const newSeries = [];
+    // down to youngest (smallest, drawn LAST → top of z). The first series
+    // added becomes the visible-scale owner if no other claims it.
     for (let drawIdx = 0; drawIdx < N; drawIdx++) {
       const k = N - 1 - drawIdx; // k iterates N-1, N-2, ..., 0
-      const s = this._addStackSeries(colors[k]); // pushes onto this.series
+      const s = this._addStackSeries(colors[k]);
       const data = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }];
       for (let b = 0; b < TARGET_BINS; b++) {
         let v = cum[k][b];
@@ -1864,24 +1784,16 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
         data.push({ time: times[b], value: v, color: colors[k] });
       }
       try { s.setData(data); } catch (e) {}
-      newSeries.push(s);
     }
-    // Now safe to remove the old series — pane has the new ones to keep
-    // it alive. Drop the old refs from this.series too.
-    for (const s of oldSeries) {
-      try { bottomChart.removeSeries(s); } catch (e) {}
-    }
-    this.series = newSeries;
-    this._series = null;
 
-    // Apply right-scale options on this indicator's own pane. Every
-    // bottom-pane indicator owns its own pane and its own visible right
-    // scale — no shared-scale ownership to manage.
-    try {
-      bottomChart.priceScale("right", _bottomPaneIndexOf(this)).applyOptions({
-        autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
-      });
-    } catch (e) {}
+    // Apply right-scale options once the visible-scale owner is created.
+    if (_visibleScaleOwner === this.id) {
+      try {
+        bottomChart.priceScale("right").applyOptions({
+          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      } catch (e) {}
+    }
 
     try {
       bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
@@ -1966,235 +1878,6 @@ const INDICATOR_TYPES = [
 // ───────────────────────────────────────────────────────────────────────────
 const activeIndicators = new Map(); // id → Indicator
 let currentDateStr = document.getElementById("date-input").value;
-
-// Maximum bottom-pane indicators allowed before the picker refuses new adds.
-// 7 bottom panes + 1 top (BTC) = 8 total panes — the cap requested for the
-// multi-pane refactor.
-const MAX_BOTTOM_PANES = 7;
-
-// Compute the LWC pane index for a bottom-pane indicator based on its
-// position in `activeIndicators` insertion order. Recomputed on every call
-// (no stored field) so removals automatically renumber the remaining
-// indicators without our code having to fix anything up. Returns -1 for
-// top-pane indicators (they don't get a paneIndex on bottomChart).
-function _bottomPaneIndexOf(indicator) {
-  let i = 0;
-  for (const [, ind] of activeIndicators) {
-    if (ind.pane() !== "bottom") continue;
-    if (ind === indicator) return i;
-    i++;
-  }
-  return -1;
-}
-
-// Number of currently-active bottom-pane indicators.
-function _bottomPaneCount() {
-  let n = 0;
-  for (const ind of activeIndicators.values()) {
-    if (ind.pane() === "bottom") n++;
-  }
-  return n;
-}
-
-// Force every LWC pane on bottomChart to the same pixel height. Without
-// this, LWC keeps each pane at whatever height it had when created —
-// adding a 2nd pane gives it a small default while the 1st keeps its
-// original (full) height, so the chart visually splits ~70/30 instead of
-// 50/50. We sum the wrap's pixel height, divide evenly, and call
-// `pane.setHeight()` on each. Called from `refreshPaneHeaders`'s
-// requestAnimationFrame after every add/remove.
-// Snapshot the pane count after the last equalise so we can skip on
-// re-renders triggered by anything other than add/remove (date scrubs,
-// visibility toggles, URL state restores, etc.). Without this guard,
-// _equaliseBottomPanes would clobber any manual divider drag the user
-// performed by resetting all pane heights back to equal share.
-let _lastEqualisedPaneCount = -1;
-function _equaliseBottomPanes() {
-  if (!bottomChart || typeof bottomChart.panes !== "function") return;
-  const panes = bottomChart.panes();
-  if (!panes || panes.length === 0) return;
-  // Skip when the pane count hasn't changed since the previous equalise
-  // — that means no indicator was added or removed, so any current pane
-  // sizing is the user's manual drag and should be preserved.
-  if (panes.length === _lastEqualisedPaneCount) return;
-  _lastEqualisedPaneCount = panes.length;
-  const wrap = document.getElementById("chart-bottom-wrap");
-  if (!wrap) return;
-  const totalH = wrap.clientHeight;
-  if (totalH < 20) return; // hidden / not laid out yet — skip
-  // Reserve 1px per pane separator. LWC draws separators between panes,
-  // so the available content height = total - (N - 1) px.
-  const sepPx = 1;
-  const each = Math.max(40, Math.floor((totalH - (panes.length - 1) * sepPx) / panes.length));
-  for (const p of panes) {
-    try { if (typeof p.setHeight === "function") p.setHeight(each); } catch (e) {}
-  }
-}
-
-// Set each bottom-pane label's `top` to an absolute pixel position read
-// directly from the DOM rect of LWC's internal pane elements. Bypasses
-// `pane.getHeight()` which in v5.0.0 returns a value that includes the
-// time-axis area / inter-pane padding and doesn't match the visible
-// pane top. Walking the actual canvas rects gives us the true pixel
-// boundary every time.
-// Render N-1 custom inter-pane dividers (one per gap between bottom-pane
-// indicators). LWC's built-in resize is disabled — these handle dragging
-// and only adjust the two panes adjacent to the dragged gap, leaving
-// other panes untouched. Called from the same rAF block as
-// `_positionBottomLabels` so positions track LWC's actual canvas rects.
-function _renderBottomPaneDividers() {
-  const botHost = document.getElementById("ind-rows-bottom");
-  const wrap = document.getElementById("chart-bottom-wrap");
-  const chartBottom = document.getElementById("chart-bottom");
-  if (!botHost || !wrap || !chartBottom) return;
-  const wrapTop = wrap.getBoundingClientRect().top;
-
-  // Collect distinct pane top Y positions from each pane's canvases.
-  // LWC includes a time-axis canvas at the very bottom whose top edge
-  // counts as an extra Y position; we cap to the number of actual
-  // bottom-pane indicators below so we don't draw a phantom divider
-  // between the last pane and the time-axis area.
-  const yTops = new Set();
-  chartBottom.querySelectorAll("canvas").forEach(c => {
-    const r = c.getBoundingClientRect();
-    if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
-  });
-  const sortedY = [...yTops].sort((a, b) => a - b);
-
-  // Remove old dividers and rebuild — positions/count change when panes
-  // are added or removed, and after every drag we want fresh positions
-  // computed from the updated canvas rects.
-  botHost.querySelectorAll(".bottom-pane-divider").forEach(el => el.remove());
-
-  // Number of REAL panes = number of bottom-pane indicator rows. Use that
-  // (not sortedY.length) to bound the divider loop, so the time-axis Y
-  // doesn't get treated as a pane boundary.
-  const rowCount = botHost.querySelectorAll(".ind-row").length;
-  if (rowCount < 2) return; // 0 or 1 panes → no inter-pane dividers needed
-
-  // One divider per gap (between pane i-1 and pane i, for i = 1..N-1).
-  for (let i = 1; i < rowCount && i < sortedY.length; i++) {
-    const div = document.createElement("div");
-    div.className = "bottom-pane-divider";
-    div.dataset.aboveIdx = String(i - 1);
-    div.dataset.belowIdx = String(i);
-    // Hit zone is 5px tall, vertically centred on the boundary line.
-    div.style.top = `${sortedY[i] - 2}px`;
-    botHost.appendChild(div);
-    _wireBottomPaneDividerDrag(div);
-  }
-}
-
-function _wireBottomPaneDividerDrag(divider) {
-  divider.addEventListener("pointerdown", (e) => {
-    if (typeof bottomChart === "undefined" || !bottomChart.panes) return;
-    const panes = bottomChart.panes();
-    const aboveIdx = parseInt(divider.dataset.aboveIdx, 10);
-    const belowIdx = parseInt(divider.dataset.belowIdx, 10);
-    if (!panes[aboveIdx] || !panes[belowIdx]) return;
-    e.preventDefault();
-    try { divider.setPointerCapture(e.pointerId); } catch (err) {}
-    divider.classList.add("is-dragging");
-    document.body.classList.add("is-resizing-pane");
-
-    // Read current pixel heights of the two adjacent panes from the
-    // canvas rects — getHeight() in LWC v5 doesn't reliably return
-    // visible pixels, but rect-derived height does.
-    const wrap = document.getElementById("chart-bottom-wrap");
-    const chartBottom = document.getElementById("chart-bottom");
-    const wrapTop = wrap.getBoundingClientRect().top;
-    const totalH = wrap.clientHeight;
-    const yTops = new Set();
-    chartBottom.querySelectorAll("canvas").forEach(c => {
-      const r = c.getBoundingClientRect();
-      if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
-    });
-    const sortedY = [...yTops].sort((a, b) => a - b);
-    const aboveTop = sortedY[aboveIdx] || 0;
-    const belowTop = sortedY[belowIdx] || 0;
-    const belowBottom = sortedY[belowIdx + 1] != null ? sortedY[belowIdx + 1] : totalH;
-    const aboveH = belowTop - aboveTop;
-    const belowH = belowBottom - belowTop;
-    const startY = e.clientY;
-    const minH = 40;
-
-    const onMove = (ev) => {
-      const dy = ev.clientY - startY;
-      let newAbove = aboveH + dy;
-      let newBelow = belowH - dy;
-      if (newAbove < minH) { newAbove = minH; newBelow = aboveH + belowH - minH; }
-      if (newBelow < minH) { newBelow = minH; newAbove = aboveH + belowH - minH; }
-      try { panes[aboveIdx].setHeight(newAbove); } catch (err) {}
-      try { panes[belowIdx].setHeight(newBelow); } catch (err) {}
-      // Re-place labels + dividers next frame so they track the new
-      // canvas rects after LWC has re-laid out.
-      requestAnimationFrame(() => {
-        try { _positionBottomLabels(); } catch (err) {}
-        // Move just THIS divider (don't rebuild all of them mid-drag,
-        // because that would destroy the element we're listening on).
-        const ny = new Set();
-        chartBottom.querySelectorAll("canvas").forEach(c => {
-          const r = c.getBoundingClientRect();
-          if (r.height > 4) ny.add(Math.round(r.top - wrapTop));
-        });
-        const nsorted = [...ny].sort((a, b) => a - b);
-        if (nsorted[belowIdx] != null) divider.style.top = `${nsorted[belowIdx] - 2}px`;
-      });
-    };
-    const onUp = (ev) => {
-      divider.classList.remove("is-dragging");
-      document.body.classList.remove("is-resizing-pane");
-      try { divider.releasePointerCapture(ev.pointerId); } catch (err) {}
-      divider.removeEventListener("pointermove", onMove);
-      divider.removeEventListener("pointerup", onUp);
-      divider.removeEventListener("pointercancel", onUp);
-      // Re-build all dividers once on drag end so non-dragged dividers
-      // also track the post-drag canvas rects.
-      try { _renderBottomPaneDividers(); } catch (err) {}
-    };
-    divider.addEventListener("pointermove", onMove);
-    divider.addEventListener("pointerup", onUp);
-    divider.addEventListener("pointercancel", onUp);
-  });
-}
-
-function _positionBottomLabels() {
-  const botHost = document.getElementById("ind-rows-bottom");
-  if (!botHost) return;
-  const rows = botHost.querySelectorAll(".ind-row");
-  if (rows.length === 0) return;
-  const insts = botHost.querySelectorAll(".pane-nav-instruction");
-  const wrap = document.getElementById("chart-bottom-wrap");
-  const chartBottom = document.getElementById("chart-bottom");
-  if (!wrap || !chartBottom) return;
-  const totalH = wrap.clientHeight;
-  if (totalH < 20) return;
-  const wrapTop = wrap.getBoundingClientRect().top;
-  const labelInset = 2;  // 2px below pane top for the label
-  const instInset  = 22; // ~22px below pane top for the instruction line
-
-  // LWC v5 renders each pane as a separate <tr> (or div with explicit
-  // height) inside #chart-bottom. We collect every direct descendant
-  // canvas, group by their .top rect to identify distinct pane Y
-  // positions, then use those as the actual pane top edges.
-  const yTops = new Set();
-  chartBottom.querySelectorAll("canvas").forEach(c => {
-    const r = c.getBoundingClientRect();
-    if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
-  });
-  const sortedY = [...yTops].sort((a, b) => a - b);
-
-  function setTops(useDom) {
-    rows.forEach((row, i) => {
-      const baseY = useDom ? sortedY[i]
-                           : i * ((totalH - (rows.length - 1)) / rows.length + 1);
-      row.style.top = `${Math.max(0, Math.round(baseY + labelInset))}px`;
-      const inst = insts[i];
-      if (inst) inst.style.top = `${Math.max(0, Math.round(baseY + instInset))}px`;
-    });
-  }
-  setTops(sortedY.length >= rows.length);
-}
 
 function refreshIndicatorPanel() {
   // The side panel (#ind-panel) has been removed — indicator management
@@ -2293,70 +1976,37 @@ function refreshPaneHeaders() {
       const bEl = document.getElementById("chart-bottom");
       if (bEl && bottomChart && bottomChart.resize) bottomChart.resize(bEl.clientWidth, bEl.clientHeight);
     } catch (e) {}
-    // Force every bottom-pane pane to the same pixel height. LWC v5
-    // doesn't auto-equalise — newly-added panes inherit a default height
-    // and existing panes keep their previous size, which leaves the chart
-    // visually lopsided (pane 0 taller than pane 1, etc.).
-    try { _equaliseBottomPanes(); } catch (e) {}
-    // Re-apply right-scale minimumWidth to every pane (count may have just
-    // changed if an indicator was added/removed). Cheap; no-op if widths
-    // already match.
-    try { alignRightScales(); } catch (e) {}
-    // Position labels + (re)build inter-pane dividers NEXT frame — LWC's
-    // pane setHeight may not reflect in canvas rects within the same
-    // animation frame, so the rect-based measurement needs to wait one
-    // tick for the layout to commit.
-    requestAnimationFrame(() => {
-      try { _positionBottomLabels(); } catch (e) {}
-      try { _renderBottomPaneDividers(); } catch (e) {}
-    });
   });
 
-  // The keyboard-nav instruction is rendered per-pane below — one copy
-  // under every bottom-pane indicator's label. Done inline in the
-  // bottom-rows render block (not as a singleton element) so the hint
-  // is visible inside every URPD pane, not just the first.
+  // Keep the keyboard-navigation instruction always visible while a bottom-
+  // pane indicator (URPD/SOPD) is loaded, so users see how to interact
+  // before they ever click the chart.
+  const navEl = document.getElementById("nav-instruction");
+  if (navEl) {
+    if (hasAnyBottom) {
+      navEl.innerHTML = `To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable`;
+      navEl.classList.add("show");
+    } else {
+      navEl.classList.remove("show");
+      navEl.innerHTML = "";
+    }
+  }
 
   // Build per-indicator rows, one per pane. BTC/USD is shown in the pane title
   // itself, so we skip rendering a row for it. We also skip the Spot Price
   // Line — it's a passive helper marker that follows the crosshair date,
   // not something the user manages with hover hide/remove.
+  const topRows = [], botRows = [];
   const SKIP_TYPES = new Set(["btc_price", "spot_line"]);
-  const topRows = [];
-  // Bottom rows are positioned absolutely, one per LWC pane. The Nth
-  // bottom-pane indicator's label sits at top: (N / paneCount) * 100% so
-  // it aligns with the start of its corresponding pane (LWC splits the
-  // bottom container into equal-height panes by default).
-  const botRowsList = [];
   for (const ind of activeIndicators.values()) {
     if (SKIP_TYPES.has(ind.constructor.type)) continue;
-    if (ind.pane() === "top") {
-      topRows.push(indRowHTML(ind));
-    } else {
-      botRowsList.push(ind);
-    }
+    const html = indRowHTML(ind);
+    if (ind.pane() === "top") topRows.push(html); else botRows.push(html);
   }
   const topHost = document.getElementById("ind-rows-top");
   const botHost = document.getElementById("ind-rows-bottom");
   if (topHost) topHost.innerHTML = topRows.join("");
-  if (botHost) {
-    const N = Math.max(1, botRowsList.length);
-    const NAV_HTML = `To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable`;
-    botHost.innerHTML = botRowsList.map((ind, i) => {
-      // Initial top is a `calc(% + Npx)` placeholder so each row + its
-      // instruction sit roughly inside the right pane before
-      // `_positionBottomLabels` runs in the next rAF (which reads each
-      // pane's actual pixel height from the canvas DOM and overwrites
-      // these values). 2px below pane top for the label, ~22px below for
-      // the instruction (just under the label line).
-      const labelTop = `calc(${(i / N * 100).toFixed(4)}% + 2px)`;
-      const instTop  = `calc(${(i / N * 100).toFixed(4)}% + 22px)`;
-      const labelHTML = indRowHTML(ind).replace('<div class="ind-row',
-        `<div style="top:${labelTop}" class="ind-row`);
-      const instHTML = `<div class="pane-nav-instruction" data-pane-idx="${i}" style="top:${instTop}">${NAV_HTML}</div>`;
-      return labelHTML + instHTML;
-    }).join("");
-  }
+  if (botHost) botHost.innerHTML = botRows.join("");
 }
 
 // Delegated click handler for the in-chart per-indicator action buttons.
@@ -2494,16 +2144,6 @@ function openAddModal() {
         document.getElementById("status").textContent = `Removed: ${T.displayName}`;
         _rerenderPickerBody();
       }
-      return;
-    }
-
-    // Cap bottom-pane indicators at MAX_BOTTOM_PANES so the chart never
-    // gets so crowded that LWC's pane allocator runs out of vertical
-    // space. 1 top (BTC) + 7 bottom = 8 total panes.
-    if (T.pane === "bottom" && _bottomPaneCount() >= MAX_BOTTOM_PANES) {
-      bg.classList.remove("show");
-      document.getElementById("status").textContent =
-        `Pane cap reached (${MAX_BOTTOM_PANES} bottom panes max). Remove one first.`;
       return;
     }
 
@@ -2849,10 +2489,8 @@ topChart.subscribeCrosshairMove((param) => {
 });
 
 // ─── Click-to-lock + keyboard nav ─────────────────────────────────────────
-const dateTracerEl = document.getElementById("date-tracer");
-// Per-pane nav instructions are now rendered as `.pane-nav-instruction`
-// elements inside #ind-rows-bottom (one per bottom-pane indicator). The
-// old singleton `#nav-instruction` element is gone.
+const dateTracerEl     = document.getElementById("date-tracer");
+const navInstructionEl = document.getElementById("nav-instruction");
 let _navMode        = false;
 let _pathStartDateStr = null;  // date when nav mode was entered
 let _pathSeries       = null;  // orange overlay LineSeries showing the traversed range
@@ -2952,6 +2590,17 @@ function updateTracerPosition() {
     dateTracerEl.style.top  = y + "px";
     dateTracerEl.classList.add("show");
   } catch (e) { dateTracerEl.classList.remove("show"); }
+}
+
+function showInstruction(text) {
+  if (!navInstructionEl) return;
+  navInstructionEl.innerHTML = text;
+  navInstructionEl.classList.add("show");
+}
+function hideInstruction() {
+  if (!navInstructionEl) return;
+  navInstructionEl.classList.remove("show");
+  navInstructionEl.innerHTML = "";
 }
 
 function enterNavMode(dateStr) {
@@ -3258,14 +2907,6 @@ async function restoreState(state) {
     if (!T) { console.warn("restore: unknown indicator type", i.t); continue; }
     const ind = new T(i.c || {});
     activeIndicators.set(ind.id, ind);
-    // Refresh the pane labels BEFORE awaiting load() — load() involves
-    // network fetches that can take seconds (RP filtered TS, AGE band
-    // history, etc.). Without this nudge, all the pane labels stay
-    // empty until every indicator's promise has resolved, which feels
-    // like the labels are taking forever to appear. Calling
-    // refreshIndicatorPanel here paints the label as soon as the
-    // indicator is registered.
-    refreshIndicatorPanel();
     try {
       await ind.load();
       if (i.h) ind.setVisible(false);
@@ -3275,11 +2916,8 @@ async function restoreState(state) {
       ind.remove();
       activeIndicators.delete(ind.id);
     }
-    // Re-paint after each load too so the pane stack and label
-    // positions track every newly-loaded indicator's actual canvas
-    // rect (via the rAF inside refreshPaneHeaders → _positionBottomLabels).
-    refreshIndicatorPanel();
   }
+  refreshIndicatorPanel();
   return restored > 0;
 }
 
