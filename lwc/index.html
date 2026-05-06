@@ -573,8 +573,13 @@ function commonChartOpts() {
 const topChart = LightweightCharts.createChart(topContainer, Object.assign(commonChartOpts(), {
   rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Normal, autoScale: true },
   // Hide the top chart's time axis — it's rendered in the shared #chart-time-axis below.
+  // rightOffset: 0 — the latest data point sits AT the right axis. With a
+  // non-zero offset there's an empty strip between the line tip and the
+  // right-side label, which the user wanted to eliminate (see "i want the
+  // lines chain tip to be dotted to their labels"). Zero offset is simpler
+  // than overlay leader lines and matches what the labels expect.
   timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false,
-    rightOffset: 12, barSpacing: 2, visible: false },
+    rightOffset: 0, barSpacing: 2, visible: false },
 }));
 
 // Shared global time axis — minimal LWC chart that only renders date labels.
@@ -594,8 +599,10 @@ const timeAxisChart = LightweightCharts.createChart(timeAxisContainer, {
   rightPriceScale: { visible: true, borderVisible: false, ticksVisible: false,
     entireTextOnly: true, scaleMargins: { top: 0, bottom: 0 } },
   leftPriceScale:  { visible: false },
+  // rightOffset: 0 to stay in sync with topChart (so the date labels
+  // line up vertically with the data points above them).
   timeScale: { borderVisible: false, timeVisible: false, secondsVisible: false,
-    rightOffset: 12, barSpacing: 2, visible: true, fixLeftEdge: false, fixRightEdge: false },
+    rightOffset: 0, barSpacing: 2, visible: true, fixLeftEdge: false, fixRightEdge: false },
   crosshair: { mode: LightweightCharts.CrosshairMode.Hidden,
     vertLine: { visible: false }, horzLine: { visible: false } },
   handleScroll: false,
@@ -1194,11 +1201,10 @@ class TopPaneSeriesIndicator extends Indicator {
     series.setData(points);
     this.series.push(series);
 
-    // Tip-to-right-edge leader: a separate 2-point series, styled
-    // dotted in the indicator's colour, going horizontally from the
-    // line's last data point to the latest BTC date. This is what
-    // gives the user a clean dotted connector to the right-axis
-    // label without painting across the rest of the chart.
+    // Tip-to-right-edge leader is still wired up, but with rightOffset:0
+    // on the chart the line already reaches the right-axis label and
+    // the helper short-circuits (lastPt.time === rightEdgeDate). Kept
+    // as a safety net for indicators whose data lags BTC's last bar.
     const leader = _addRightLeader(points, this.config.color);
     if (leader) this.series.push(leader);
   }
