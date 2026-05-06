@@ -1572,9 +1572,282 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// (Removed: URPDLTH/STH Profile, SOPD Profile, AGE-band Profile — only the
-// `URPD History - Profit/Loss` indicator above is exposed.)
+// 21 UTXO age cohorts + matching rainbow palette (verbatim from rp.js
+// lines 162-194 — same identifiers, same colour values).
 // ───────────────────────────────────────────────────────────────────────────
+const _AGE_BANDS = [
+  { cohort: "utxos_under_1h_old",   label: "<1h"    },
+  { cohort: "utxos_1h_to_1d_old",   label: "1h-1d"  },
+  { cohort: "utxos_1d_to_1w_old",   label: "1d-1w"  },
+  { cohort: "utxos_1w_to_1m_old",   label: "1w-1m"  },
+  { cohort: "utxos_1m_to_2m_old",   label: "1m-2m"  },
+  { cohort: "utxos_2m_to_3m_old",   label: "2m-3m"  },
+  { cohort: "utxos_3m_to_4m_old",   label: "3m-4m"  },
+  { cohort: "utxos_4m_to_5m_old",   label: "4m-5m"  },
+  { cohort: "utxos_5m_to_6m_old",   label: "5m-6m"  },
+  { cohort: "utxos_6m_to_1y_old",   label: "6m-1y"  },
+  { cohort: "utxos_1y_to_2y_old",   label: "1y-2y"  },
+  { cohort: "utxos_2y_to_3y_old",   label: "2y-3y"  },
+  { cohort: "utxos_3y_to_4y_old",   label: "3y-4y"  },
+  { cohort: "utxos_4y_to_5y_old",   label: "4y-5y"  },
+  { cohort: "utxos_5y_to_6y_old",   label: "5y-6y"  },
+  { cohort: "utxos_6y_to_7y_old",   label: "6y-7y"  },
+  { cohort: "utxos_7y_to_8y_old",   label: "7y-8y"  },
+  { cohort: "utxos_8y_to_10y_old",  label: "8y-10y" },
+  { cohort: "utxos_10y_to_12y_old", label: "10y-12y" },
+  { cohort: "utxos_12y_to_15y_old", label: "12y-15y" },
+  { cohort: "utxos_over_15y_old",   label: ">15y"   },
+];
+const _AGE_BAND_COLORS = [
+  "#FF3B2E", "#FF5A2E", "#FF7A2E", "#FF9A2E", "#FFB82E",
+  "#FFD42E", "#E8D834", "#C8D43A", "#A0C840", "#5AAF54",
+  "#3A9A6A", "#2E8878", "#287888", "#226898", "#1C58A8",
+  "#1848B8", "#2040C0", "#4858C8", "#6878D8", "#90A0E8",
+  "#B8C8F0",
+];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Stacked URPD-history base — fetches multiple cohort URPDs in parallel
+// (e.g. lth+sth, or all 21 age bands) and renders one HistogramSeries per
+// cohort. The series share a single price scale so their bars align in y.
+//
+// Stacking trick: LWC draws each HistogramSeries' bars from y=0; a series
+// added LATER renders ON TOP of earlier ones. So we add the OLDEST cohort's
+// cumulative-total bar first (it goes to the back of the z-stack), then add
+// progressively SHORTER cumulative bars on top. The shorter top-z bars
+// cover the lower portion of the back-z bar, leaving only the top stripe
+// of the older cohort visible. End result reading from baseline upward:
+// youngest cohort first, then progressively older cohorts on top — exactly
+// "older atop younger" stacking.
+// ───────────────────────────────────────────────────────────────────────────
+class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
+  // Subclasses override:
+  cohortKeys()   { throw new Error("cohortKeys not implemented"); }   // bottom→top
+  cohortLabels() { return this.cohortKeys(); }
+  cohortColors() { throw new Error("cohortColors not implemented"); } // index-aligned with cohortKeys
+
+  // Subclasses get a no-op fetchBuckets — we override onDateChange entirely
+  // and don't go through the base class's single-series path.
+  async fetchBuckets() { return []; }
+
+  // Helper: dispose every series this indicator currently owns on the chart.
+  _disposeStack() {
+    for (const s of this.series) {
+      try { bottomChart.removeSeries(s); } catch (e) {}
+    }
+    this.series = [];
+    this._series = null;
+  }
+
+  // Helper: create one HistogramSeries on this indicator's price scale.
+  // The first instance to load on the chart owns the visible right axis;
+  // others get a hidden per-instance scale (same convention as the
+  // existing ProfileHistogramIndicator).
+  _addStackSeries(color) {
+    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+    const isVisibleScale = (_visibleScaleOwner === this.id);
+    const scaleId = isVisibleScale ? "right" : this.id;
+    const s = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
+      priceScaleId: scaleId,
+      priceFormat: { type: "volume" },
+      priceLineVisible: false, lastValueVisible: false,
+      title: "",
+      color,
+    });
+    if (!isVisibleScale) {
+      bottomChart.priceScale(scaleId).applyOptions({
+        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    }
+    this.series.push(s);
+    return s;
+  }
+
+  async load() {
+    this._stats = null;
+    // Seed with one anchor series so the right Y-axis is labelled before
+    // the user double-clicks into nav mode (matches base class behaviour).
+    if (this.series.length === 0) {
+      const anchor = this._addStackSeries("rgba(0,0,0,0)");
+      try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+    }
+    await this.onDateChange(currentDateStr);
+  }
+
+  async onDateChange(dateStr) {
+    // Same nav-mode gate as the rest of the bottom-pane indicators.
+    if (typeof _navMode !== "undefined" && !_navMode) {
+      this._disposeStack();
+      const anchor = this._addStackSeries("rgba(0,0,0,0)");
+      try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+      this._stats = null;
+      return;
+    }
+
+    const keys = this.cohortKeys();
+    const colors = this.cohortColors();
+    const N = keys.length;
+    const TARGET_BINS = this.config.bins || 600;
+
+    // Fetch all cohort URPDs in parallel — getURPDCohort() dedupes inflight
+    // requests, so siblings sharing cohorts (e.g. URPD History - Profit/Loss
+    // already loaded "all") don't re-fetch.
+    const responses = await Promise.all(keys.map(k =>
+      getURPDCohort(dateStr, k).catch(() => null)
+    ));
+    if (responses.every(r => !r || !r.buckets || r.buckets.length === 0)) {
+      this._disposeStack();
+      const anchor = this._addStackSeries("rgba(0,0,0,0)");
+      try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+      this._stats = { empty: true, dateStr };
+      return;
+    }
+
+    // Combined min/max across all cohorts (BTC-weighted only, per the
+    // user's spec — both new indicators are explicitly BTC-weighted).
+    let minPrice = Infinity, maxPrice = -Infinity;
+    for (const resp of responses) {
+      if (!resp || !resp.buckets) continue;
+      for (const b of resp.buckets) {
+        if (!b.supply || b.supply <= 0) continue;
+        if (b.price_floor < minPrice) minPrice = b.price_floor;
+        if (b.price_floor > maxPrice) maxPrice = b.price_floor;
+      }
+    }
+    if (!isFinite(minPrice) || !isFinite(maxPrice) || maxPrice <= minPrice) return;
+    if (minPrice < 1) minPrice = 1;
+    const binWidth = (maxPrice - minPrice) / TARGET_BINS;
+
+    // Per-cohort weight aggregation: weights[k][bin] = total BTC supply for
+    // cohort k in bin b.
+    const weights = [];
+    const cohortTotals = new Array(N).fill(0);
+    for (let k = 0; k < N; k++) {
+      const arr = new Array(TARGET_BINS).fill(0);
+      const resp = responses[k];
+      if (resp && resp.buckets) {
+        for (const b of resp.buckets) {
+          if (!b.supply || b.supply <= 0) continue;
+          if (b.price_floor < minPrice) continue;
+          let idx = Math.floor((b.price_floor - minPrice) / binWidth);
+          if (idx >= TARGET_BINS) idx = TARGET_BINS - 1;
+          if (idx < 0) continue;
+          arr[idx] += b.supply;
+          cohortTotals[k] += b.supply;
+        }
+      }
+      weights.push(arr);
+    }
+
+    // Cumulative bottom→top: cum[k][b] = sum of weights[0..k][b].
+    const cum = [];
+    for (let k = 0; k < N; k++) {
+      const arr = new Array(TARGET_BINS);
+      for (let b = 0; b < TARGET_BINS; b++) {
+        arr[b] = (k === 0 ? 0 : cum[k-1][b]) + weights[k][b];
+      }
+      cum.push(arr);
+    }
+
+    // Y-cap at 99th percentile of the FULL cumulative top (i.e. the visible
+    // bar height, not individual cohort weights). Avoids one outlier bin
+    // flattening the rest of the histogram.
+    const Y_CAP_PCT = 99;
+    let yCap = null;
+    {
+      const tops = cum[N - 1].filter(v => v > 0).sort((a, b) => a - b);
+      if (tops.length >= 5) {
+        yCap = tops[Math.floor(tops.length * (Y_CAP_PCT / 100))];
+      }
+    }
+
+    // Shared bin-time array — used for every series so bars align.
+    const times = new Array(TARGET_BINS);
+    for (let b = 0; b < TARGET_BINS; b++) times[b] = minPrice + b * binWidth;
+
+    // Tear down whatever's currently on the chart for this indicator.
+    this._disposeStack();
+
+    let totalWeight = 0;
+    for (const t of cohortTotals) totalWeight += t;
+
+    // Render: from oldest cumulative (largest, drawn FIRST → bottom of z)
+    // down to youngest (smallest, drawn LAST → top of z). The first series
+    // added becomes the visible-scale owner if no other claims it.
+    for (let drawIdx = 0; drawIdx < N; drawIdx++) {
+      const k = N - 1 - drawIdx; // k iterates N-1, N-2, ..., 0
+      const s = this._addStackSeries(colors[k]);
+      const data = [{ time: 0, value: 0, color: "rgba(0,0,0,0)" }];
+      for (let b = 0; b < TARGET_BINS; b++) {
+        let v = cum[k][b];
+        if (yCap != null && v > yCap) v = yCap;
+        data.push({ time: times[b], value: v, color: colors[k] });
+      }
+      try { s.setData(data); } catch (e) {}
+    }
+
+    // Apply right-scale options once the visible-scale owner is created.
+    if (_visibleScaleOwner === this.id) {
+      try {
+        bottomChart.priceScale("right").applyOptions({
+          autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      } catch (e) {}
+    }
+
+    try {
+      bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
+    } catch (e) {
+      bottomChart.timeScale().fitContent();
+    }
+
+    // Stats — reused by the hover tooltip (same shape as the base class).
+    const fmtCount = (n) => `${(n/1e6).toFixed(2)}M BTC`;
+    this._stats = {
+      total: totalWeight,
+      cohortLabels: this.cohortLabels(),
+      cohortColors: colors,
+      cohortTotals,
+      weightField: "supply",
+      fmtCount,
+      dateStr,
+      yCapPct: Y_CAP_PCT, yCapValue: yCap,
+      stacked: true,
+    };
+  }
+}
+
+// LTH/STH split: STH (younger, gold) at the bottom, LTH (older, blue) on top.
+class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
+  static type = "urpd_lth_sth_history";
+  static displayName = "URPD History - LTH/STH (BTC-weighted)";
+  static configSchema = [
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+  cohortKeys()   { return ["sth", "lth"]; }
+  cohortLabels() { return ["STH", "LTH"]; }
+  cohortColors() { return [THEME.sth, THEME.lth]; }
+  swatchColor() { return `linear-gradient(90deg, ${THEME.sth}, ${THEME.lth})`; }
+  displayName() { return "URPD History - LTH/STH (BTC)"; }
+}
+
+// AGE-band split: 21 cohorts from <1h (red, bottom) to >15y (violet, top).
+class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
+  static type = "urpd_age_history";
+  static displayName = "URPD History - AGE (BTC-weighted)";
+  static configSchema = [
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+  cohortKeys()   { return _AGE_BANDS.map(b => b.cohort); }
+  cohortLabels() { return _AGE_BANDS.map(b => b.label); }
+  cohortColors() { return _AGE_BAND_COLORS.slice(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_AGE_BAND_COLORS[0]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[20]})`;
+  }
+  displayName() { return "URPD History - AGE (BTC)"; }
+}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Indicator registry — all addable types live here.
@@ -1589,8 +1862,10 @@ const INDICATOR_TYPES = [
   // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
   ..._RP_FILTERED_VARIANTS,
   SpotPriceLineIndicator,
-  // Bottom-pane profile histogram (point-in-time, follows tracer in nav mode)
+  // Bottom-pane profile histograms (point-in-time, follow tracer in nav mode)
   URPDProfileIndicator,
+  URPDLTHSTHHistoryIndicator,
+  URPDAgeHistoryIndicator,
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
