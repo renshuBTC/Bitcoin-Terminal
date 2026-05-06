@@ -5181,6 +5181,12 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
   try { topChart.clearCrosshairPosition(); } catch (e) {}
   try { bottomChart.clearCrosshairPosition(); } catch (e) {}
   try { timeAxisChart.clearCrosshairPosition(); } catch (e) {}
+  // Hide the click-locked tracer dot + any associated vertical line for
+  // the duration of the capture. visibility:hidden (not display:none) so
+  // we don't trigger a reflow that would re-position other elements.
+  const tracerEl = document.getElementById("date-tracer");
+  const tracerPrevVis = tracerEl ? tracerEl.style.visibility : "";
+  if (tracerEl) tracerEl.style.visibility = "hidden";
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
     const stackEl = document.getElementById("chart-stack");
@@ -5232,6 +5238,9 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
     console.error("PNG export failed:", e);
     status.textContent = "PNG export failed: " + e.message;
     status.style.color = "#ff5c5c";
+  } finally {
+    // Restore the tracer's visibility regardless of success/failure.
+    if (tracerEl) tracerEl.style.visibility = tracerPrevVis;
   }
 });
 
