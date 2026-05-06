@@ -1364,18 +1364,31 @@ class ProfileHistogramIndicator extends Indicator {
       agg[idx].weight += w;
     }
 
+    // Include EVERY bin (even zero-weight ones) so LWC renders bars at all
+    // 600 evenly-spaced time positions. Empty bins get a transparent
+    // zero-height bar — invisible to the eye but they reserve their slot
+    // on the time axis, which prevents the "spiky / isolated bars" look
+    // we'd otherwise get when LWC's HistogramSeries places only the
+    // non-empty bars and leaves visible gaps between them. This matches
+    // how the previous Plotly histogram filled every categorical slot.
     const dataPoints = [];
     let total = 0, profit = 0, loss = 0;
     let lastTime = -Infinity;
+    let nonEmptyCount = 0;
     for (const a of agg) {
-      if (a.weight <= 0) continue;
       let t = a.price;
       if (t <= lastTime) t = lastTime + 0.0001;
       lastTime = t;
-      total += a.weight;
-      const inProfit = a.price <= spot;
-      if (inProfit) profit += a.weight; else loss += a.weight;
-      dataPoints.push({ time: t, value: a.weight, color: inProfit ? THEME.profit : THEME.loss });
+      if (a.weight > 0) {
+        total += a.weight;
+        const inProfit = a.price <= spot;
+        if (inProfit) profit += a.weight; else loss += a.weight;
+        dataPoints.push({ time: t, value: a.weight, color: inProfit ? THEME.profit : THEME.loss });
+        nonEmptyCount++;
+      } else {
+        // Zero-weight placeholder: keeps the time slot but draws nothing.
+        dataPoints.push({ time: t, value: 0, color: "rgba(0,0,0,0)" });
+      }
     }
 
     // Replace series; per-instance price scale (first profile claims visible right axis)
@@ -1408,8 +1421,14 @@ class ProfileHistogramIndicator extends Indicator {
     const Y_CAP_PCT = 99;
     let renderPoints = dataPoints;
     let yCapValue = null;
-    if (isVisibleScale && dataPoints.length >= 5) {
-      const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
+    // Compute the cap over NON-ZERO bars only — zero-weight placeholders
+    // were added to fill every time slot, so including them in the
+    // percentile would drag p99 toward 0 and over-clip real bars.
+    if (isVisibleScale && nonEmptyCount >= 5) {
+      const sorted = dataPoints
+        .filter(d => d.value > 0)
+        .map(d => d.value)
+        .sort((a, b) => a - b);
       const p99 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * (Y_CAP_PCT / 100)))];
       if (p99 > 0) {
         yCapValue = p99;
@@ -1442,7 +1461,7 @@ class ProfileHistogramIndicator extends Indicator {
     const pctProfit = total > 0 ? (100 * profit / total) : 0;
     this._stats = {
       spot, total, profit, loss, pctProfit, weightField, dateStr,
-      binCount: dataPoints.length, fmtCount,
+      binCount: nonEmptyCount, fmtCount,
       yCapPct: Y_CAP_PCT, yCapValue,
     };
   }
@@ -1668,25 +1687,34 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
       }
     }
 
-    // Build LWC data points + per-band total tally for the stats box
+    // Build LWC data points + per-band total tally for the stats box.
+    // Include EVERY bin (zero-weight ones become invisible transparent bars)
+    // so all 600 time slots are reserved on the X-axis — this prevents the
+    // "spiky / isolated bars" look that comes from LWC's HistogramSeries
+    // placing bars only at populated time positions.
     const dataPoints = [];
     let total = 0;
     let lastTime = -Infinity;
+    let nonEmptyBins = 0;
     const bandTotals = new Array(AGE_BANDS.length).fill(0);
     for (const a of agg) {
-      if (a.total <= 0) continue;
       let t = a.price;
       if (t <= lastTime) t = lastTime + 0.0001;
       lastTime = t;
-      total += a.total;
-      // Find dominant band at this bin
-      let maxIdx = 0, maxV = a.perBand[0];
-      for (let i = 1; i < a.perBand.length; i++) {
-        if (a.perBand[i] > maxV) { maxV = a.perBand[i]; maxIdx = i; }
-        bandTotals[i] += a.perBand[i];
+      if (a.total > 0) {
+        total += a.total;
+        // Find dominant band at this bin
+        let maxIdx = 0, maxV = a.perBand[0];
+        for (let i = 1; i < a.perBand.length; i++) {
+          if (a.perBand[i] > maxV) { maxV = a.perBand[i]; maxIdx = i; }
+          bandTotals[i] += a.perBand[i];
+        }
+        bandTotals[0] += a.perBand[0];
+        dataPoints.push({ time: t, value: a.total, color: AGE_BAND_COLORS[maxIdx] });
+        nonEmptyBins++;
+      } else {
+        dataPoints.push({ time: t, value: 0, color: "rgba(0,0,0,0)" });
       }
-      bandTotals[0] += a.perBand[0];
-      dataPoints.push({ time: t, value: a.total, color: AGE_BAND_COLORS[maxIdx] });
     }
 
     // Replace series + own a unique price scale
@@ -1737,7 +1765,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
         `<span class="date">${dateStr}</span></div>` +
         `<div><span class="label">Cohorts loaded</span> <span class="value">${fetched}/21</span></div>` +
         `<div><span class="label">Total</span> <span class="value">${fmtCount(total)}</span> &nbsp;` +
-          `<span class="label">Bins</span> <span class="value">${dataPoints.length}</span></div>` +
+          `<span class="label">Bins</span> <span class="value">${nonEmptyBins}</span></div>` +
         `<div style="margin-top:3px;color:#888">Top cohorts (by ${weightField === "supply" ? "BTC" : "USD"}):</div>` +
         topRows;
     }
