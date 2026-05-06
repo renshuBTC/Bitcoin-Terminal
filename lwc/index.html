@@ -1186,7 +1186,7 @@ class ProfileHistogramIndicator extends Indicator {
 
     const spot = getSpotForDate(dateStr) || 0;
     const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
-    const TARGET_BINS = this.config.bins || 600;
+    const TARGET_BINS = this.config.bins || 500;
 
     // Aggregate raw bins → fixed-width buckets
     let minPrice = Infinity, maxPrice = -Infinity;
@@ -1250,16 +1250,16 @@ class ProfileHistogramIndicator extends Indicator {
     this.series.push(this._series);
     bottomChart.timeScale().fitContent();
 
-    // Cap the Y-axis at the 98th-percentile bar height so a few outlier
+    // Cap the Y-axis at the 97th-percentile bar height so a few outlier
     // peaks don't flatten the rest of the histogram.
     if (isVisibleScale && dataPoints.length >= 5) {
       const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
-      const p98 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.98))];
+      const p97 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.97))];
       try {
         const ps = bottomChart.priceScale("right");
         ps.applyOptions({ autoScale: false, scaleMargins: { top: 0.05, bottom: 0.05 } });
         if (typeof ps.setVisibleRange === "function") {
-          ps.setVisibleRange({ from: 0, to: p98 });
+          ps.setVisibleRange({ from: 0, to: p97 });
         }
       } catch (e) {}
     }
@@ -1304,7 +1304,7 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "all");
@@ -1321,7 +1321,7 @@ class URPDLTHProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "lth");
@@ -1338,7 +1338,7 @@ class URPDSTHProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "sth");
@@ -1355,7 +1355,7 @@ class SOPDProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
     { key: "cohort", label: "Cohort", type: "select",
       options: [{v:"all",l:"All"},{v:"lth",l:"LTH only"},{v:"sth",l:"STH only"}], default: "all" },
   ];
@@ -1423,7 +1423,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
   ];
 
   // fetchBuckets is unused for this indicator (we override onDateChange instead)
@@ -1450,7 +1450,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
 
     const spot = getSpotForDate(dateStr) || 0;
     const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
-    const TARGET_BINS = this.config.bins || 600;
+    const TARGET_BINS = this.config.bins || 500;
 
     // Find combined min/max price across all cohorts
     let minPrice = Infinity, maxPrice = -Infinity;
