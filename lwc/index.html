@@ -2923,8 +2923,21 @@ document.getElementById("btn-date-picker").addEventListener("click", () => {
 // % and log are mutually exclusive modes; auto is independent.
 const PSM = LightweightCharts.PriceScaleMode || { Normal: 0, Logarithmic: 1, Percentage: 2, IndexedTo100: 3 };
 let psState = { pct: false, log: true, auto: true };
+
+function _topRightScale() { return topChart.priceScale("right"); }
+function _readActualAuto() {
+  // Manual price-axis drag silently sets autoScale=false in LWC; read the
+  // truth from LWC instead of trusting psState so the button always toggles
+  // relative to what the user actually sees.
+  try {
+    const o = _topRightScale().options();
+    if (o && typeof o.autoScale === "boolean") return o.autoScale;
+  } catch (e) {}
+  return psState.auto;
+}
+
 function applyPriceScale() {
-  const scale = topChart.priceScale("right");
+  const scale = _topRightScale();
   let mode = PSM.Normal;
   if (psState.pct) mode = PSM.Percentage;
   else if (psState.log) mode = PSM.Logarithmic;
@@ -2934,6 +2947,7 @@ function applyPriceScale() {
   document.getElementById("btn-log").classList.toggle("active", psState.log);
   document.getElementById("btn-auto").classList.toggle("active", psState.auto);
 }
+
 document.getElementById("btn-pct").addEventListener("click", () => {
   psState.pct = !psState.pct;
   if (psState.pct) psState.log = false; // mutually exclusive
@@ -2944,10 +2958,29 @@ document.getElementById("btn-log").addEventListener("click", () => {
   if (psState.log) psState.pct = false; // mutually exclusive
   applyPriceScale();
 });
+
 document.getElementById("btn-auto").addEventListener("click", () => {
-  psState.auto = !psState.auto;
-  applyPriceScale();
+  // Sync our state with what LWC actually has, then flip. This handles the
+  // case where the user manually dragged the price axis (which silently
+  // disables autoScale on the LWC side without telling us).
+  const actual = _readActualAuto();
+  const next = !actual;
+  psState.auto = next;
+  const scale = _topRightScale();
+  try {
+    if (next) {
+      // Forcing a false→true transition guarantees LWC schedules an
+      // immediate refit, even if its internal autoScale flag was already
+      // true (e.g. the visible range already happens to match the fit).
+      scale.applyOptions({ autoScale: false });
+      scale.applyOptions({ autoScale: true });
+    } else {
+      scale.applyOptions({ autoScale: false });
+    }
+  } catch (e) { console.warn("auto toggle:", e); }
+  document.getElementById("btn-auto").classList.toggle("active", next);
 });
+
 // Apply initial state once topChart exists
 applyPriceScale();
 
