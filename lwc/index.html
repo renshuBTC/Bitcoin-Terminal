@@ -121,10 +121,10 @@ window.__loadMp4Muxer = function() {
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
   /* Draggable splitter — seamless 1px line at rest, lights up on hover/drag.
-     7px hit area for easy grabbing; the visible line sits in the middle via
-     a ::before pseudo-element so the actual divider element can stay
-     transparent and just paint blue when active. */
-  #chart-divider { flex: 0 0 7px; position: relative; cursor: row-resize;
+     5px hit area; the visible line sits in the middle via a ::before
+     pseudo-element so the actual divider element can stay transparent and
+     just paint blue when active. */
+  #chart-divider { flex: 0 0 5px; position: relative; cursor: row-resize;
     background: transparent; z-index: 10; touch-action: none;
     transition: background 0.08s ease; }
   #chart-divider::before { content: ""; position: absolute; left: 0; right: 0;
