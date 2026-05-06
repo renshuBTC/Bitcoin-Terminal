@@ -117,9 +117,19 @@ window.__loadMp4Muxer = function() {
   #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222; }
-  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0; }
+  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; }
+  #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
+  /* Draggable splitter between the two chart panes — TradingView-style.
+     5px hit area, 1px visible line; blue lit-up on hover/drag. */
+  #chart-divider { flex: 0 0 5px; position: relative; cursor: ns-resize;
+    background: transparent; border-top: 1px solid #222;
+    transition: background 0.08s ease, border-color 0.08s ease; }
+  #chart-divider:hover { background: rgba(41,98,255,0.25); border-top-color: #2962ff; }
+  #chart-divider.is-dragging { background: rgba(41,98,255,0.45); border-top-color: #2962ff; }
+  /* While dragging, prevent text selection and force the resize cursor everywhere. */
+  body.is-resizing-pane { user-select: none; cursor: ns-resize !important; }
+  body.is-resizing-pane * { cursor: ns-resize !important; }
   /* Suppress the TradingView attribution logo even if the layout option leaves
      it in the DOM. Targets all selector variants LWC has used across versions. */
   #chart-top a[href*="tradingview"],
@@ -315,6 +325,7 @@ window.__loadMp4Muxer = function() {
         <div class="ind-rows" id="ind-rows-top"></div>
       </div>
     </div>
+    <div id="chart-divider" title="Drag to resize"></div>
     <div id="chart-bottom-wrap">
       <div id="chart-bottom"></div>
       <div class="pane-label" id="header-bottom">
@@ -2405,6 +2416,57 @@ document.getElementById("btn-png").addEventListener("click", async () => {
     status.style.color = "#ff5c5c";
   }
 });
+
+// ───────────────────────────────────────────────────────────────────────────
+// Pane splitter — drag the divider between top/bottom charts to resize.
+// Maintains top-pane height as a percentage of the chart-stack so it stays
+// proportional when the window resizes. LWC autoSize handles re-layout.
+// ───────────────────────────────────────────────────────────────────────────
+(function wirePaneDivider() {
+  const divider = document.getElementById("chart-divider");
+  const stack = document.getElementById("chart-stack");
+  const topWrap = document.getElementById("chart-top-wrap");
+  if (!divider || !stack || !topWrap) return;
+  const MIN_PCT = 12, MAX_PCT = 88; // keep both panes visible
+  let dragging = false;
+  let stackRect = null;
+  let dividerH = 5;
+
+  divider.addEventListener("mousedown", (e) => {
+    e.preventDefault();
+    dragging = true;
+    stackRect = stack.getBoundingClientRect();
+    dividerH = divider.offsetHeight || 5;
+    divider.classList.add("is-dragging");
+    document.body.classList.add("is-resizing-pane");
+  });
+
+  document.addEventListener("mousemove", (e) => {
+    if (!dragging || !stackRect) return;
+    if (stackRect.height <= 0) return;
+    let pct = ((e.clientY - stackRect.top) / stackRect.height) * 100;
+    if (pct < MIN_PCT) pct = MIN_PCT;
+    if (pct > MAX_PCT) pct = MAX_PCT;
+    topWrap.style.flex = `0 0 ${pct.toFixed(2)}%`;
+  });
+
+  document.addEventListener("mouseup", () => {
+    if (!dragging) return;
+    dragging = false;
+    stackRect = null;
+    divider.classList.remove("is-dragging");
+    document.body.classList.remove("is-resizing-pane");
+  });
+
+  // Keep the divider responsive after the user releases outside the window.
+  document.addEventListener("mouseleave", () => {
+    if (!dragging) return;
+    dragging = false;
+    stackRect = null;
+    divider.classList.remove("is-dragging");
+    document.body.classList.remove("is-resizing-pane");
+  });
+})();
 
 // Copy-link button
 document.getElementById("btn-copy-link").addEventListener("click", async () => {
