@@ -5175,18 +5175,26 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
     return;
   }
   status.textContent = "Rendering snapshot…";
-  // Clear the crosshair on every chart so the dotted hover lines don't
-  // appear in the captured PNG. Wait two animation frames so LWC has
-  // repainted before html2canvas reads the canvases.
+  // Hide every crosshair / lock-tracer element so the snapshot reads as
+  // clean chart-only output. Layered defence:
+  //   1. Switch each chart's crosshair to Hidden mode → forces a real
+  //      LWC redraw that wipes the orange canvas-baked crosshair line.
+  //      clearCrosshairPosition() alone only invalidates the model; the
+  //      canvas keeps its last-drawn pixels until a redraw happens.
+  //   2. Hide #date-tracer (the click-locked dot) via visibility:hidden
+  //      so no reflow.
+  // Both are restored in the finally block.
+  const Hidden = LightweightCharts.CrosshairMode.Hidden;
+  const Normal = LightweightCharts.CrosshairMode.Normal;
+  try { topChart.applyOptions({ crosshair: { mode: Hidden } }); } catch (e) {}
+  try { bottomChart.applyOptions({ crosshair: { mode: Hidden } }); } catch (e) {}
   try { topChart.clearCrosshairPosition(); } catch (e) {}
   try { bottomChart.clearCrosshairPosition(); } catch (e) {}
   try { timeAxisChart.clearCrosshairPosition(); } catch (e) {}
-  // Hide the click-locked tracer dot + any associated vertical line for
-  // the duration of the capture. visibility:hidden (not display:none) so
-  // we don't trigger a reflow that would re-position other elements.
   const tracerEl = document.getElementById("date-tracer");
   const tracerPrevVis = tracerEl ? tracerEl.style.visibility : "";
   if (tracerEl) tracerEl.style.visibility = "hidden";
+  // Two animation frames so the Hidden-mode redraw lands before capture.
   await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
     const stackEl = document.getElementById("chart-stack");
@@ -5239,8 +5247,11 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
     status.textContent = "PNG export failed: " + e.message;
     status.style.color = "#ff5c5c";
   } finally {
-    // Restore the tracer's visibility regardless of success/failure.
+    // Restore the tracer's visibility and the crosshair mode regardless
+    // of success/failure.
     if (tracerEl) tracerEl.style.visibility = tracerPrevVis;
+    try { topChart.applyOptions({ crosshair: { mode: Normal } }); } catch (e) {}
+    try { bottomChart.applyOptions({ crosshair: { mode: Normal } }); } catch (e) {}
   }
 });
 
