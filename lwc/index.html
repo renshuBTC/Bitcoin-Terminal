@@ -276,6 +276,16 @@ window.__loadMp4Muxer = function() {
     display: block; pointer-events: none; max-width: none; }
   #ind-rows-bottom { position: relative; width: 100%; height: 100%; display: block; }
   #ind-rows-bottom .ind-row { position: absolute; left: 0; right: 0; }
+  /* Translucent dark backdrop so the label stays legible when an LWC
+     pane's bars rise behind it. Tight padding keeps the box hugging the
+     text — no big block. Only the label content gets the backdrop, not
+     the row's full width (which is `right: 0` so it could be wide). */
+  #ind-rows-bottom .ind-row .swatch,
+  #ind-rows-bottom .ind-row .name {
+    background: rgba(0, 0, 0, 0.55);
+  }
+  #ind-rows-bottom .ind-row .swatch { padding: 4px; box-sizing: content-box; }
+  #ind-rows-bottom .ind-row .name { padding: 1px 5px; border-radius: 2px; }
   .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
     font-size: 13px; line-height: 1.4; padding: 0; }
   .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
