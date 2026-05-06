@@ -61,9 +61,25 @@ window.__loadMp4Muxer = function() {
     transition: background-color 0.08s ease, color 0.08s ease; }
   #bottom-toolbar .bb-icon-btn:hover { background: #1a1a1a; color: #fff; }
   #bottom-toolbar .bb-icon-btn svg { display: block; }
-  /* UTC clock — monospace, dim, no background */
+  /* UTC clock — monospace, dim, click to open timezone menu */
+  #bottom-toolbar #tz-wrap { position: relative; }
   #bottom-toolbar #utc-clock { color: #888; font-variant-numeric: tabular-nums;
-    padding: 5px 8px; cursor: default; }
+    padding: 5px 8px; cursor: pointer; background: transparent; border: none;
+    font-family: inherit; font-size: 12px; border-radius: 3px;
+    transition: background-color 0.08s ease, color 0.08s ease; }
+  #bottom-toolbar #utc-clock:hover { background: #1a1a1a; color: #fff; }
+  /* Timezone menu — pops above the clock, scrolls if it overflows */
+  #bottom-toolbar #tz-menu { position: absolute; bottom: 100%; right: 0;
+    margin-bottom: 4px; background: #111; border: 1px solid #2a2a2a;
+    padding: 4px 0; min-width: 220px; max-height: 60vh; overflow-y: auto;
+    z-index: 50; display: none; border-radius: 2px; }
+  #bottom-toolbar #tz-menu.show { display: block; }
+  #bottom-toolbar #tz-menu .opt { padding: 6px 12px 6px 28px; cursor: pointer;
+    color: #d4d4d4; font-size: 12px; position: relative; white-space: nowrap; }
+  #bottom-toolbar #tz-menu .opt:hover { background: #1a1a1a; }
+  #bottom-toolbar #tz-menu .opt.active::before { content: "✓";
+    position: absolute; left: 10px; color: #d4d4d4; }
+  #bottom-toolbar #tz-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
   /* Cycle dropdown — minimal styled select to match the bar */
   #bottom-toolbar #cycle-select { background: transparent; color: #d4d4d4;
     border: none; padding: 5px 9px; font-family: inherit; font-size: 12px;
@@ -416,7 +432,10 @@ window.__loadMp4Muxer = function() {
     <span class="spacer"></span>
     <label class="bb-check" title="Update charts as you hover over them"><input type="checkbox" id="scrub-toggle" checked> Scrub</label>
     <span class="bb-sep"></span>
-    <span id="utc-clock" title="Timezone (UTC)">--:--:-- UTC</span>
+    <div id="tz-wrap">
+      <button id="utc-clock" title="Timezone" type="button">--:--:-- UTC</button>
+      <div id="tz-menu"></div>
+    </div>
     <span class="bb-sep"></span>
     <button id="btn-pct"  class="bb-btn" title="Toggle Percentage">%</button>
     <button id="btn-log"  class="bb-btn active" title="Toggle Log Scale">log</button>
@@ -2563,17 +2582,176 @@ document.getElementById("btn-copy-link").addEventListener("click", async () => {
 // Bottom-bar: TradingView-style status row controls
 // ───────────────────────────────────────────────────────────────────────────
 
-// Live UTC clock
-(function startUTCClock() {
+// Live clock + timezone picker (click clock to choose a timezone).
+// Selection persists in localStorage. Offsets are computed live so they
+// reflect daylight-saving correctly. The dropdown is grouped by UTC offset.
+(function startTZClock() {
   const el = document.getElementById("utc-clock");
-  if (!el) return;
-  function tick() {
-    const d = new Date();
-    const hh = String(d.getUTCHours()).padStart(2, "0");
-    const mm = String(d.getUTCMinutes()).padStart(2, "0");
-    const ss = String(d.getUTCSeconds()).padStart(2, "0");
-    el.textContent = `${hh}:${mm}:${ss} UTC`;
+  const menu = document.getElementById("tz-menu");
+  if (!el || !menu) return;
+
+  // IANA zone list — one per common offset/city. Order roughly west→east so
+  // when sorted by offset we get a clean (UTC-12) → (UTC+14) cascade.
+  const ZONES = [
+    { name: "UTC",          iana: "UTC",          fixed: true },
+    { name: "Exchange",     iana: "UTC",          fixed: true }, // BTC has no exchange — defaults to UTC
+    { name: "Honolulu",     iana: "Pacific/Honolulu" },
+    { name: "Anchorage",    iana: "America/Anchorage" },
+    { name: "Juneau",       iana: "America/Juneau" },
+    { name: "Los Angeles",  iana: "America/Los_Angeles" },
+    { name: "Phoenix",      iana: "America/Phoenix" },
+    { name: "Vancouver",    iana: "America/Vancouver" },
+    { name: "Denver",       iana: "America/Denver" },
+    { name: "Mexico City",  iana: "America/Mexico_City" },
+    { name: "San Salvador", iana: "America/El_Salvador" },
+    { name: "Bogota",       iana: "America/Bogota" },
+    { name: "Chicago",      iana: "America/Chicago" },
+    { name: "Lima",         iana: "America/Lima" },
+    { name: "Caracas",      iana: "America/Caracas" },
+    { name: "New York",     iana: "America/New_York" },
+    { name: "Santiago",     iana: "America/Santiago" },
+    { name: "Toronto",      iana: "America/Toronto" },
+    { name: "Buenos Aires", iana: "America/Argentina/Buenos_Aires" },
+    { name: "Sao Paulo",    iana: "America/Sao_Paulo" },
+    { name: "Reykjavik",    iana: "Atlantic/Reykjavik" },
+    { name: "Lisbon",       iana: "Europe/Lisbon" },
+    { name: "London",       iana: "Europe/London" },
+    { name: "Berlin",       iana: "Europe/Berlin" },
+    { name: "Paris",        iana: "Europe/Paris" },
+    { name: "Madrid",       iana: "Europe/Madrid" },
+    { name: "Rome",         iana: "Europe/Rome" },
+    { name: "Zurich",       iana: "Europe/Zurich" },
+    { name: "Athens",       iana: "Europe/Athens" },
+    { name: "Cairo",        iana: "Africa/Cairo" },
+    { name: "Johannesburg", iana: "Africa/Johannesburg" },
+    { name: "Istanbul",     iana: "Europe/Istanbul" },
+    { name: "Moscow",       iana: "Europe/Moscow" },
+    { name: "Tehran",       iana: "Asia/Tehran" },
+    { name: "Dubai",        iana: "Asia/Dubai" },
+    { name: "Karachi",      iana: "Asia/Karachi" },
+    { name: "Mumbai",       iana: "Asia/Kolkata" },
+    { name: "Kathmandu",    iana: "Asia/Kathmandu" },
+    { name: "Dhaka",        iana: "Asia/Dhaka" },
+    { name: "Bangkok",      iana: "Asia/Bangkok" },
+    { name: "Hong Kong",    iana: "Asia/Hong_Kong" },
+    { name: "Shanghai",     iana: "Asia/Shanghai" },
+    { name: "Singapore",    iana: "Asia/Singapore" },
+    { name: "Taipei",       iana: "Asia/Taipei" },
+    { name: "Tokyo",        iana: "Asia/Tokyo" },
+    { name: "Seoul",        iana: "Asia/Seoul" },
+    { name: "Sydney",       iana: "Australia/Sydney" },
+    { name: "Auckland",     iana: "Pacific/Auckland" },
+  ];
+
+  // Compute the current UTC offset (in hours, can be fractional like 5.5)
+  function getOffsetHours(iana) {
+    if (iana === "UTC") return 0;
+    try {
+      const fmt = new Intl.DateTimeFormat("en-US", { timeZone: iana, timeZoneName: "longOffset" });
+      const parts = fmt.formatToParts(new Date());
+      const tz = parts.find(p => p.type === "timeZoneName");
+      if (!tz) return 0;
+      // longOffset returns e.g. "GMT-05:00" or "GMT+05:30"; some browsers omit minutes
+      const m = tz.value.match(/(?:GMT|UTC)?([+-])(\d{1,2})(?::(\d{2}))?/);
+      if (!m) return 0;
+      const sign = m[1] === "+" ? 1 : -1;
+      return sign * (parseInt(m[2], 10) + (m[3] ? parseInt(m[3], 10) / 60 : 0));
+    } catch (e) { return 0; }
   }
+  function offsetLabel(iana) {
+    const o = getOffsetHours(iana);
+    const sign = o >= 0 ? "+" : "-";
+    const abs = Math.abs(o);
+    const h = Math.floor(abs);
+    const m = Math.round((abs - h) * 60);
+    return m === 0 ? `UTC${sign}${h}` : `UTC${sign}${h}:${String(m).padStart(2, "0")}`;
+  }
+
+  // Format the live clock for the toolbar in the picked zone.
+  function formatClock(iana, name) {
+    const d = new Date();
+    if (iana === "UTC") {
+      const hh = String(d.getUTCHours()).padStart(2, "0");
+      const mm = String(d.getUTCMinutes()).padStart(2, "0");
+      const ss = String(d.getUTCSeconds()).padStart(2, "0");
+      return `${hh}:${mm}:${ss} ${name === "Exchange" ? "Exchange" : "UTC"}`;
+    }
+    try {
+      const fmt = new Intl.DateTimeFormat("en-US", {
+        timeZone: iana, hour12: false,
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
+      });
+      const parts = fmt.formatToParts(d);
+      const get = t => (parts.find(p => p.type === t) || { value: "00" }).value;
+      const hh = get("hour"), mm = get("minute"), ss = get("second");
+      const tzFmt = new Intl.DateTimeFormat("en-US", { timeZone: iana, timeZoneName: "short" });
+      const tzParts = tzFmt.formatToParts(d);
+      const tzName = (tzParts.find(p => p.type === "timeZoneName") || { value: "" }).value;
+      return `${hh === "24" ? "00" : hh}:${mm}:${ss} ${tzName}`;
+    } catch (e) {
+      return d.toISOString().slice(11, 19) + " UTC";
+    }
+  }
+
+  // Read/write selected zone in localStorage
+  const LS_KEY = "btlwc_tz";
+  let selected = "UTC";
+  try { selected = localStorage.getItem(LS_KEY) || "UTC"; } catch (e) {}
+  // Map "UTC|Exchange" to its zone object — Exchange shares iana=UTC but unique key
+  function zoneFromKey(k) {
+    return ZONES.find(z => (z.name === "Exchange" ? "Exchange" : z.iana) === k) || ZONES[0];
+  }
+  function keyFor(z) { return z.name === "Exchange" ? "Exchange" : z.iana; }
+
+  // Build menu HTML once. Order: UTC, Exchange, then by offset ascending.
+  function buildMenu() {
+    const sorted = ZONES.slice().sort((a, b) => {
+      if (a.fixed && !b.fixed) return -1;
+      if (!a.fixed && b.fixed) return 1;
+      if (a.fixed && b.fixed) return ZONES.indexOf(a) - ZONES.indexOf(b);
+      return getOffsetHours(a.iana) - getOffsetHours(b.iana) ||
+             a.name.localeCompare(b.name);
+    });
+    let html = "";
+    let lastDivider = false;
+    sorted.forEach((z, i) => {
+      if (z.name === "Exchange" && !lastDivider) { /* no divider before Exchange */ }
+      if (!z.fixed && lastDivider !== "afterFixed") {
+        html += `<div class="divider"></div>`;
+        lastDivider = "afterFixed";
+      }
+      const label = z.fixed ? z.name : `(${offsetLabel(z.iana)}) ${z.name}`;
+      const k = keyFor(z);
+      html += `<div class="opt${k === selected ? " active" : ""}" data-key="${k}">${label}</div>`;
+    });
+    menu.innerHTML = html;
+    menu.querySelectorAll(".opt").forEach(el => {
+      el.addEventListener("click", () => {
+        selected = el.getAttribute("data-key");
+        try { localStorage.setItem(LS_KEY, selected); } catch (e) {}
+        menu.classList.remove("show");
+        // Update active mark in menu
+        menu.querySelectorAll(".opt").forEach(o =>
+          o.classList.toggle("active", o.getAttribute("data-key") === selected));
+        tick();
+      });
+    });
+  }
+
+  function tick() {
+    const z = zoneFromKey(selected);
+    el.textContent = formatClock(z.iana, z.name);
+  }
+
+  el.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if (!menu.classList.contains("show")) buildMenu();
+    menu.classList.toggle("show");
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.contains(e.target) && e.target !== el) menu.classList.remove("show");
+  });
+
   tick();
   setInterval(tick, 1000);
 })();
