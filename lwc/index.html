@@ -2118,7 +2118,9 @@ topChart.subscribeCrosshairMove((param) => {
 // ─── Click-to-lock + keyboard nav ─────────────────────────────────────────
 const dateTracerEl     = document.getElementById("date-tracer");
 const navInstructionEl = document.getElementById("nav-instruction");
-let _navMode      = false;
+let _navMode        = false;
+let _pathStartDateStr = null;  // date when nav mode was entered
+let _pathSeries       = null;  // orange overlay LineSeries showing the traversed range
 
 function _paramTimeToDateStr(t) {
   if (!t) return null;
@@ -2136,6 +2138,53 @@ function intervalDays() {
     if (currentInterval === "1m") return 30;
   }
   return 1;
+}
+
+// Build / update the orange "traversed path" overlay on the BTC price line.
+// It's a separate LineSeries that draws on top of the BTC price line, only
+// over the [start..current] date range, so that segment looks orange.
+function _ensurePathSeries() {
+  if (_pathSeries) return _pathSeries;
+  try {
+    _pathSeries = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: "#ff8c00",
+      lineWidth: 2,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      priceScaleId: "right",
+    });
+  } catch (e) { console.warn("path series create:", e); }
+  return _pathSeries;
+}
+function updatePathOverlay() {
+  if (!_navMode || !_pathStartDateStr || !currentDateStr) {
+    if (_pathSeries) {
+      try { _pathSeries.setData([]); } catch (e) {}
+    }
+    return;
+  }
+  const startIdx = priceDateStrs.indexOf(_pathStartDateStr);
+  const endIdx   = priceDateStrs.indexOf(currentDateStr);
+  if (startIdx < 0 || endIdx < 0) return;
+  const lo = Math.min(startIdx, endIdx);
+  const hi = Math.max(startIdx, endIdx);
+  const series = _ensurePathSeries();
+  if (!series) return;
+  const points = [];
+  for (let i = lo; i <= hi; i++) {
+    const v = priceArray[i];
+    if (typeof v === "number" && v > 0) {
+      points.push({ time: priceDateStrs[i], value: v });
+    }
+  }
+  try { series.setData(points); } catch (e) {}
+}
+function clearPathOverlay() {
+  if (_pathSeries) {
+    try { _pathSeries.setData([]); } catch (e) {}
+  }
+  _pathStartDateStr = null;
 }
 
 function updateTracerPosition() {
@@ -2184,14 +2233,17 @@ function hideInstruction() {
 function enterNavMode(dateStr) {
   if (!dateStr || !priceDateStrs || priceDateStrs.indexOf(dateStr) < 0) return;
   _navMode = true;
+  _pathStartDateStr = dateStr;        // anchor for the orange "traversed path"
   setCurrentDate(dateStr);
   updateTracerPosition();
+  updatePathOverlay();
   // Instruction is rendered persistently by refreshPaneHeaders whenever a
   // URPD/SOPD profile is loaded, so we don't show it here.
 }
 function exitNavMode() {
   _navMode = false;
   dateTracerEl.classList.remove("show");
+  clearPathOverlay();                 // remove orange traversed-path segment
   // Instruction stays visible — it's not tied to nav mode anymore.
   // Snap back to the most recent date so URPD/SOPD reflect "now"
   if (priceDateStrs && priceDateStrs.length) {
@@ -2281,6 +2333,7 @@ document.addEventListener("keydown", (e) => {
   if (_navMode) {
     ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
     updateTracerPosition();
+    updatePathOverlay();    // extend the orange traversed-path segment
   }
 });
 
