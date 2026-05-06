@@ -3694,7 +3694,11 @@ document.addEventListener("keydown", (e) => {
   if (idx < 0) return;
   idx = Math.max(0, Math.min(priceDateStrs.length - 1, idx + stepDays));
   setCurrentDate(priceDateStrs[idx]);
-  ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
+  // Intentionally do NOT pan the chart on nav steps — the user wants
+  // navigation to feel anchored to the tracer (the dot moves, the camera
+  // stays put). Auto-pan caused the chart to fly to the far right on the
+  // first step. Users can pan manually with the mouse if the tracer
+  // leaves the visible area.
   updateTracerPosition();
   updatePathOverlay();    // extend the orange traversed-path segment
 });
