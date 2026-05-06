@@ -1219,8 +1219,11 @@ function _addRightLeader(points, color) {
   if (!rightEdgeDate || rightEdgeDate <= lastPt.time) return null;
   const leader = topChart.addSeries(LightweightCharts.LineSeries, {
     color,
-    lineWidth: 1,
-    lineStyle: LightweightCharts.LineStyle.Dotted,
+    lineWidth: 2,
+    // LineStyle.Dotted at 1px width can be invisible at typical zoom
+    // levels — the dots are too sparse. Dashed at 2px reads clearly
+    // as a leader line without painting like a solid extension.
+    lineStyle: LightweightCharts.LineStyle.Dashed,
     priceLineVisible: false,
     lastValueVisible: false,
     crosshairMarkerVisible: false,
