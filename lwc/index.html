@@ -1046,6 +1046,19 @@ class RealisedPriceFilteredIndicator extends Indicator {
   seriesTitle() { return this.constructor.displayName; }
 
   async onDateChange(dateStr) {
+    // The in-Profit/in-Loss filtered means are derived from URPD bins,
+    // so they share the same nav-mode gate as the URPD histogram itself —
+    // no network calls and no price-line render unless the tracer is active.
+    if (typeof _navMode !== "undefined" && !_navMode) {
+      if (this._priceLine) {
+        const btcInd = activeIndicators.values().next().value;
+        if (btcInd && btcInd.getPriceSeries) {
+          try { btcInd.getPriceSeries().removePriceLine(this._priceLine); } catch (e) {}
+        }
+        this._priceLine = null;
+      }
+      return;
+    }
     const spot = getSpotForDate(dateStr);
     if (!spot) return;
     let resp;
@@ -1450,6 +1463,15 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
   async fetchBuckets() { return []; }
 
   async onDateChange(dateStr) {
+    // Same nav-mode gate as the base ProfileHistogramIndicator: don't
+    // touch the network or render bars unless the tracer is active.
+    if (typeof _navMode !== "undefined" && !_navMode) {
+      if (this._series) {
+        try { this._series.setData([]); } catch (e) {}
+      }
+      this._stats = null;
+      return;
+    }
     if (this._statBox) {
       this._statBox.querySelector(".date").textContent = dateStr;
     }
