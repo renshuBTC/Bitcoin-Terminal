@@ -173,6 +173,17 @@ window.__loadMp4Muxer = function() {
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
+  /* Translucent BITCOINTERMINAL.NET watermark, centred behind every chart.
+     pointer-events:none lets mouse interactions pass through to the canvas.
+     z-index:1 keeps it above the chart background but below all overlays. */
+  .chart-watermark { position: absolute; inset: 0; display: flex;
+    align-items: center; justify-content: center; pointer-events: none;
+    z-index: 1; font-family: 'Source Code Pro', Consolas, monospace;
+    font-weight: 700; letter-spacing: 0.06em;
+    color: rgba(255, 140, 0, 0.05); white-space: nowrap;
+    user-select: none; overflow: hidden; }
+  #chart-top-wrap     .chart-watermark { font-size: clamp(28px, 7vw, 110px); }
+  #chart-bottom-wrap  .chart-watermark { font-size: clamp(20px, 5vw, 80px);  }
   /* Shared global time axis — sits below the chart stack, above bottom toolbar.
      A single thin border separates it from the histogram pane above so the
      two X-axes don't run into each other visually. The URPD/SOPD's own
@@ -382,6 +393,7 @@ window.__loadMp4Muxer = function() {
   <div id="chart-stack">
     <div id="chart-top-wrap">
       <div id="chart-top"></div>
+      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
       <div id="date-tracer"><div class="line"></div></div>
       <div class="pane-label" id="header-top">
         <div class="pane-title-row">
@@ -398,6 +410,7 @@ window.__loadMp4Muxer = function() {
     <div id="chart-divider" title="Drag to resize"></div>
     <div id="chart-bottom-wrap">
       <div id="chart-bottom"></div>
+      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
       <div class="pane-label" id="header-bottom">
         <div class="ind-rows" id="ind-rows-bottom"></div>
         <div id="nav-instruction"></div>
