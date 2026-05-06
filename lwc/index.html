@@ -56,7 +56,7 @@ window.__loadMp4Muxer = function() {
   #interval-wrap { position: relative; display: inline-block; }
   #btn-interval { display: inline-flex; align-items: center; gap: 6px;
     background: transparent; color: #d4d4d4; border: none;
-    padding: 7px 12px; cursor: pointer; font-family: inherit; font-size: 15px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer; font-family: inherit; font-size: 15px; font-weight: 400;
     border-radius: 3px; transition: background-color 0.08s ease; }
   #btn-interval:hover { background: #1a1a1a; color: #fff; }
   #btn-interval .arrow { color: #666; font-size: 9px; font-weight: 400; }
@@ -1401,11 +1401,13 @@ function refreshPaneHeaders() {
   document.getElementById("header-bottom-date").textContent = currentDateStr || "—";
 
   // Build per-indicator rows, one per pane. BTC/USD is shown in the pane title
-  // itself, so we skip rendering a separate row for the always-present BTC
-  // indicator — the hover hide/remove controls only apply to user-added indicators.
+  // itself, so we skip rendering a row for it. We also skip the Spot Price
+  // Line — it's a passive helper marker that follows the crosshair date,
+  // not something the user manages with hover hide/remove.
   const topRows = [], botRows = [];
+  const SKIP_TYPES = new Set(["btc_price", "spot_line"]);
   for (const ind of activeIndicators.values()) {
-    if (ind.constructor.type === "btc_price") continue;
+    if (SKIP_TYPES.has(ind.constructor.type)) continue;
     const html = indRowHTML(ind);
     if (ind.pane() === "top") topRows.push(html); else botRows.push(html);
   }
