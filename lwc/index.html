@@ -168,6 +168,33 @@ window.__loadMp4Muxer = function() {
   #chart-type-menu .opt.active { background: #fff; color: #000; }
   #chart-type-menu .opt svg { flex-shrink: 0; }
   #chart-type-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
+  /* Credit line — small grey text with X-account links. Sits left of the
+     language picker on the top-right of the toolbar. */
+  #credit-line { color: #888; font-size: 11px; line-height: 1.4;
+    margin-right: 10px; max-width: 38vw; text-align: right;
+    white-space: normal; }
+  #credit-line .credit-link { color: #d4d4d4; text-decoration: none;
+    border-bottom: 1px dotted #555; transition: color 0.08s ease, border-color 0.08s ease; }
+  #credit-line .credit-link:hover { color: #ff8c00; border-bottom-color: #ff8c00; }
+  /* Language picker — same Bloomberg-minimal pattern as the other dropdowns. */
+  #lang-wrap { position: relative; display: inline-block; }
+  #btn-lang { display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; color: #d4d4d4; border: none;
+    padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 12px;
+    border-radius: 3px; transition: background-color 0.08s ease, color 0.08s ease; }
+  #btn-lang:hover { background: #1a1a1a; color: #fff; }
+  #btn-lang svg { display: block; }
+  #btn-lang #lang-label { font-weight: 600; letter-spacing: 0.4px; }
+  #btn-lang .arrow { color: #666; font-size: 9px; font-weight: 400; }
+  #lang-menu { position: absolute; top: 100%; right: 0; margin-top: 4px;
+    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 140px;
+    z-index: 50; display: none; border-radius: 2px; }
+  #lang-menu.show { display: block; }
+  #lang-menu .opt { padding: 7px 14px 7px 28px; cursor: pointer; color: #d4d4d4;
+    font-size: 12px; position: relative; white-space: nowrap; }
+  #lang-menu .opt:hover { background: #1a1a1a; color: #fff; }
+  #lang-menu .opt.active::before { content: "✓"; position: absolute;
+    left: 10px; color: #d4d4d4; }
   #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 17px;
     letter-spacing: 2px; margin-right: 14px; text-transform: uppercase;
     font-family: 'Roboto Condensed', 'Arial Narrow', sans-serif; }
@@ -457,6 +484,17 @@ window.__loadMp4Muxer = function() {
     <button id="btn-fullscreen" class="icon-btn" title="Fullscreen mode (Shift+F)" aria-label="Fullscreen mode"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-png" class="icon-btn" title="Take a snapshot" aria-label="Take a snapshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8.5a2 2 0 0 1 2-2h2.2l1.4-1.8a1 1 0 0 1 .8-.4h5.2a1 1 0 0 1 .8.4l1.4 1.8H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
     <span class="spacer"></span>
+    <span id="credit-line" data-i18n="credit_powered_by">Powered by <a href="https://x.com/_nym21_" target="_blank" rel="noopener noreferrer" class="credit-link">Bitcoin Research Kit</a>. <span data-i18n="credit_inspired_by">Inspired by</span> <a href="https://x.com/_Checkmatey_" target="_blank" rel="noopener noreferrer" class="credit-link">@_Checkmatey_</a>. <span data-i18n="credit_follow_me">Follow me</span> <a href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" class="credit-link">@RenshuBTC</a></span>
+    <div id="lang-wrap" title="Language">
+      <button id="btn-lang"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.6"/></svg><span id="lang-label">EN</span><span class="arrow">▾</span></button>
+      <div id="lang-menu">
+        <div class="opt active" data-lang="en">English</div>
+        <div class="opt" data-lang="ja">日本語</div>
+        <div class="opt" data-lang="fr">Français</div>
+        <div class="opt" data-lang="fa">فارسی</div>
+        <div class="opt" data-lang="zh">中文</div>
+      </div>
+    </div>
   </div>
 
   <div id="chart-stack">
@@ -4268,6 +4306,310 @@ function openExplainerModal() {
 }
 
 document.getElementById("btn-explainer")?.addEventListener("click", openExplainerModal);
+
+// ───────────────────────────────────────────────────────────────────────────
+// i18n — translate visible UI strings. Five languages: en, ja, fr, fa, zh.
+// Indicator type names (BTC, USD, CD, VD, STOCK, FLOW, LTH, STH, AGE, EPOCH,
+// URPD, SOPD, RP, SP) and proper names (BITCOIN/USD, watermark, person
+// names) stay English everywhere — they're acronyms or trade names that
+// don't translate. Mathematical formulas also stay English.
+// ───────────────────────────────────────────────────────────────────────────
+const I18N = {
+  en: {
+    code: "EN",
+    indicators: "Indicators",
+    explainer: "Explainer",
+    search: "Search",
+    only_2_panels: "Only 2 panels allowed at a time",
+    explainer_disclaimer: "Formulas, descriptions, and creator credits for the indicators on your chart",
+    no_indicators: "No indicators on the chart yet — add some via the <strong>Indicators</strong> button to see their explanations here.",
+    fullscreen: "Fullscreen mode",
+    snapshot: "Take a snapshot",
+    undo: "Undo (Ctrl+Z)",
+    redo: "Redo (Ctrl+Y)",
+    interval: "Time interval",
+    chart_type: "Chart type",
+    timezone: "Timezone",
+    cycle_top_bottom: "Cycle Top/Bottom",
+    top: "Top",
+    bottom: "Bottom",
+    lb_1m: "1 Month", lb_3m: "3 Months", lb_6m: "6 Months",
+    lb_1y: "1 Year", lb_5y: "5 Years", lb_10y: "10 Years", lb_all: "All",
+    iv_1d: "1 day", iv_1w: "1 week", iv_1m: "1 month",
+    credit_powered_by: "Powered by", credit_inspired_by: "Inspired by", credit_follow_me: "Follow me",
+    language: "Language",
+    no_description: "No description available.",
+    no_credit: "—",
+  },
+  ja: {
+    code: "日本語",
+    indicators: "インジケーター",
+    explainer: "解説",
+    search: "検索",
+    only_2_panels: "同時に表示できるパネルは2つまで",
+    explainer_disclaimer: "選択中のインジケーターの数式・説明・作者クレジット",
+    no_indicators: "まだインジケーターが追加されていません。<strong>インジケーター</strong>ボタンから追加すると、ここに解説が表示されます。",
+    fullscreen: "全画面モード",
+    snapshot: "スナップショットを取る",
+    undo: "元に戻す (Ctrl+Z)",
+    redo: "やり直す (Ctrl+Y)",
+    interval: "時間間隔",
+    chart_type: "チャートタイプ",
+    timezone: "タイムゾーン",
+    cycle_top_bottom: "サイクル天井/底",
+    top: "天井",
+    bottom: "底",
+    lb_1m: "1か月", lb_3m: "3か月", lb_6m: "6か月",
+    lb_1y: "1年", lb_5y: "5年", lb_10y: "10年", lb_all: "すべて",
+    iv_1d: "1日", iv_1w: "1週間", iv_1m: "1か月",
+    credit_powered_by: "提供:", credit_inspired_by: "インスパイア:", credit_follow_me: "フォロー:",
+    language: "言語",
+    no_description: "説明は利用できません。",
+    no_credit: "—",
+  },
+  fr: {
+    code: "FR",
+    indicators: "Indicateurs",
+    explainer: "Explications",
+    search: "Rechercher",
+    only_2_panels: "Maximum 2 panneaux à la fois",
+    explainer_disclaimer: "Formules, descriptions et crédits des créateurs pour les indicateurs sur votre graphique",
+    no_indicators: "Aucun indicateur sur le graphique — ajoutez-en via le bouton <strong>Indicateurs</strong> pour voir les explications ici.",
+    fullscreen: "Mode plein écran",
+    snapshot: "Prendre une capture",
+    undo: "Annuler (Ctrl+Z)",
+    redo: "Rétablir (Ctrl+Y)",
+    interval: "Intervalle de temps",
+    chart_type: "Type de graphique",
+    timezone: "Fuseau horaire",
+    cycle_top_bottom: "Sommet/Creux de cycle",
+    top: "Sommet",
+    bottom: "Creux",
+    lb_1m: "1 mois", lb_3m: "3 mois", lb_6m: "6 mois",
+    lb_1y: "1 an", lb_5y: "5 ans", lb_10y: "10 ans", lb_all: "Tout",
+    iv_1d: "1 jour", iv_1w: "1 semaine", iv_1m: "1 mois",
+    credit_powered_by: "Propulsé par", credit_inspired_by: "Inspiré par", credit_follow_me: "Suivez-moi",
+    language: "Langue",
+    no_description: "Aucune description disponible.",
+    no_credit: "—",
+  },
+  fa: {
+    code: "FA",
+    indicators: "اندیکاتورها",
+    explainer: "توضیحات",
+    search: "جستجو",
+    only_2_panels: "فقط ۲ پنل همزمان مجاز است",
+    explainer_disclaimer: "فرمول‌ها، توضیحات و اعتبار سازندگان اندیکاتورهای نمودار شما",
+    no_indicators: "هنوز اندیکاتوری اضافه نشده — از دکمه <strong>اندیکاتورها</strong> برای افزودن استفاده کنید تا توضیحات اینجا ظاهر شوند.",
+    fullscreen: "حالت تمام‌صفحه",
+    snapshot: "گرفتن عکس صفحه",
+    undo: "لغو (Ctrl+Z)",
+    redo: "انجام مجدد (Ctrl+Y)",
+    interval: "بازه زمانی",
+    chart_type: "نوع نمودار",
+    timezone: "منطقه زمانی",
+    cycle_top_bottom: "سقف/کف چرخه",
+    top: "سقف",
+    bottom: "کف",
+    lb_1m: "۱ ماه", lb_3m: "۳ ماه", lb_6m: "۶ ماه",
+    lb_1y: "۱ سال", lb_5y: "۵ سال", lb_10y: "۱۰ سال", lb_all: "همه",
+    iv_1d: "۱ روز", iv_1w: "۱ هفته", iv_1m: "۱ ماه",
+    credit_powered_by: "ارائه‌شده توسط", credit_inspired_by: "الهام‌گرفته از", credit_follow_me: "مرا دنبال کنید",
+    language: "زبان",
+    no_description: "توضیحی موجود نیست.",
+    no_credit: "—",
+  },
+  zh: {
+    code: "中文",
+    indicators: "指标",
+    explainer: "说明",
+    search: "搜索",
+    only_2_panels: "同时最多显示 2 个面板",
+    explainer_disclaimer: "图表上指标的公式、说明和作者署名",
+    no_indicators: "图表上还没有指标 — 通过<strong>指标</strong>按钮添加，即可在此查看说明。",
+    fullscreen: "全屏模式",
+    snapshot: "截图",
+    undo: "撤销 (Ctrl+Z)",
+    redo: "重做 (Ctrl+Y)",
+    interval: "时间间隔",
+    chart_type: "图表类型",
+    timezone: "时区",
+    cycle_top_bottom: "周期顶/底",
+    top: "顶部",
+    bottom: "底部",
+    lb_1m: "1 个月", lb_3m: "3 个月", lb_6m: "6 个月",
+    lb_1y: "1 年", lb_5y: "5 年", lb_10y: "10 年", lb_all: "全部",
+    iv_1d: "1 天", iv_1w: "1 周", iv_1m: "1 个月",
+    credit_powered_by: "技术支持:", credit_inspired_by: "灵感来自:", credit_follow_me: "关注我:",
+    language: "语言",
+    no_description: "暂无说明。",
+    no_credit: "—",
+  },
+};
+
+let _currentLang = (() => {
+  try { return localStorage.getItem("bt_lang") || "en"; } catch (e) { return "en"; }
+})();
+if (!I18N[_currentLang]) _currentLang = "en";
+
+function _t(key) {
+  const tbl = I18N[_currentLang] || I18N.en;
+  return (tbl[key] !== undefined) ? tbl[key] : (I18N.en[key] !== undefined ? I18N.en[key] : key);
+}
+
+// Build a static map of (selector, translation key, attribute) tuples
+// so applyTranslations can keep the DOM in sync without polluting every
+// element with data-i18n attributes. Anything that needs translation
+// AFTER first paint goes in this list.
+const _I18N_TARGETS = [
+  // Top toolbar buttons (text inside)
+  { sel: "#btn-add",       key: "indicators",  mode: "appendText" },
+  { sel: "#btn-explainer", key: "explainer",   mode: "appendText" },
+  { sel: "#btn-undo",      key: "undo",        mode: "title" },
+  { sel: "#btn-redo",      key: "redo",        mode: "title" },
+  { sel: "#btn-fullscreen",key: "fullscreen",  mode: "title" },
+  { sel: "#btn-png",       key: "snapshot",    mode: "title" },
+  { sel: "#interval-wrap", key: "interval",    mode: "title" },
+  { sel: "#chart-type-wrap", key: "chart_type", mode: "title" },
+  // Bottom toolbar
+  { sel: "#cycle-wrap",    key: "cycle_top_bottom", mode: "title" },
+  { sel: "#tz-wrap",       key: "timezone",    mode: "title" },
+  { sel: "#lang-wrap",     key: "language",    mode: "title" },
+  // Lookback button labels (tooltip — keep the abbrevs visible)
+  { sel: '#lb-group [data-lb="30"]',   key: "lb_1m",  mode: "title" },
+  { sel: '#lb-group [data-lb="90"]',   key: "lb_3m",  mode: "title" },
+  { sel: '#lb-group [data-lb="180"]',  key: "lb_6m",  mode: "title" },
+  { sel: '#lb-group [data-lb="365"]',  key: "lb_1y",  mode: "title" },
+  { sel: '#lb-group [data-lb="1825"]', key: "lb_5y",  mode: "title" },
+  { sel: '#lb-group [data-lb="3650"]', key: "lb_10y", mode: "title" },
+  { sel: '#lb-group [data-lb="all"]',  key: "lb_all", mode: "title" },
+  // Interval menu items
+  { sel: '#interval-menu .opt[data-interval="1d"]', key: "iv_1d", mode: "text" },
+  { sel: '#interval-menu .opt[data-interval="1w"]', key: "iv_1w", mode: "text" },
+  { sel: '#interval-menu .opt[data-interval="1m"]', key: "iv_1m", mode: "text" },
+  // Credit line — direct text spans inside
+  { sel: '#credit-line span[data-i18n="credit_inspired_by"]', key: "credit_inspired_by", mode: "text" },
+  { sel: '#credit-line span[data-i18n="credit_follow_me"]', key: "credit_follow_me", mode: "text" },
+];
+
+// Translate the cycle dropdown items (text changes Cycle 1 Top → サイクル 1 天井, etc.)
+function _retranslateCycleMenu() {
+  const map = [
+    { d: "2011-06-08", n: 1, isTop: true  },
+    { d: "2011-11-18", n: 1, isTop: false },
+    { d: "2013-11-29", n: 2, isTop: true  },
+    { d: "2015-01-14", n: 2, isTop: false },
+    { d: "2017-12-17", n: 3, isTop: true  },
+    { d: "2018-12-15", n: 3, isTop: false },
+    { d: "2021-11-10", n: 4, isTop: true  },
+    { d: "2022-11-21", n: 4, isTop: false },
+    { d: "2025-10-06", n: 5, isTop: true  },
+  ];
+  const cyc = (_currentLang === "ja") ? "サイクル"
+            : (_currentLang === "zh") ? "周期"
+            : (_currentLang === "fr") ? "Cycle"
+            : (_currentLang === "fa") ? "چرخه"
+            : "Cycle";
+  for (const m of map) {
+    const row = document.querySelector(`#cycle-menu .opt[data-date="${m.d}"]`);
+    if (!row) continue;
+    const labelSpan = row.querySelector("span:not(.cycle-date)");
+    if (labelSpan) labelSpan.textContent = `${cyc} ${m.n} ${_t(m.isTop ? "top" : "bottom")}`;
+  }
+  const btnLabel = document.querySelector("#btn-cycle span:not(.arrow)");
+  if (btnLabel) btnLabel.textContent = _t("cycle_top_bottom");
+}
+
+// Re-render the modal-disclaimer text in any open modal (Indicators / Explainer)
+function _retranslateOpenModal() {
+  const disc = document.querySelector("#modal .modal-disclaimer");
+  if (!disc) return;
+  // Decide which modal is open by inspecting the title.
+  const h3 = document.querySelector("#modal h3");
+  if (!h3) return;
+  // Modal title: refresh from the current language
+  if (h3.textContent === I18N.en.indicators || h3.textContent === I18N.ja.indicators
+   || h3.textContent === I18N.fr.indicators || h3.textContent === I18N.fa.indicators
+   || h3.textContent === I18N.zh.indicators) {
+    h3.textContent = _t("indicators");
+    disc.textContent = _t("only_2_panels");
+    const searchInput = document.querySelector("#modal-search-input");
+    if (searchInput) searchInput.placeholder = _t("search");
+  } else if (h3.textContent === I18N.en.explainer || h3.textContent === I18N.ja.explainer
+   || h3.textContent === I18N.fr.explainer || h3.textContent === I18N.fa.explainer
+   || h3.textContent === I18N.zh.explainer) {
+    h3.textContent = _t("explainer");
+    disc.textContent = _t("explainer_disclaimer");
+  }
+}
+
+function applyTranslations() {
+  // Apply each registered target.
+  for (const tgt of _I18N_TARGETS) {
+    const els = document.querySelectorAll(tgt.sel);
+    const v = _t(tgt.key);
+    els.forEach(el => {
+      if (tgt.mode === "title") {
+        el.setAttribute("title", v);
+      } else if (tgt.mode === "text") {
+        el.textContent = v;
+      } else if (tgt.mode === "appendText") {
+        // Buttons with an SVG icon followed by a text label — preserve the
+        // SVG, replace only the trailing text node(s).
+        let replaced = false;
+        for (const node of [...el.childNodes]) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            if (!replaced) { node.textContent = " " + v; replaced = true; }
+            else { node.remove(); }
+          }
+        }
+        if (!replaced) el.appendChild(document.createTextNode(" " + v));
+      }
+    });
+  }
+  // Cycle dropdown items (programmatic since they have nested spans).
+  _retranslateCycleMenu();
+  // Open modal contents (Indicators / Explainer), if any.
+  _retranslateOpenModal();
+  // Update the language picker label + RTL direction for Persian.
+  const langLabel = document.getElementById("lang-label");
+  if (langLabel) langLabel.textContent = _t("code");
+  document.documentElement.setAttribute("lang", _currentLang);
+  document.documentElement.setAttribute("dir", _currentLang === "fa" ? "rtl" : "ltr");
+}
+
+function setLanguage(lang) {
+  if (!I18N[lang]) return;
+  _currentLang = lang;
+  try { localStorage.setItem("bt_lang", lang); } catch (e) {}
+  // Mark the active option in the menu.
+  document.querySelectorAll("#lang-menu .opt").forEach(o =>
+    o.classList.toggle("active", o.getAttribute("data-lang") === lang));
+  applyTranslations();
+}
+
+// Wire up the language picker (button + popover).
+(function setupLangMenu() {
+  const btn  = document.getElementById("btn-lang");
+  const menu = document.getElementById("lang-menu");
+  if (!btn || !menu) return;
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("show");
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.contains(e.target) && e.target !== btn) menu.classList.remove("show");
+  });
+  menu.querySelectorAll(".opt").forEach(el => {
+    el.addEventListener("click", () => {
+      setLanguage(el.getAttribute("data-lang"));
+      menu.classList.remove("show");
+    });
+  });
+})();
+
+// Apply the saved language on first paint.
+setLanguage(_currentLang);
 
 // ───────────────────────────────────────────────────────────────────────────
 // Chart type selector — 12 series styles. BRK only has daily close, so OHLC
