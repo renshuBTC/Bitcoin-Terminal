@@ -663,6 +663,20 @@ function alignRightScales() {
 alignRightScales();
 window.addEventListener("resize", syncSizes);
 
+// Crosshair cleanup on pointer-leave — without this, when the cursor
+// moves from the top chart to the bottom chart (or out of the chart
+// area entirely), the previous chart's crosshair stays drawn at its
+// last position. Clearing on pointerleave hides the orphan crosshair
+// so the user only ever sees the crosshair in the pane they're
+// hovering. Using `pointerleave` rather than `mouseleave` so it also
+// handles pen / touch correctly.
+topContainer.addEventListener("pointerleave", () => {
+  try { topChart.clearCrosshairPosition(); } catch (e) {}
+});
+bottomContainer.addEventListener("pointerleave", () => {
+  try { bottomChart.clearCrosshairPosition(); } catch (e) {}
+});
+
 // ─── Time-axis sync ────────────────────────────────────────────────────────
 // The time-axis chart needs an invisible series so its time scale renders
 // labels. After BTC data loads, populate it. Then sync visible-range with
