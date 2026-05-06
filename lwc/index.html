@@ -504,17 +504,6 @@ window.__loadMp4Muxer = function() {
     <button id="btn-pct"  class="bb-btn" title="Toggle Percentage">%</button>
     <button id="btn-log"  class="bb-btn" title="Toggle Log Scale">log</button>
     <button id="btn-auto" class="bb-btn active" title="Toggle Auto Scale">auto</button>
-    <span class="bb-sep"></span>
-    <div id="export-wrap">
-      <button id="btn-export" class="bb-icon-btn" title="Export / share" aria-label="Export menu">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
-      </button>
-      <div id="export-menu">
-        <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy link</button>
-        <button id="btn-png" title="Download a PNG snapshot of the current chart">Save PNG</button>
-        <button id="btn-mp4" title="Animate through a date range and export as MP4">Export MP4</button>
-      </div>
-    </div>
   </div>
 </div>
 
@@ -3778,10 +3767,10 @@ function openMp4Modal() {
   });
 }
 
-document.getElementById("btn-mp4").addEventListener("click", openMp4Modal);
+document.getElementById("btn-mp4")?.addEventListener("click", openMp4Modal);
 
 // PNG snapshot button — uses html2canvas to rasterize chart-stack
-document.getElementById("btn-png").addEventListener("click", async () => {
+document.getElementById("btn-png")?.addEventListener("click", async () => {
   const status = document.getElementById("status");
   status.textContent = "Loading PNG export library…";
   status.style.color = "#888";
@@ -3890,7 +3879,7 @@ document.getElementById("btn-png").addEventListener("click", async () => {
 })();
 
 // Copy-link button
-document.getElementById("btn-copy-link").addEventListener("click", async () => {
+document.getElementById("btn-copy-link")?.addEventListener("click", async () => {
   const url = window.location.href;
   const status = document.getElementById("status");
   try {
