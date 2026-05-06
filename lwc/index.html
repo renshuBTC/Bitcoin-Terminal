@@ -802,7 +802,17 @@ async function buildRPFilteredTS(cohort) {
   if (_rpFilteredTSPromise.has(cohort)) return _rpFilteredTSPromise.get(cohort);
   const p = (async () => {
     const sampleDates = _rpFilteredSampleDates();
-    const out = { dates: [], btcProfit: [], btcLoss: [], usdProfit: [], usdLoss: [] };
+    // Track the unfiltered btc/usd means too — used by the USD-weighted
+    // realised-price line indicators (BRK only exposes BTC-supply-weighted
+    // realised price as a precomputed series, so the USD version has to
+    // be computed from URPD bins per sample date, same path as the filtered
+    // means). Sharing one fetch pass means asking for "Realised Price (USD)"
+    // doesn't duplicate any work the filtered indicators already did.
+    const out = {
+      dates: [],
+      btc: [], usd: [],
+      btcProfit: [], btcLoss: [], usdProfit: [], usdLoss: [],
+    };
     const BATCH = 8;
     const status = document.getElementById("status");
     let done = 0;
@@ -817,12 +827,14 @@ async function buildRPFilteredTS(cohort) {
         const spot = getSpotForDate(date);
         if (!resp || !resp.buckets || resp.buckets.length === 0 || !spot) {
           out.dates.push(date);
+          out.btc.push(null); out.usd.push(null);
           out.btcProfit.push(null); out.btcLoss.push(null);
           out.usdProfit.push(null); out.usdLoss.push(null);
           continue;
         }
         const m = computeMeansFromBuckets(resp.buckets, spot);
         out.dates.push(date);
+        out.btc.push(m.btc); out.usd.push(m.usd);
         out.btcProfit.push(m.btcProfit); out.btcLoss.push(m.btcLoss);
         out.usdProfit.push(m.usdProfit); out.usdLoss.push(m.usdLoss);
       }
@@ -1183,38 +1195,106 @@ class TopPaneSeriesIndicator extends Indicator {
 
 class RealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "realised_price";
-  static displayName = "Realised Price";
+  static displayName = "Realised Price (BTC)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.mean },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/realized_price/day1"; }
-  seriesTitle() { return "Realised Price"; }
+  seriesTitle() { return "Realised Price (BTC)"; }
 }
 
 class LTHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "lth_realised_price";
-  static displayName = "LTH Realised Price";
+  static displayName = "LTH Realised Price (BTC)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.lth },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/lth_realized_price/day1"; }
-  seriesTitle() { return "LTH Realised Price"; }
+  seriesTitle() { return "LTH Realised Price (BTC)"; }
 }
 
 class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "sth_realised_price";
-  static displayName = "STH Realised Price";
+  static displayName = "STH Realised Price (BTC)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.sth },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/sth_realized_price/day1"; }
-  seriesTitle() { return "STH Realised Price"; }
+  seriesTitle() { return "STH Realised Price (BTC)"; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// USD-weighted realised price line indicators. BRK only ships the BTC-supply-
+// weighted realised price as a precomputed daily series, so the USD
+// versions have to be built from URPD bins per sample date — exactly the
+// same pass that builds the in-Profit / in-Loss filtered means. They reuse
+// the cached `buildRPFilteredTS(cohort)` payload, so adding any of these
+// after the filtered indicators have already loaded is essentially free
+// (just reads the `usd` array out of the existing cohort cache).
+// ───────────────────────────────────────────────────────────────────────────
+class RealisedPriceUSDBaseIndicator extends Indicator {
+  static pane = "top";
+  cohort() { throw new Error("cohort not implemented"); }
+  swatchColor() { return this.config.color; }
+
+  async load() {
+    const ts = await buildRPFilteredTS(this.cohort());
+    const points = [];
+    for (let i = 0; i < ts.dates.length; i++) {
+      const v = ts.usd[i];
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        points.push({ time: ts.dates[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.constructor.displayName,
+    });
+    series.setData(points);
+    this.series.push(series);
+  }
+}
+
+class RealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
+  static type = "realised_price_usd";
+  static displayName = "Realised Price (USD)";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.mean },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  cohort() { return "all"; }
+}
+
+class LTHRealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
+  static type = "lth_realised_price_usd";
+  static displayName = "LTH Realised Price (USD)";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.lth },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  cohort() { return "lth"; }
+}
+
+class STHRealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
+  static type = "sth_realised_price_usd";
+  static displayName = "STH Realised Price (USD)";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.sth },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  cohort() { return "sth"; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1859,10 +1939,16 @@ class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
 // Add a new indicator: just register the class. UI auto-picks it up.
 // ───────────────────────────────────────────────────────────────────────────
 const INDICATOR_TYPES = [
-  // Top-pane line series (BRK precomputed; only BTC-weighted is exposed)
+  // Top-pane line series — BTC-weighted Realised Price comes straight from
+  // BRK's precomputed daily series (one fetch, instant). USD-weighted is
+  // built from URPD bins per sample date (shares cache with the filtered
+  // means below).
   RealisedPriceIndicator,
+  RealisedPriceUSDIndicator,
   LTHRealisedPriceIndicator,
+  LTHRealisedPriceUSDIndicator,
   STHRealisedPriceIndicator,
+  STHRealisedPriceUSDIndicator,
   // Top-pane profit/loss-filtered means (per-date horizontal price line)
   // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
   ..._RP_FILTERED_VARIANTS,
