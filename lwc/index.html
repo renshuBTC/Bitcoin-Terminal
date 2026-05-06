@@ -1172,6 +1172,17 @@ class ProfileHistogramIndicator extends Indicator {
   }
 
   async onDateChange(dateStr) {
+    // Profile histograms only render while the click-locked tracer is
+    // active. Any other code path that triggers a date change (initial
+    // load, URL state restore, lookback button, etc.) leaves the pane
+    // empty and stats cleared until the user double-clicks the BTC chart.
+    if (typeof _navMode !== "undefined" && !_navMode) {
+      if (this._series) {
+        try { this._series.setData([]); } catch (e) {}
+      }
+      this._stats = null;
+      return;
+    }
     let buckets;
     try { buckets = await this.fetchBuckets(dateStr); }
     catch (e) {
