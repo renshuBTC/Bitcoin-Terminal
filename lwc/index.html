@@ -141,10 +141,11 @@ window.__loadMp4Muxer = function() {
     background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 140px;
     z-index: 50; display: none; border-radius: 2px; }
   #interval-menu.show { display: block; }
-  #interval-menu .opt { padding: 7px 14px; cursor: pointer; color: #d4d4d4; font-size: 12px;
-    white-space: nowrap; }
+  #interval-menu .opt { padding: 7px 14px 7px 28px; cursor: pointer; color: #d4d4d4;
+    font-size: 12px; position: relative; white-space: nowrap; }
   #interval-menu .opt:hover { background: #1a1a1a; color: #fff; }
-  #interval-menu .opt.active { background: #fff; color: #000; }
+  #interval-menu .opt.active::before { content: "✓"; position: absolute;
+    left: 10px; color: #d4d4d4; }
 
   /* Chart type dropdown — same pattern as interval, wider menu, icon button */
   #chart-type-wrap { position: relative; display: inline-block; }
