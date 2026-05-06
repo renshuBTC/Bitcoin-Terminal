@@ -486,6 +486,9 @@ function commonChartOpts() {
       attributionLogo: false },
     grid: { vertLines: { color: THEME.grid }, horzLines: { color: THEME.grid } },
     rightPriceScale: { borderColor: THEME.border },
+    // Explicitly hide the left price scale so all charts share the same
+    // (zero-width) left gutter and their left edges align.
+    leftPriceScale: { visible: false },
     timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
       vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
