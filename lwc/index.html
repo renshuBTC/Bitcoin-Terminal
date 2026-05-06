@@ -54,12 +54,16 @@ window.__loadMp4Muxer = function() {
   #bottom-toolbar .spacer { flex: 1; }
   /* Interval dropdown (top toolbar) */
   #interval-wrap { position: relative; display: inline-block; }
-  #btn-interval { display: inline-flex; align-items: center; gap: 4px;
+  #btn-interval { display: inline-flex; align-items: center; gap: 6px;
     background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
-    padding: 5px 10px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 2px;
-    min-width: 50px; justify-content: space-between; }
+    padding: 4px 10px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700;
+    border-radius: 2px; min-width: 56px; justify-content: center; }
   #btn-interval:hover { border-color: #444; }
-  #btn-interval .arrow { color: #666; font-size: 9px; }
+  #btn-interval .arrow { color: #666; font-size: 9px; font-weight: 400; }
+  /* ƒₓ Indicators button — matching the orange primary style */
+  #btn-add { display: inline-flex; align-items: center; }
+  #btn-add .fx { font-style: italic; font-family: 'Times New Roman', serif; font-weight: 700; font-size: 14px;
+    margin-right: 2px; }
   #interval-menu { position: absolute; top: 100%; left: 0; margin-top: 4px;
     background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 110px;
     z-index: 50; display: none; }
@@ -183,36 +187,52 @@ window.__loadMp4Muxer = function() {
   #modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
     display: none; align-items: center; justify-content: center; }
   #modal-bg.show { display: flex; }
-  #modal { background: #111; border: 1px solid #333; padding: 16px; min-width: 360px;
-    max-height: 80vh; overflow-y: auto; }
-  #modal h3 { color: #ff8c00; margin-bottom: 8px; font-size: 13px; letter-spacing: 0.5px; }
-  #modal .section { margin-bottom: 12px; }
-  #modal .section-title { color: #888; font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
-  #modal .ind-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
-    cursor: pointer; border: 1px solid transparent; }
-  #modal .ind-option:hover { background: #1a1a1a; border-color: #2a2a2a; }
-  #modal .ind-option .swatch { width: 10px; height: 10px; border-radius: 1px; }
-  #modal .ind-option .name { color: #d4d4d4; flex: 1; }
-  #modal .ind-option .pane-tag { color: #666; font-size: 10px; }
-  #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #modal { background: #111; border: 1px solid #2a2a2a; min-width: 460px; max-width: 90vw;
+    max-height: 80vh; display: flex; flex-direction: column; }
+  /* Modal header — title + X close button */
+  #modal .modal-header { display: flex; align-items: center; padding: 14px 18px 10px;
+    border-bottom: 1px solid #1f1f1f; flex-shrink: 0; }
+  #modal h3 { color: #d4d4d4; font-size: 16px; font-weight: 700; letter-spacing: 0.3px;
+    margin: 0; flex: 1; }
+  #modal .modal-x { background: none; border: none; color: #888; font-size: 20px;
+    cursor: pointer; padding: 0 4px; line-height: 1; }
+  #modal .modal-x:hover { color: #fff; }
+  /* Modal search bar */
+  #modal .modal-search { padding: 10px 18px; border-bottom: 1px solid #1f1f1f; flex-shrink: 0;
+    position: relative; }
+  #modal .modal-search input { width: 100%; background: #0a0a0a; color: #d4d4d4;
+    border: 1px solid #2a2a2a; padding: 7px 10px 7px 30px; font-family: inherit; font-size: 12px;
+    border-radius: 2px; }
+  #modal .modal-search input::placeholder { color: #555; }
+  #modal .modal-search .search-icon { position: absolute; left: 26px; top: 50%; transform: translateY(-50%);
+    color: #555; font-size: 13px; pointer-events: none; }
+  /* Modal scrollable body */
+  #modal .modal-body { padding: 8px 0; overflow-y: auto; flex: 1; min-height: 200px; }
+  #modal .section-title { color: #888; font-size: 10px; padding: 8px 18px 4px;
+    text-transform: uppercase; letter-spacing: 0.5px; }
+  #modal .ind-option { display: flex; align-items: center; gap: 10px; padding: 7px 18px;
+    cursor: pointer; }
+  #modal .ind-option:hover { background: #1a1a1a; }
+  #modal .ind-option .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
+  #modal .ind-option .name { color: #d4d4d4; flex: 1; font-size: 13px; }
+  #modal .ind-option .pane-tag { color: #555; font-size: 10px; }
+  /* Edit-mode (Configure) — keep existing actions row */
+  #modal .section { padding: 0 18px; margin-bottom: 10px; }
+  #modal .actions { display: flex; justify-content: flex-end; gap: 8px; padding: 12px 18px;
+    border-top: 1px solid #1f1f1f; flex-shrink: 0; }
   #modal button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
     padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; }
   #modal button:hover { border-color: #444; }
   #modal button.primary { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
   #modal label { color: #888; font-size: 11px; display: block; margin-bottom: 3px; }
-  #modal select, #modal input[type="text"] { background: #1a1a1a; color: #d4d4d4;
-    border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px;
-    width: 100%; }
+  #modal select, #modal input[type="text"] { background: #0a0a0a; color: #d4d4d4;
+    border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px; width: 100%; }
 </style>
 </head>
 <body>
 
 <div id="app">
   <div id="toolbar">
-    <span class="brand">BITCOINTERMINAL.NET</span>
-    <span style="background:#ff8c00;color:#0a0a0a;font-weight:700;padding:2px 6px;border-radius:2px;font-size:10px;letter-spacing:0.5px">BETA</span>
-    <a href="/" style="color:#888;text-decoration:none;font-size:11px;border:1px solid #2a2a2a;padding:4px 8px;border-radius:2px" title="Back to the classic Plotly version">← classic</a>
-    <span class="spacer"></span>
     <div id="interval-wrap" title="Time interval">
       <button id="btn-interval"><span id="interval-label">1D</span><span class="arrow">▾</span></button>
       <div id="interval-menu">
@@ -221,7 +241,11 @@ window.__loadMp4Muxer = function() {
         <div class="opt" data-interval="1m">1 month</div>
       </div>
     </div>
-    <button id="btn-add" class="primary">ƒₓ Indicators</button>
+    <button id="btn-add" class="primary"><span class="fx">ƒₓ</span>&nbsp;Indicators</button>
+    <span class="spacer"></span>
+    <span class="brand">BITCOINTERMINAL.NET</span>
+    <span style="background:#ff8c00;color:#0a0a0a;font-weight:700;padding:2px 6px;border-radius:2px;font-size:10px;letter-spacing:0.5px">BETA</span>
+    <a href="/" style="color:#888;text-decoration:none;font-size:11px;border:1px solid #2a2a2a;padding:4px 8px;border-radius:2px" title="Back to the classic Plotly version">← classic</a>
   </div>
 
   <div id="chart-stack">
@@ -1165,21 +1189,34 @@ function openAddModal() {
   const bg = document.getElementById("modal-bg");
   const top = INDICATOR_TYPES.filter(t => t.pane === "top");
   const bot = INDICATOR_TYPES.filter(t => t.pane === "bottom");
-  let html = `<h3>+ Add Indicator</h3>`;
+
+  let html =
+    `<div class="modal-header">` +
+      `<h3>Indicators</h3>` +
+      `<button class="modal-x" id="modal-x" title="Close">×</button>` +
+    `</div>` +
+    `<div class="modal-search">` +
+      `<span class="search-icon">🔍</span>` +
+      `<input type="text" id="modal-search-input" placeholder="Search" autocomplete="off">` +
+    `</div>` +
+    `<div class="modal-body" id="modal-body">`;
   if (top.length) {
-    html += `<div class="section"><div class="section-title">Top pane (price chart)</div>`;
+    html += `<div class="section-title">Top pane — price chart</div>`;
     for (const T of top) html += renderTypeOption(T);
-    html += `</div>`;
   }
   if (bot.length) {
-    html += `<div class="section"><div class="section-title">Bottom pane (URPD/SOPD)</div>`;
+    html += `<div class="section-title">Bottom pane — URPD / SOPD</div>`;
     for (const T of bot) html += renderTypeOption(T);
-    html += `</div>`;
   }
-  html += `<div class="actions"><button id="modal-cancel">Cancel</button></div>`;
+  html += `</div>`;
+
   modal.innerHTML = html;
   bg.classList.add("show");
 
+  // Wire up close
+  modal.querySelector("#modal-x").addEventListener("click", () => bg.classList.remove("show"));
+
+  // Click an option → open config modal
   modal.querySelectorAll(".ind-option").forEach(el => {
     el.addEventListener("click", () => {
       const type = el.getAttribute("data-type");
@@ -1187,7 +1224,37 @@ function openAddModal() {
       openConfigModal(type);
     });
   });
-  modal.querySelector("#modal-cancel").addEventListener("click", () => bg.classList.remove("show"));
+
+  // Search filter — case-insensitive substring match on the type's displayName
+  const searchInput = modal.querySelector("#modal-search-input");
+  searchInput.addEventListener("input", () => {
+    const q = searchInput.value.trim().toLowerCase();
+    let lastVisibleSection = null;
+    let anySectionVisible = false;
+    modal.querySelectorAll("#modal-body > *").forEach(el => {
+      if (el.classList.contains("section-title")) {
+        // Hide section title if no following options match — handled by second pass
+        el.dataset._isSection = "1";
+        el.style.display = ""; // tentative
+        if (lastVisibleSection) lastVisibleSection.dataset._anyVisible = anySectionVisible ? "1" : "";
+        lastVisibleSection = el;
+        anySectionVisible = false;
+      } else if (el.classList.contains("ind-option")) {
+        const name = el.querySelector(".name").textContent.toLowerCase();
+        const visible = q === "" || name.includes(q);
+        el.style.display = visible ? "" : "none";
+        if (visible) anySectionVisible = true;
+      }
+    });
+    // Final section's visibility
+    if (lastVisibleSection) lastVisibleSection.dataset._anyVisible = anySectionVisible ? "1" : "";
+    // Hide section titles that have no visible options under them
+    modal.querySelectorAll("#modal-body > .section-title").forEach(el => {
+      if (el.dataset._anyVisible !== "1") el.style.display = "none";
+    });
+  });
+  // Auto-focus search input
+  setTimeout(() => searchInput.focus(), 50);
 }
 function renderTypeOption(T) {
   const swatch = T.prototype.swatchColor ?
@@ -1206,9 +1273,14 @@ function openConfigModal(typeName, existingIndicator) {
   const isEdit = !!existingIndicator;
   const modal = document.getElementById("modal");
   const bg = document.getElementById("modal-bg");
-  let html = `<h3>${T.displayName} — ${isEdit ? "Edit" : "Configure"}</h3>`;
+  let html =
+    `<div class="modal-header">` +
+      `<h3>${T.displayName} — ${isEdit ? "Edit" : "Configure"}</h3>` +
+      `<button class="modal-x" id="modal-x" title="Close">×</button>` +
+    `</div>` +
+    `<div class="modal-body" style="padding:14px 0">`;
   if (T.configSchema.length === 0) {
-    html += `<div style="color:#888;margin-bottom:10px">No options for this indicator.</div>`;
+    html += `<div style="color:#888;padding:0 18px">No options for this indicator.</div>`;
   }
   for (const f of T.configSchema) {
     // For edit mode, pull the current value from the existing indicator's config
@@ -1230,7 +1302,7 @@ function openConfigModal(typeName, existingIndicator) {
     }
     html += `</div>`;
   }
-  html += `<div class="actions">
+  html += `</div><div class="actions">
     <button id="modal-cancel">Cancel</button>
     <button id="modal-apply" class="primary">${isEdit ? "Apply" : "Add"}</button>
   </div>`;
@@ -1238,6 +1310,8 @@ function openConfigModal(typeName, existingIndicator) {
   bg.classList.add("show");
 
   modal.querySelector("#modal-cancel").addEventListener("click", () => bg.classList.remove("show"));
+  const xBtn = modal.querySelector("#modal-x");
+  if (xBtn) xBtn.addEventListener("click", () => bg.classList.remove("show"));
   modal.querySelector("#modal-apply").addEventListener("click", async () => {
     const config = {};
     modal.querySelectorAll("[data-key]").forEach(el => {
