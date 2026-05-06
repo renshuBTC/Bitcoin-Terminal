@@ -564,6 +564,10 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     borderColor: THEME.border, timeVisible: false, secondsVisible: false,
     rightOffset: 0, barSpacing: 4,
     tickMarkFormatter: (time) => {
+      // X-axis (cost-basis) labels only show while nav mode is active.
+      // Outside nav mode the histogram is empty and we don't want stray
+      // "$0 / $125K" ticks below it.
+      if (typeof _navMode !== "undefined" && !_navMode) return "";
       const v = typeof time === "number" ? time : 0;
       if (v <= 0)         return `$0`;
       if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`;
@@ -1251,41 +1255,54 @@ class ProfileHistogramIndicator extends Indicator {
   // Subclasses MUST override
   async fetchBuckets(dateStr) { throw new Error("fetchBuckets not implemented"); }
 
-  // Build a transparent "axis anchor" dataset that keeps the X-axis
-  // (cost-basis price) and Y-axis (weight) labelled even when the
-  // histogram has no real bars. Sized roughly to BTC's all-time
-  // price range and a representative weight magnitude so the ticks
-  // look like the populated state.
+  // Transparent "Y-axis anchor" dataset so the right-side weight scale
+  // (180K, 160K, ...) is labelled even before the histogram is populated.
+  // Times are tiny (0, 0.0001) so the X-axis range is effectively
+  // collapsed; combined with the tickMarkFormatter returning "" outside
+  // nav mode, no X-axis tick labels appear at the bottom.
   _emptyAnchorData() {
-    let maxBTC = 150000;
-    if (priceArray && priceArray.length) {
-      let m = -Infinity;
-      for (let i = 0; i < priceArray.length; i++) {
-        const v = priceArray[i];
-        if (typeof v === "number" && v > m) m = v;
-      }
-      if (isFinite(m) && m > 0) maxBTC = Math.max(m, 50000);
-    }
     return [
-      { time: 0,                  value: 200000, color: "rgba(0,0,0,0)" },
-      { time: Math.round(maxBTC), value: 0,      color: "rgba(0,0,0,0)" },
+      { time: 0,      value: 200000, color: "rgba(0,0,0,0)" },
+      { time: 0.0001, value: 0,      color: "rgba(0,0,0,0)" },
     ];
   }
 
   async load() {
     // No permanent stats box — stats are shown via hover tooltip only.
     this._stats = null;
+    // Create the histogram series upfront and seed it with the Y-axis
+    // anchor so the right-side weight scale (180K, 160K, ..., 0) is
+    // labelled even before the user activates the chart. The X-axis
+    // tick labels stay hidden via the tickMarkFormatter's nav-mode gate.
+    if (!this._series) {
+      if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+      const isVisibleScale = (_visibleScaleOwner === this.id);
+      const scaleId = isVisibleScale ? "right" : this.id;
+      this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
+        priceScaleId: scaleId,
+        priceFormat: { type: "volume" },
+        priceLineVisible: false, lastValueVisible: false,
+        title: "",
+      });
+      if (!isVisibleScale) {
+        bottomChart.priceScale(scaleId).applyOptions({
+          visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      }
+      this.series.push(this._series);
+      try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
+    }
     await this.onDateChange(currentDateStr);
   }
 
   async onDateChange(dateStr) {
     // Profile histograms only render while the click-locked tracer is
-    // active. Outside nav mode we fully clear the series so the pane has
-    // no bars AND no axis tick labels — completely empty until the user
-    // double-clicks the BTC chart to activate.
+    // active. Outside nav mode we set the transparent Y-axis anchor —
+    // the right-side weight scale stays labelled, and the X-axis ticks
+    // are suppressed via the tickMarkFormatter's nav-mode gate.
     if (typeof _navMode !== "undefined" && !_navMode) {
       if (this._series) {
-        try { this._series.setData([]); } catch (e) {}
+        try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
       }
       this._stats = null;
       return;
