@@ -3708,13 +3708,27 @@ function indRowHTML(ind) {
   const dotStyle = `background:${swatch}`;
   const hiddenClass = ind.visible ? "" : " is-hidden";
   const eyeIcon = ind.visible ? ICON_EYE_OPEN : ICON_EYE_CLOSED;
-  const eyeTitle = ind.visible ? "Hide" : "Show";
+  // Translate hover-tooltip strings (Hide/Show/Remove) when a non-EN
+  // language is active. Falls back to English if the i18n table doesn't
+  // have these keys yet.
+  const eyeTitle = ind.visible
+    ? ((typeof _t === "function") ? _t("action_hide") : "Hide")
+    : ((typeof _t === "function") ? _t("action_show") : "Show");
+  const removeTitle = (typeof _t === "function") ? _t("action_remove_btn") : "Remove";
   const isBTC = ind.constructor.type === "btc_price";
   const trashBtn = isBTC ? "" :
-    `<button class="act-btn act-trash" data-id="${ind.id}" title="Remove">${ICON_TRASH}</button>`;
+    `<button class="act-btn act-trash" data-id="${ind.id}" title="${removeTitle}">${ICON_TRASH}</button>`;
+  // Translate displayName so the active-indicator badges in the pane
+  // headers reflect the current language. The original English source
+  // is what the indicator stores, so this is a one-way translation
+  // each render — there is no need for data-en-name caching here since
+  // refreshIndicatorPanel rebuilds the rows on each language change.
+  const enName = ind.displayName();
+  const dispName = (typeof _translateIndicatorName === "function")
+    ? _translateIndicatorName(enName) : enName;
   return `<div class="ind-row${hiddenClass}" data-id="${ind.id}">` +
     `<span class="swatch" style="${dotStyle}"></span>` +
-    `<span class="name">${ind.displayName()}</span>` +
+    `<span class="name">${dispName}</span>` +
     `<span class="actions">` +
       `<button class="act-btn act-eye" data-id="${ind.id}" title="${eyeTitle}">${eyeIcon}</button>` +
       trashBtn +
@@ -3773,7 +3787,12 @@ function refreshPaneHeaders() {
   const navEl = document.getElementById("nav-instruction");
   if (navEl) {
     if (hasAnyBottom) {
-      navEl.innerHTML = `To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable`;
+      // Build the nav-help line from the current language. The keys for
+      // each fragment let translators express the verbs ("activate",
+      // "fix tracer", "navigate", "disable") in idiomatic word order
+      // while we keep the <kbd>A/←/D/→</kbd> glyphs verbatim.
+      const t = (typeof _t === "function") ? _t : (k => k);
+      navEl.innerHTML = t("nav_help_full");
       navEl.classList.add("show");
     } else {
       navEl.classList.remove("show");
@@ -3857,7 +3876,9 @@ async function editIndicatorConfig(id, newConfig) {
     await newInd.load();
   } catch (e) {
     console.error("config edit failed:", e);
-    document.getElementById("status").textContent = "Edit failed: " + e.message;
+    const failTxt = (typeof _t === "function") ? _t("status_failed") : "Failed";
+    const editTxt = (typeof _t === "function") ? _t("modal_edit") : "Edit";
+    document.getElementById("status").textContent = `${editTxt} ${failTxt.toLowerCase()}: ${e.message}`;
     activeIndicators.delete(newInd.id);
     refreshIndicatorPanel();
   }
@@ -3889,14 +3910,20 @@ function openAddModal() {
     });
   }
 
+  // Modal header pulls every visible string from the i18n table so a
+  // language switch only needs to call applyTranslations() (or just reopen
+  // the modal). Defaults retain English so the modal still works pre-i18n.
+  const titleTxt   = (typeof _t === "function") ? _t("indicators")    : "Indicators";
+  const discTxt    = (typeof _t === "function") ? _t("only_2_panels") : "Only 2 panels allowed at a time";
+  const searchTxt  = (typeof _t === "function") ? _t("search")        : "Search";
   let html =
     `<div class="modal-header">` +
-      `<h3>Indicators</h3>` +
-      `<span class="modal-disclaimer">Only 2 panels allowed at a time</span>` +
+      `<h3>${titleTxt}</h3>` +
+      `<span class="modal-disclaimer">${discTxt}</span>` +
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-search">` +
-      `<input type="text" id="modal-search-input" placeholder="Search" autocomplete="off">` +
+      `<input type="text" id="modal-search-input" placeholder="${searchTxt}" autocomplete="off">` +
     `</div>` +
     `<div class="modal-body" id="modal-body">`;
   for (const T of _sortedForPicker()) html += renderTypeOption(T);
@@ -3945,7 +3972,10 @@ function openAddModal() {
         try { target.remove(); } catch (e) { console.warn("remove:", e); }
         activeIndicators.delete(target.id);
         refreshIndicatorPanel();
-        document.getElementById("status").textContent = `Removed: ${T.displayName}`;
+        const _trans = (typeof _translateIndicatorName === "function")
+          ? _translateIndicatorName : (s => s);
+        const remTxt = (typeof _t === "function") ? _t("action_remove_btn") : "Removed";
+        document.getElementById("status").textContent = `${remTxt}: ${_trans(T.displayName)}`;
         _rerenderPickerBody();
       }
       return;
@@ -3964,8 +3994,8 @@ function openAddModal() {
       if (bottomCount >= 1) {
         // Picker stays open — user explicitly asked to keep it open until
         // they hit X — so we just surface the cap as a status hint.
-        document.getElementById("status").textContent =
-          `Only 2 panes allowed (1 top + 1 bottom). Remove the existing bottom indicator first.`;
+        const cap2Msg = (typeof _t === "function") ? _t("only_2_panels") : "Only 2 panels allowed at a time";
+        document.getElementById("status").textContent = cap2Msg;
         return;
       }
     }
@@ -3979,10 +4009,14 @@ function openAddModal() {
     _rerenderPickerBody();
     try {
       await ind.load();
-      document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
+      const _trans = (typeof _translateIndicatorName === "function")
+        ? _translateIndicatorName : (s => s);
+      const addTxt = (typeof _t === "function") ? _t("status_added") : "Added";
+      document.getElementById("status").textContent = `${addTxt}: ${_trans(ind.displayName())}`;
     } catch (e) {
       console.error("Add indicator failed:", e);
-      document.getElementById("status").textContent = "Failed: " + e.message;
+      const failTxt = (typeof _t === "function") ? _t("status_failed") : "Failed";
+      document.getElementById("status").textContent = `${failTxt}: ${e.message}`;
       try { ind.remove(); } catch (_) {}
       activeIndicators.delete(ind.id);
       refreshIndicatorPanel();
@@ -4020,14 +4054,55 @@ function renderTypeOption(T) {
   const cls = isActive ? "ind-option is-added" : "ind-option";
   // Two-text badge: "Added" by default, swaps to "Remove" on row hover via
   // pure CSS — keeps the click handler dead-simple (no JS title juggling).
+  // Each text element keeps the English source via data-en for re-translation.
+  const tagDefault = (typeof _t === "function") ? _t("action_added") : "Added";
+  const tagHover   = (typeof _t === "function") ? _t("action_remove") : "REMOVE";
   const tag = isActive
-    ? `<span class="added-tag"><span class="t-default">Added</span><span class="t-hover">Remove</span></span>`
+    ? `<span class="added-tag"><span class="t-default">${tagDefault}</span><span class="t-hover">${tagHover}</span></span>`
     : "";
+  // data-en-name preserves the English source so language switches can
+  // re-translate without losing the original.
+  const enName = T.displayName;
+  const dispName = (typeof _translateIndicatorName === "function") ? _translateIndicatorName(enName) : enName;
   return `<div class="${cls}" data-type="${T.type}">` +
     `<span class="swatch" style="background:${swatch}"></span>` +
-    `<span class="name">${T.displayName}</span>` +
+    `<span class="name" data-en-name="${enName.replace(/"/g,'&quot;')}">${dispName}</span>` +
     tag +
     `</div>`;
+}
+
+// Translate a config-schema field label (Color / Width / Bins / Weight)
+// to the active language. Falls back to the schema's English label for
+// any unknown key so we never blank out a label.
+function _translateConfigLabel(label) {
+  if (!label || typeof _t !== "function" || _currentLang === "en") return label;
+  const map = {
+    "Color":  "config_color",
+    "Width":  "config_width",
+    "Bins":   "config_bins",
+    "Weight": "config_weight",
+  };
+  const k = map[label];
+  return k ? _t(k) : label;
+}
+
+// Translate a select option label inside the config modal. Covers
+// Width (Thin/Medium/Thick) and Weight (BTC (supply) / USD (realised
+// cap) / Coinday / Valueday). Other options (e.g. raw bin counts) are
+// returned unchanged.
+function _translateConfigOption(label) {
+  if (!label || typeof _t !== "function" || _currentLang === "en") return label;
+  const map = {
+    "Thin":   "width_thin",
+    "Medium": "width_medium",
+    "Thick":  "width_thick",
+    "BTC (supply)":         "weight_btc",
+    "USD (realised cap)":   "weight_usd",
+    "Coinday":              "weight_coinday",
+    "Valueday":             "weight_valueday",
+  };
+  const k = map[label];
+  return k ? _t(k) : label;
 }
 
 function openConfigModal(typeName, existingIndicator) {
@@ -4036,26 +4111,37 @@ function openConfigModal(typeName, existingIndicator) {
   const isEdit = !!existingIndicator;
   const modal = document.getElementById("modal");
   const bg = document.getElementById("modal-bg");
+  // Translate everything visible in this modal: title prefix
+  // (indicator name), the "Edit"/"Configure" suffix, the per-field
+  // labels, the select option text, the empty-options message, and the
+  // bottom action buttons.
+  const _trans = (typeof _translateIndicatorName === "function")
+    ? _translateIndicatorName : (s => s);
+  const titleName = _trans(T.displayName);
+  const titleSuffix = isEdit
+    ? ((typeof _t === "function") ? _t("modal_edit") : "Edit")
+    : ((typeof _t === "function") ? _t("modal_configure") : "Configure");
   let html =
     `<div class="modal-header">` +
-      `<h3>${T.displayName} — ${isEdit ? "Edit" : "Configure"}</h3>` +
+      `<h3>${titleName} — ${titleSuffix}</h3>` +
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-body" style="padding:14px 0">`;
   if (T.configSchema.length === 0) {
-    html += `<div style="color:#888;padding:0 18px">No options for this indicator.</div>`;
+    const noOpts = (typeof _t === "function") ? _t("modal_no_options") : "No options for this indicator.";
+    html += `<div style="color:#888;padding:0 18px">${noOpts}</div>`;
   }
   for (const f of T.configSchema) {
     // For edit mode, pull the current value from the existing indicator's config
     const currentVal = (isEdit && existingIndicator.config[f.key] !== undefined)
       ? existingIndicator.config[f.key]
       : f.default;
-    html += `<div class="section"><label>${f.label}</label>`;
+    html += `<div class="section"><label>${_translateConfigLabel(f.label)}</label>`;
     if (f.type === "select") {
       html += `<select data-key="${f.key}">`;
       for (const opt of f.options) {
         const sel = (String(opt.v) === String(currentVal)) ? "selected" : "";
-        html += `<option value="${opt.v}" ${sel}>${opt.l}</option>`;
+        html += `<option value="${opt.v}" ${sel}>${_translateConfigOption(opt.l)}</option>`;
       }
       html += `</select>`;
     } else if (f.type === "color") {
@@ -4065,9 +4151,13 @@ function openConfigModal(typeName, existingIndicator) {
     }
     html += `</div>`;
   }
+  const cancelTxt = (typeof _t === "function") ? _t("action_cancel") : "Cancel";
+  const applyTxt  = isEdit
+    ? ((typeof _t === "function") ? _t("action_apply") : "Apply")
+    : ((typeof _t === "function") ? _t("action_add")   : "Add");
   html += `</div><div class="actions">
-    <button id="modal-cancel">Cancel</button>
-    <button id="modal-apply" class="primary">${isEdit ? "Apply" : "Add"}</button>
+    <button id="modal-cancel">${cancelTxt}</button>
+    <button id="modal-apply" class="primary">${applyTxt}</button>
   </div>`;
   modal.innerHTML = html;
   bg.classList.add("show");
@@ -4089,17 +4179,20 @@ function openConfigModal(typeName, existingIndicator) {
     bg.classList.remove("show");
     if (isEdit) {
       await editIndicatorConfig(existingIndicator.id, config);
-      document.getElementById("status").textContent = `Updated: ${T.displayName}`;
+      const updTxt = (typeof _t === "function") ? _t("status_updated") : "Updated";
+      document.getElementById("status").textContent = `${updTxt}: ${_trans(T.displayName)}`;
     } else {
       const ind = new T(config);
       activeIndicators.set(ind.id, ind);
       refreshIndicatorPanel();
       try {
         await ind.load();
-        document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
+        const addTxt = (typeof _t === "function") ? _t("status_added") : "Added";
+        document.getElementById("status").textContent = `${addTxt}: ${_trans(ind.displayName())}`;
       } catch (e) {
         console.error("Add indicator failed:", e);
-        document.getElementById("status").textContent = "Failed: " + e.message;
+        const failTxt = (typeof _t === "function") ? _t("status_failed") : "Failed";
+        document.getElementById("status").textContent = `${failTxt}: ${e.message}`;
         ind.remove();
         activeIndicators.delete(ind.id);
         refreshIndicatorPanel();
@@ -4279,20 +4372,28 @@ function openExplainerModal() {
   // hidden Spot helper — they're not user-added).
   const items = [...activeIndicators.values()]
     .filter(ind => ind.constructor.type !== "spot_line");
+  // Translate every visible string. Indicator titles flow through
+  // _translateIndicatorName so acronyms (BTC/USD/STOCK/FLOW) stay in
+  // English while the prose around them adapts to the chosen locale.
+  const _trans = (typeof _translateIndicatorName === "function")
+    ? _translateIndicatorName : (s => s);
+  const titleTxt = (typeof _t === "function") ? _t("explainer") : "Explainer";
+  const discTxt  = (typeof _t === "function") ? _t("explainer_disclaimer") : "Formulas, descriptions, and creator credits for the indicators on your chart";
+  const emptyTxt = (typeof _t === "function") ? _t("no_indicators") : "No indicators on the chart yet — add some via the <strong>Indicators</strong> button to see their explanations here.";
   let html =
     `<div class="modal-header">` +
-      `<h3>Explainer</h3>` +
-      `<span class="modal-disclaimer">Formulas, descriptions, and creator credits for the indicators on your chart</span>` +
+      `<h3>${titleTxt}</h3>` +
+      `<span class="modal-disclaimer">${discTxt}</span>` +
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-body" id="modal-body">`;
   if (items.length === 0) {
-    html += `<div style="padding:24px 18px;color:#888;font-size:13px;">No indicators on the chart yet — add some via the <strong>Indicators</strong> button to see their explanations here.</div>`;
+    html += `<div style="padding:24px 18px;color:#888;font-size:13px;">${emptyTxt}</div>`;
   } else {
     for (const ind of items) {
       const e = _explainerEntryFor(ind);
       html += `<div class="explainer-row">` +
-        `<div class="explainer-title">${e.title}</div>` +
+        `<div class="explainer-title">${_trans(e.title)}</div>` +
         `<div class="explainer-desc">${e.description}</div>` +
         `<div class="explainer-formula">${e.formula}</div>` +
         `<div class="explainer-credit">${e.credit}</div>` +
@@ -4340,6 +4441,51 @@ const I18N = {
     language: "Language",
     no_description: "No description available.",
     no_credit: "—",
+    // Indicator-name fragments — used by _translateIndicatorName to swap
+    // English prose inside displayName strings while keeping the bracketed
+    // weight/flow tags (BTC, USD, CD, VD, STOCK, FLOW) and acronyms
+    // (URPD, SOPD, RP, SP, LTH, STH, AGE, EPOCH) in English.
+    realised_price: "Realised Price",
+    spent_price: "Spent Price",
+    in_profit: "in Profit", in_loss: "in Loss",
+    profit_loss: "Profit/Loss",
+    coinday: "Coinday", valueday: "Valueday",
+    disclaimer_approx_urpd: "Approximated from URPD Difference",
+    disclaimer_aggregated_age: "Aggregated from Age Bands",
+    disclaimer_derived_sopd: "Derived from Approximated SOPD",
+    // Chart type menu
+    ct_bars: "Bars", ct_candles: "Candles", ct_hollow_candles: "Hollow candles",
+    ct_line: "Line", ct_step: "Step line", ct_area: "Area",
+    ct_baseline: "Baseline", ct_columns: "Columns",
+    ct_high_low: "High-low", ct_heikin_ashi: "Heikin Ashi",
+    // Cycle marker text on chart
+    cycle: "Cycle",
+    // Indicator panel actions
+    action_remove: "REMOVE", action_added: "Added",
+    action_edit: "Edit", action_apply: "Apply", action_add: "Add",
+    action_cancel: "Cancel", action_configure: "Configure",
+    config_color: "Color", config_width: "Width", config_bins: "Bins",
+    config_weight: "Weight",
+    width_thin: "Thin", width_medium: "Medium", width_thick: "Thick",
+    weight_btc: "BTC (supply)", weight_usd: "USD (realised cap)",
+    weight_coinday: "Coinday", weight_valueday: "Valueday",
+    // Loading / status
+    status_loading: "Loading…",
+    nav_keys_help: "Press A/← back, D/→ forward to navigate. Double-click to unlock.",
+    // Indicator-row hover button tooltips (eye / trash)
+    action_hide: "Hide", action_show: "Show", action_remove_btn: "Remove",
+    // Hover-stats popup labels for histogram bars
+    hs_spot: "Spot", hs_total: "Total", hs_bins: "Bins",
+    hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "no data for",
+    // Bottom-pane keyboard navigation help (HTML — keys stay verbatim)
+    nav_help_full: "To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable",
+    // Modal titles inside openConfigModal: "<displayName> — Edit / Configure"
+    modal_edit: "Edit", modal_configure: "Configure",
+    modal_no_options: "No options for this indicator.",
+    // Status messages
+    status_added: "Added", status_updated: "Updated", status_failed: "Failed",
+    // Hide-toggle on top toolbar (collapses sidebar / extras)
+    toggle_show: "Show", toggle_hide: "Hide",
   },
   ja: {
     code: "日本語",
@@ -4366,6 +4512,37 @@ const I18N = {
     language: "言語",
     no_description: "説明は利用できません。",
     no_credit: "—",
+    realised_price: "実現価格",
+    spent_price: "消費価格",
+    in_profit: "(含み益)", in_loss: "(含み損)",
+    profit_loss: "損益",
+    coinday: "コインデイ", valueday: "バリューデイ",
+    disclaimer_approx_urpd: "URPD差分による近似",
+    disclaimer_aggregated_age: "年齢帯から集計",
+    disclaimer_derived_sopd: "近似SOPDから導出",
+    ct_bars: "バー", ct_candles: "ローソク足", ct_hollow_candles: "中空ローソク足",
+    ct_line: "ライン", ct_step: "ステップライン", ct_area: "エリア",
+    ct_baseline: "ベースライン", ct_columns: "カラム",
+    ct_high_low: "高値–安値", ct_heikin_ashi: "平均足",
+    cycle: "サイクル",
+    action_remove: "削除", action_added: "追加済",
+    action_edit: "編集", action_apply: "適用", action_add: "追加",
+    action_cancel: "キャンセル", action_configure: "設定",
+    config_color: "色", config_width: "太さ", config_bins: "ビン数",
+    config_weight: "重み",
+    width_thin: "細い", width_medium: "中", width_thick: "太い",
+    weight_btc: "BTC (供給量)", weight_usd: "USD (実現キャップ)",
+    weight_coinday: "コインデイ", weight_valueday: "バリューデイ",
+    status_loading: "読み込み中…",
+    nav_keys_help: "A/← で戻る、D/→ で進む。ダブルクリックで解除。",
+    action_hide: "非表示", action_show: "表示", action_remove_btn: "削除",
+    hs_spot: "スポット", hs_total: "合計", hs_bins: "ビン",
+    hs_ycap: "Y上限", hs_err: "エラー", hs_no_data: "データなし:",
+    nav_help_full: "BTC価格チャートをダブルクリックでトレーサー固定 · <kbd>A</kbd>/<kbd>←</kbd> または <kbd>D</kbd>/<kbd>→</kbd> でナビゲート · ダブルクリックで解除",
+    modal_edit: "編集", modal_configure: "設定",
+    modal_no_options: "このインジケーターに設定項目はありません。",
+    status_added: "追加しました", status_updated: "更新しました", status_failed: "失敗",
+    toggle_show: "表示", toggle_hide: "非表示",
   },
   fr: {
     code: "FR",
@@ -4392,6 +4569,37 @@ const I18N = {
     language: "Langue",
     no_description: "Aucune description disponible.",
     no_credit: "—",
+    realised_price: "Prix Réalisé",
+    spent_price: "Prix Dépensé",
+    in_profit: "en Profit", in_loss: "en Perte",
+    profit_loss: "Profit/Perte",
+    coinday: "Coinday", valueday: "Valueday",
+    disclaimer_approx_urpd: "Approché par la différence URPD",
+    disclaimer_aggregated_age: "Agrégé depuis les bandes d'âge",
+    disclaimer_derived_sopd: "Dérivé du SOPD approximé",
+    ct_bars: "Barres", ct_candles: "Bougies", ct_hollow_candles: "Bougies creuses",
+    ct_line: "Ligne", ct_step: "Ligne en escalier", ct_area: "Aire",
+    ct_baseline: "Ligne de base", ct_columns: "Colonnes",
+    ct_high_low: "Haut–bas", ct_heikin_ashi: "Heikin Ashi",
+    cycle: "Cycle",
+    action_remove: "RETIRER", action_added: "Ajouté",
+    action_edit: "Modifier", action_apply: "Appliquer", action_add: "Ajouter",
+    action_cancel: "Annuler", action_configure: "Configurer",
+    config_color: "Couleur", config_width: "Largeur", config_bins: "Bins",
+    config_weight: "Pondération",
+    width_thin: "Fin", width_medium: "Moyen", width_thick: "Épais",
+    weight_btc: "BTC (offre)", weight_usd: "USD (cap. réalisée)",
+    weight_coinday: "Coinday", weight_valueday: "Valueday",
+    status_loading: "Chargement…",
+    nav_keys_help: "A/← arrière, D/→ avant. Double-cliquer pour déverrouiller.",
+    action_hide: "Masquer", action_show: "Afficher", action_remove_btn: "Retirer",
+    hs_spot: "Cours", hs_total: "Total", hs_bins: "Bins",
+    hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "aucune donnée pour",
+    nav_help_full: "Double-cliquez sur le graphique BTC pour fixer le traceur · <kbd>A</kbd>/<kbd>←</kbd> ou <kbd>D</kbd>/<kbd>→</kbd> pour naviguer · double-clic pour désactiver",
+    modal_edit: "Modifier", modal_configure: "Configurer",
+    modal_no_options: "Aucune option pour cet indicateur.",
+    status_added: "Ajouté", status_updated: "Mis à jour", status_failed: "Échec",
+    toggle_show: "Afficher", toggle_hide: "Masquer",
   },
   fa: {
     code: "FA",
@@ -4418,6 +4626,37 @@ const I18N = {
     language: "زبان",
     no_description: "توضیحی موجود نیست.",
     no_credit: "—",
+    realised_price: "قیمت تحقق‌یافته",
+    spent_price: "قیمت خرج‌شده",
+    in_profit: "در سود", in_loss: "در زیان",
+    profit_loss: "سود/زیان",
+    coinday: "Coinday", valueday: "Valueday",
+    disclaimer_approx_urpd: "تقریب از تفاوت URPD",
+    disclaimer_aggregated_age: "تجمیع از بازه‌های سنی",
+    disclaimer_derived_sopd: "مشتق‌شده از SOPD تقریبی",
+    ct_bars: "میله‌ای", ct_candles: "شمعی", ct_hollow_candles: "شمعی توخالی",
+    ct_line: "خطی", ct_step: "خط پلکانی", ct_area: "ناحیه‌ای",
+    ct_baseline: "خط مبنا", ct_columns: "ستونی",
+    ct_high_low: "بالا–پایین", ct_heikin_ashi: "هیکن آشی",
+    cycle: "چرخه",
+    action_remove: "حذف", action_added: "افزوده شد",
+    action_edit: "ویرایش", action_apply: "اعمال", action_add: "افزودن",
+    action_cancel: "لغو", action_configure: "پیکربندی",
+    config_color: "رنگ", config_width: "ضخامت", config_bins: "بازه‌ها",
+    config_weight: "وزن",
+    width_thin: "نازک", width_medium: "متوسط", width_thick: "ضخیم",
+    weight_btc: "BTC (عرضه)", weight_usd: "USD (سرمایه تحقق‌یافته)",
+    weight_coinday: "Coinday", weight_valueday: "Valueday",
+    status_loading: "در حال بارگذاری…",
+    nav_keys_help: "A/← عقب، D/→ جلو. برای آزاد کردن دو بار کلیک کنید.",
+    action_hide: "پنهان کردن", action_show: "نمایش", action_remove_btn: "حذف",
+    hs_spot: "اسپات", hs_total: "کل", hs_bins: "بازه‌ها",
+    hs_ycap: "حد Y", hs_err: "خطا", hs_no_data: "بدون داده برای",
+    nav_help_full: "برای فعال‌سازی، روی نمودار قیمت BTC دو بار کلیک کنید تا تریسر ثابت شود · <kbd>A</kbd>/<kbd>←</kbd> یا <kbd>D</kbd>/<kbd>→</kbd> برای حرکت · دو بار کلیک برای غیرفعال",
+    modal_edit: "ویرایش", modal_configure: "پیکربندی",
+    modal_no_options: "این اندیکاتور گزینه‌ای ندارد.",
+    status_added: "اضافه شد", status_updated: "به‌روزرسانی شد", status_failed: "ناموفق",
+    toggle_show: "نمایش", toggle_hide: "پنهان",
   },
   zh: {
     code: "中文",
@@ -4444,6 +4683,37 @@ const I18N = {
     language: "语言",
     no_description: "暂无说明。",
     no_credit: "—",
+    realised_price: "已实现价格",
+    spent_price: "花费价格",
+    in_profit: "在盈利", in_loss: "在亏损",
+    profit_loss: "盈亏",
+    coinday: "币天", valueday: "值天",
+    disclaimer_approx_urpd: "由 URPD 差分近似",
+    disclaimer_aggregated_age: "由年龄段聚合",
+    disclaimer_derived_sopd: "由近似 SOPD 推导",
+    ct_bars: "柱状图", ct_candles: "蜡烛图", ct_hollow_candles: "空心蜡烛图",
+    ct_line: "折线图", ct_step: "阶梯图", ct_area: "面积图",
+    ct_baseline: "基线图", ct_columns: "列状图",
+    ct_high_low: "高–低", ct_heikin_ashi: "平均K线",
+    cycle: "周期",
+    action_remove: "移除", action_added: "已添加",
+    action_edit: "编辑", action_apply: "应用", action_add: "添加",
+    action_cancel: "取消", action_configure: "配置",
+    config_color: "颜色", config_width: "线宽", config_bins: "区间数",
+    config_weight: "权重",
+    width_thin: "细", width_medium: "中", width_thick: "粗",
+    weight_btc: "BTC（供应量）", weight_usd: "USD（已实现市值）",
+    weight_coinday: "币天", weight_valueday: "值天",
+    status_loading: "加载中…",
+    nav_keys_help: "A/← 返回，D/→ 前进。双击解除锁定。",
+    action_hide: "隐藏", action_show: "显示", action_remove_btn: "移除",
+    hs_spot: "现价", hs_total: "总计", hs_bins: "区间",
+    hs_ycap: "Y 上限", hs_err: "错误", hs_no_data: "无数据:",
+    nav_help_full: "双击 BTC 价格图固定追踪器 · 按 <kbd>A</kbd>/<kbd>←</kbd> 或 <kbd>D</kbd>/<kbd>→</kbd> 导航 · 双击解除",
+    modal_edit: "编辑", modal_configure: "配置",
+    modal_no_options: "该指标无可配置选项。",
+    status_added: "已添加", status_updated: "已更新", status_failed: "失败",
+    toggle_show: "显示", toggle_hide: "隐藏",
   },
 };
 
@@ -4543,6 +4813,148 @@ function _retranslateOpenModal() {
   }
 }
 
+// Translate a single indicator displayName by replacing well-known
+// English fragments. Acronyms (BTC, USD, CD, VD, STOCK, FLOW, URPD, SOPD,
+// LTH, STH, AGE, EPOCH) and (BTC)/(USD) tags stay English. The function
+// is idempotent on already-translated strings since the replacements
+// only target English fragments.
+function _translateIndicatorName(en) {
+  if (!en) return en;
+  if (_currentLang === "en") return en;
+  let s = en;
+  // Order matters — replace longer strings first so e.g. "in Profit"
+  // is matched before any "Profit" sub-piece.
+  const REPL = [
+    ["Realised Price",  _t("realised_price")],
+    ["Spent Price",     _t("spent_price")],
+    ["in Profit",       _t("in_profit")],
+    ["in Loss",         _t("in_loss")],
+    ["Profit/Loss",     _t("profit_loss")],
+    ["Coinday",         _t("coinday")],
+    ["Valueday",        _t("valueday")],
+    ["Approximated from URPD Difference", _t("disclaimer_approx_urpd")],
+    ["Aggregated from Age Bands",         _t("disclaimer_aggregated_age")],
+    ["Derived from Approximated SOPD",    _t("disclaimer_derived_sopd")],
+  ];
+  for (const [src, dst] of REPL) {
+    if (!dst) continue;
+    s = s.split(src).join(dst);
+  }
+  return s;
+}
+
+// Translate a chart-type label using the ct_* keys.
+function _translateChartType(label) {
+  if (!label || _currentLang === "en") return label;
+  const map = {
+    "Bars": "ct_bars", "Candles": "ct_candles", "Hollow candles": "ct_hollow_candles",
+    "Line": "ct_line", "Step line": "ct_step", "Area": "ct_area",
+    "Baseline": "ct_baseline", "Columns": "ct_columns",
+    "High-low": "ct_high_low", "Heikin Ashi": "ct_heikin_ashi",
+  };
+  const k = map[label];
+  return k ? _t(k) : label;
+}
+
+// Re-render the chart-type popover so its option labels reflect the
+// current language. The active type's icon button slot doesn't need
+// updating (it's an SVG only).
+function _retranslateChartTypeMenu() {
+  if (typeof CHART_TYPES === "undefined") return;
+  document.querySelectorAll("#chart-type-menu .opt").forEach(el => {
+    const v = el.getAttribute("data-type");
+    const def = CHART_TYPES.find(t => t.v === v);
+    if (!def) return;
+    const span = el.querySelector("span");
+    if (span) span.textContent = _translateChartType(def.label);
+  });
+}
+
+// Re-attach the cycle landmark markers on the BTC price chart with
+// translated text ("Cycle 1 Top" → "サイクル 1 天井" etc.). Looks up
+// the BTC indicator's price series and the stored markers primitive.
+function _retranslateCycleMarkers() {
+  // Find the BTC indicator and the markers primitive.
+  let btcInd = null;
+  if (typeof activeIndicators !== "undefined") {
+    for (const ind of activeIndicators.values()) {
+      if (ind.constructor.type === "btc_price") { btcInd = ind; break; }
+    }
+  }
+  if (!btcInd || !btcInd._cycleMarkersPrim) return;
+  const cyc = _t("cycle");
+  const top = _t("top");
+  const bot = _t("bottom");
+  if (typeof CYCLE_LANDMARKS === "undefined") return;
+  const markers = CYCLE_LANDMARKS.map((lm, i) => {
+    const cycleNum = Math.floor(i / 2) + 1;
+    const fixedNum = (i === 8) ? 5 : cycleNum;  // last entry is "Cycle 5 Top"
+    return {
+      time: lm.time,
+      position: lm.top ? "aboveBar" : "belowBar",
+      shape: lm.top ? "arrowDown" : "arrowUp",
+      color: "rgba(255,255,255,0.85)",
+      text: `${cyc} ${fixedNum} ${lm.top ? top : bot}`,
+      size: 1,
+    };
+  });
+  try { btcInd._cycleMarkersPrim.setMarkers(markers); } catch (e) {
+    // Fallback for legacy series.setMarkers
+    const series = btcInd.getPriceSeries && btcInd.getPriceSeries();
+    if (series && typeof series.setMarkers === "function") {
+      try { series.setMarkers(markers); } catch (ee) {}
+    }
+  }
+}
+
+// Re-render the indicator picker rows + active panel with translated
+// indicator names. Hooked into the picker's row generator and the
+// active-panel renderer via the existing functions below.
+function _retranslatePickerAndPanel() {
+  // Picker rows (modal body) — only if the indicators picker is currently open
+  const modalBg = document.getElementById("modal-bg");
+  const modalBody = document.getElementById("modal-body");
+  if (modalBg && modalBg.classList.contains("show") && modalBody) {
+    // Detect if it's the Indicators picker (has .ind-option rows) or the Explainer
+    const opts = modalBody.querySelectorAll(".ind-option");
+    opts.forEach(row => {
+      const nameSpan = row.querySelector(".name");
+      if (!nameSpan) return;
+      const en = nameSpan.getAttribute("data-en-name") || nameSpan.textContent;
+      // Cache the original English so subsequent re-translations work.
+      if (!nameSpan.getAttribute("data-en-name")) nameSpan.setAttribute("data-en-name", en);
+      nameSpan.textContent = _translateIndicatorName(en);
+    });
+    // Re-translate the "Added"/"Remove" tag text on already-added rows.
+    document.querySelectorAll("#modal .ind-option .added-tag .t-default")
+      .forEach(el => el.textContent = _t("action_added"));
+    document.querySelectorAll("#modal .ind-option .added-tag .t-hover")
+      .forEach(el => el.textContent = _t("action_remove"));
+    // Explainer rows — re-translate title, description, credit
+    const exRows = modalBody.querySelectorAll(".explainer-row");
+    if (exRows.length > 0 && typeof activeIndicators !== "undefined") {
+      const items = [...activeIndicators.values()].filter(ind => ind.constructor.type !== "spot_line");
+      exRows.forEach((row, i) => {
+        const ind = items[i];
+        if (!ind || typeof _explainerEntryFor !== "function") return;
+        const e = _explainerEntryFor(ind);
+        const t = row.querySelector(".explainer-title");
+        const d = row.querySelector(".explainer-desc");
+        const f = row.querySelector(".explainer-formula");
+        const c = row.querySelector(".explainer-credit");
+        if (t) t.textContent = _translateIndicatorName(e.title);
+        if (d) d.innerHTML = e.description;
+        if (f) f.innerHTML = e.formula;
+        if (c) c.innerHTML = e.credit;
+      });
+    }
+  }
+  // Active indicator panel rows (top + bottom pane headers)
+  if (typeof refreshIndicatorPanel === "function") {
+    try { refreshIndicatorPanel(); } catch (e) {}
+  }
+}
+
 function applyTranslations() {
   // Apply each registered target.
   for (const tgt of _I18N_TARGETS) {
@@ -4569,6 +4981,12 @@ function applyTranslations() {
   }
   // Cycle dropdown items (programmatic since they have nested spans).
   _retranslateCycleMenu();
+  // Cycle landmark markers on the BTC price chart.
+  _retranslateCycleMarkers();
+  // Chart-type popover labels.
+  _retranslateChartTypeMenu();
+  // Indicator picker rows + active panel.
+  _retranslatePickerAndPanel();
   // Open modal contents (Indicators / Explainer), if any.
   _retranslateOpenModal();
   // Update the language picker label + RTL direction for Persian.
@@ -5065,40 +5483,48 @@ document.addEventListener("keydown", (e) => {
 // always-visible side panel that lived in #stats-stack.
 // ───────────────────────────────────────────────────────────────────────────
 function _renderHoverStats(stack, currentDateStr) {
-  // Build one stat-box per visible profile indicator with stats data
+  // Build one stat-box per visible profile indicator with stats data.
+  // Every label visible to the user is pulled through _t() so the popup
+  // matches the active language (Spot, Total, Bins, Y-cap, In Profit,
+  // In Loss, error/empty messages). Indicator displayNames go through
+  // _translateIndicatorName which preserves acronyms.
+  const _trans = (typeof _translateIndicatorName === "function")
+    ? _translateIndicatorName : (s => s);
+  const _tt = (k, fallback) => (typeof _t === "function") ? (_t(k) || fallback) : fallback;
   let html = "";
   for (const ind of activeIndicators.values()) {
     if (!(ind instanceof ProfileHistogramIndicator)) continue;
     if (ind.visible === false) continue;
     const s = ind._stats;
     if (!s) continue;
+    const dispName = _trans(ind.displayName());
     if (s.error) {
       html += `<div class="stat-box"><div class="title-row">` +
         `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
-        `<span class="name">${ind.displayName()}</span></div>` +
-        `<div style="color:#ff5c5c">err: ${s.error}</div></div>`;
+        `<span class="name">${dispName}</span></div>` +
+        `<div style="color:#ff5c5c">${_tt("hs_err","err")}: ${s.error}</div></div>`;
       continue;
     }
     if (s.empty) {
       html += `<div class="stat-box"><div class="title-row">` +
         `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
-        `<span class="name">${ind.displayName()}</span></div>` +
-        `<div style="color:#666">no data for ${s.dateStr}</div></div>`;
+        `<span class="name">${dispName}</span></div>` +
+        `<div style="color:#666">${_tt("hs_no_data","no data for")} ${s.dateStr}</div></div>`;
       continue;
     }
     const capLine = (s.yCapPct && s.yCapValue != null)
-      ? `<div><span class="label">Y-cap</span> <span class="value">p${s.yCapPct} = ${s.fmtCount(s.yCapValue)}</span></div>`
+      ? `<div><span class="label">${_tt("hs_ycap","Y-cap")}</span> <span class="value">p${s.yCapPct} = ${s.fmtCount(s.yCapValue)}</span></div>`
       : "";
     html += `<div class="stat-box"><div class="title-row">` +
       `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
-      `<span class="name">${ind.displayName()}</span>` +
+      `<span class="name">${dispName}</span>` +
       `<span class="date">${s.dateStr}</span></div>` +
-      `<div><span class="label">Spot</span> <span class="value">$${s.spot.toLocaleString("en-US",{maximumFractionDigits:0})}</span></div>` +
-      `<div><span class="label">Total</span> <span class="value">${s.fmtCount(s.total)}</span> &nbsp;` +
-        `<span class="label">Bins</span> <span class="value">${s.binCount}</span></div>` +
+      `<div><span class="label">${_tt("hs_spot","Spot")}</span> <span class="value">$${s.spot.toLocaleString("en-US",{maximumFractionDigits:0})}</span></div>` +
+      `<div><span class="label">${_tt("hs_total","Total")}</span> <span class="value">${s.fmtCount(s.total)}</span> &nbsp;` +
+        `<span class="label">${_tt("hs_bins","Bins")}</span> <span class="value">${s.binCount}</span></div>` +
       capLine +
-      `<div><span class="profit">In Profit ${s.pctProfit.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>` +
-      `<div><span class="loss">In Loss ${(100-s.pctProfit).toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>` +
+      `<div><span class="profit">${_tt("in_profit","In Profit")} ${s.pctProfit.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>` +
+      `<div><span class="loss">${_tt("in_loss","In Loss")} ${(100-s.pctProfit).toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>` +
       `</div>`;
   }
   stack.innerHTML = html;
