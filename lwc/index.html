@@ -169,6 +169,11 @@ window.__loadMp4Muxer = function() {
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
+  /* Shared global time axis — sits below the chart stack, above bottom toolbar.
+     The URPD/SOPD's own price axis remains inside the indicator pane (its
+     "cost basis intervals" belong to the indicator, not the chart frame). */
+  #chart-time-axis { flex: 0 0 28px; background: #000; border-top: 1px solid #1a1a1a;
+    flex-shrink: 0; }
   /* Draggable splitter — seamless 1px line at rest, lights up on hover/drag.
      5px hit area; the visible line sits in the middle via a ::before
      pseudo-element so the actual divider element can stay transparent and
@@ -403,6 +408,8 @@ window.__loadMp4Muxer = function() {
     </div>
   </div>
 
+  <div id="chart-time-axis"></div>
+
   <div id="bottom-toolbar">
     <div id="lb-group" title="Lookback window">
       <button class="bb-btn" data-lb="30"   title="1 Month">1M</button>
@@ -491,8 +498,30 @@ function commonChartOpts() {
 
 const topChart = LightweightCharts.createChart(topContainer, Object.assign(commonChartOpts(), {
   rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Logarithmic, autoScale: true },
-  timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false, rightOffset: 12, barSpacing: 2 },
+  // Hide the top chart's time axis — it's rendered in the shared #chart-time-axis below.
+  timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false,
+    rightOffset: 12, barSpacing: 2, visible: false },
 }));
+
+// Shared global time axis — minimal LWC chart that only renders date labels.
+// Lives below the chart-stack, above the bottom toolbar. Stays in sync with
+// the BTC top chart's visible time range so panning/zooming the price chart
+// updates the labels here.
+const timeAxisContainer = document.getElementById("chart-time-axis");
+const timeAxisChart = LightweightCharts.createChart(timeAxisContainer, {
+  layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
+    fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11,
+    attributionLogo: false },
+  grid:  { vertLines: { visible: false }, horzLines: { visible: false } },
+  rightPriceScale: { visible: false },
+  leftPriceScale:  { visible: false },
+  timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false,
+    rightOffset: 12, barSpacing: 2, visible: true, fixLeftEdge: false, fixRightEdge: false },
+  crosshair: { mode: LightweightCharts.CrosshairMode.Hidden,
+    vertLine: { visible: false }, horzLine: { visible: false } },
+  handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
+  handleScale:  { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: false } },
+});
 
 const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign(commonChartOpts(), {
   rightPriceScale: { borderColor: THEME.border, autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 } },
@@ -516,8 +545,50 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
 function syncSizes() {
   topChart.applyOptions({ width: topContainer.clientWidth, height: topContainer.clientHeight });
   bottomChart.applyOptions({ width: bottomContainer.clientWidth, height: bottomContainer.clientHeight });
+  if (timeAxisChart && typeof timeAxisChart.resize === "function") {
+    timeAxisChart.resize(timeAxisContainer.clientWidth, timeAxisContainer.clientHeight);
+  }
 }
 window.addEventListener("resize", syncSizes);
+
+// ─── Time-axis sync ────────────────────────────────────────────────────────
+// The time-axis chart needs an invisible series so its time scale renders
+// labels. After BTC data loads, populate it. Then sync visible-range with
+// the top chart bidirectionally so panning/zooming on either updates both.
+let _timeAxisSeries = null;
+let _syncing = false;
+function ensureTimeAxisSeries() {
+  if (_timeAxisSeries) return;
+  try {
+    _timeAxisSeries = timeAxisChart.addSeries(LightweightCharts.LineSeries, {
+      color: "rgba(0,0,0,0)", lineWidth: 1, lastValueVisible: false,
+      priceLineVisible: false, crosshairMarkerVisible: false,
+    });
+  } catch (e) { console.warn("timeAxis: addSeries", e); }
+}
+function setTimeAxisData(linePts) {
+  ensureTimeAxisSeries();
+  if (!_timeAxisSeries) return;
+  try { _timeAxisSeries.setData(linePts); } catch (e) {}
+  try {
+    const r = topChart.timeScale().getVisibleRange();
+    if (r) timeAxisChart.timeScale().setVisibleRange(r);
+    else timeAxisChart.timeScale().fitContent();
+  } catch (e) {}
+}
+// Bidirectional time-range sync between top and time-axis charts
+topChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+  if (!range || _syncing) return;
+  _syncing = true;
+  try { timeAxisChart.timeScale().setVisibleRange(range); } catch (e) {}
+  _syncing = false;
+});
+timeAxisChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
+  if (!range || _syncing) return;
+  _syncing = true;
+  try { topChart.timeScale().setVisibleRange(range); } catch (e) {}
+  _syncing = false;
+});
 // Orientation change on mobile: fires after the visual viewport has settled
 window.addEventListener("orientationchange", () => setTimeout(syncSizes, 200));
 syncSizes();
@@ -659,6 +730,12 @@ class BTCPriceIndicator extends Indicator {
     this.series.push(series);
     this._priceSeries = series;
     topChart.timeScale().fitContent();
+    // Mirror the BTC dates into the shared time-axis chart so the bottom
+    // strip below the URPD pane shows years/months synced with the price chart.
+    try {
+      const linePts = priceArray.map((c, i) => ({ time: priceDateStrs[i], value: c }));
+      setTimeAxisData(linePts);
+    } catch (e) { console.warn("timeAxis seed:", e); }
   }
   swatchColor() { return THEME.priceLine; }
   getPriceSeries() { return this._priceSeries; }
@@ -2540,8 +2617,9 @@ document.getElementById("btn-png").addEventListener("click", async () => {
     try {
       const topEl = document.getElementById("chart-top");
       const botEl = document.getElementById("chart-bottom");
-      if (topEl && topChart  && topChart.resize)    topChart.resize(topEl.clientWidth, topEl.clientHeight);
+      if (topEl && topChart    && topChart.resize)    topChart.resize(topEl.clientWidth, topEl.clientHeight);
       if (botEl && bottomChart && bottomChart.resize) bottomChart.resize(botEl.clientWidth, botEl.clientHeight);
+      if (timeAxisChart && timeAxisChart.resize)      timeAxisChart.resize(timeAxisContainer.clientWidth, timeAxisContainer.clientHeight);
     } catch (err) {}
   }
 
