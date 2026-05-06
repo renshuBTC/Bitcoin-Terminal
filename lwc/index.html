@@ -6,7 +6,7 @@
 <title>BITCOINTERMINAL.NET (Indicator Framework)</title>
 <link rel="preconnect" href="https://bitview.space" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&family=Roboto+Condensed:wght@700&display=swap">
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
 <!-- html2canvas for PNG export. Loaded on first click via dynamic import to avoid up-front cost. -->
 <script>
@@ -174,18 +174,18 @@ window.__loadMp4Muxer = function() {
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
   /* Translucent BITCOINTERMINAL.NET watermark, centred behind every chart.
-     White with low alpha for a subtle institutional feel — like the prior
-     site's watermark. pointer-events:none lets mouse interactions pass
-     through to the canvas. z-index:1 keeps it above the chart background
-     but below all overlays. */
+     Matches the previous Plotly site: Roboto Condensed (with Arial Narrow
+     fallback), 4px letter-spacing, 15% white. pointer-events:none lets
+     mouse interactions pass through to the canvas. z-index:1 keeps it
+     above the chart background but below all overlays. */
   .chart-watermark { position: absolute; inset: 0; display: flex;
     align-items: center; justify-content: center; pointer-events: none;
-    z-index: 1; font-family: 'Source Code Pro', Consolas, monospace;
-    font-weight: 700; letter-spacing: 0.06em;
-    color: rgba(255, 255, 255, 0.06); white-space: nowrap;
+    z-index: 1; font-family: 'Roboto Condensed', 'Arial Narrow', sans-serif;
+    font-weight: 700; letter-spacing: 4px; text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.15); white-space: nowrap;
     user-select: none; overflow: hidden; }
-  #chart-top-wrap     .chart-watermark { font-size: clamp(16px, 2.6vw, 38px); }
-  #chart-bottom-wrap  .chart-watermark { font-size: clamp(14px, 2.2vw, 32px); }
+  #chart-top-wrap     .chart-watermark { font-size: clamp(28px, 4.5vw, 56px); }
+  #chart-bottom-wrap  .chart-watermark { font-size: clamp(22px, 3.6vw, 44px); }
   /* Shared global time axis — sits below the chart stack, above bottom toolbar.
      A single thin border separates it from the histogram pane above so the
      two X-axes don't run into each other visually. The URPD/SOPD's own
