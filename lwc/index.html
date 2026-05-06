@@ -409,6 +409,25 @@ window.__loadMp4Muxer = function() {
     padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; }
   #modal button:hover { border-color: #444; }
   #modal button.primary { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+  /* Explainer modal rows — title + description + formula + credit, with a
+     subtle separator between rows. Formula is rendered with serif italics
+     to read as math; credit sits in muted grey at the bottom of each row. */
+  #modal .explainer-row { padding: 14px 18px; border-bottom: 1px solid #1f1f1f; }
+  #modal .explainer-row:last-child { border-bottom: none; }
+  #modal .explainer-title { color: #d4d4d4; font-size: 13px; font-weight: 700;
+    letter-spacing: 0.2px; margin-bottom: 6px; }
+  #modal .explainer-desc { color: #b0b0b0; font-size: 12px; line-height: 1.5;
+    margin-bottom: 10px; }
+  #modal .explainer-desc em { color: #d4d4d4; font-style: italic; }
+  #modal .explainer-formula { color: #ff8c00; font-size: 13px;
+    font-family: "Times New Roman", "STIX Two Math", serif; font-style: italic;
+    background: #0a0a0a; border: 1px solid #1f1f1f; border-radius: 2px;
+    padding: 8px 12px; margin-bottom: 8px; line-height: 1.6;
+    overflow-x: auto; white-space: nowrap; }
+  #modal .explainer-formula sub { font-size: 0.7em; vertical-align: sub; }
+  #modal .explainer-formula sup { font-size: 0.7em; vertical-align: super; }
+  #modal .explainer-credit { color: #666; font-size: 11px;
+    font-style: italic; letter-spacing: 0.2px; }
   #modal label { color: #888; font-size: 11px; display: block; margin-bottom: 3px; }
   #modal select, #modal input[type="text"] { background: #0a0a0a; color: #d4d4d4;
     border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px; width: 100%; }
@@ -432,6 +451,7 @@ window.__loadMp4Muxer = function() {
       <div id="chart-type-menu"></div>
     </div>
     <button id="btn-add" class="primary"><svg class="ind-icon" width="17" height="17" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
+    <button id="btn-explainer" class="primary" title="Explainer on selected indicators"><svg width="17" height="17" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="8" cy="8" r="6.6" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M5.8 6.2 a2.2 2.2 0 0 1 4.4 0 c0 1.1 -2.2 1.5 -2.2 2.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" fill="none"/><circle cx="8" cy="11.5" r="0.85" fill="currentColor"/></svg>&nbsp;Explainer</button>
     <button id="btn-undo" class="icon-btn" title="Undo (Ctrl+Z)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 7v6h6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-redo" class="icon-btn" title="Redo (Ctrl+Y)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 7v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-fullscreen" class="icon-btn" title="Fullscreen mode (Shift+F)" aria-label="Fullscreen mode"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
@@ -4051,6 +4071,175 @@ function openConfigModal(typeName, existingIndicator) {
 }
 
 document.getElementById("btn-add").addEventListener("click", openAddModal);
+
+// ───────────────────────────────────────────────────────────────────────────
+// Explainer modal — opens a panel that lists every CURRENTLY ACTIVE
+// indicator with an elegant formula, a short description and a credit
+// to the creator/originator. References version 1's rp_explainTitle
+// content (rp.js ~line 4790) and adds the BRK / Coinmetrics / Glassnode
+// / Cointime attributions.
+// ───────────────────────────────────────────────────────────────────────────
+
+// Per-indicator explainer entries. The lookup walks the indicator's
+// `static type` string and matches by family suffix so we don't have to
+// enumerate all 100+ variants — adding a new RP/SP/URPD/SOPD variant
+// automatically picks up the correct explainer.
+function _explainerEntryFor(ind) {
+  const t = ind.constructor.type;
+  const dn = (typeof ind.displayName === "function") ? ind.displayName() : ind.constructor.displayName;
+  // Derive weight from config first (URPD/SOPD histograms expose it that
+  // way), then fall back to type-suffix detection (line variants encode
+  // their weight in the static type, e.g. `rp_profit_usd`).
+  let wt = (ind.config && ind.config.weight) || null;
+  if (!wt) {
+    if (t.endsWith("_usd")) wt = "usd";
+    else if (t.endsWith("_cd")) wt = "cd";
+    else if (t.endsWith("_vd")) wt = "vd";
+    else wt = "btc";
+  }
+  const wtLabel = wt === "usd" ? "USD" : wt === "cd" ? "Coinday" : wt === "vd" ? "Valueday" : "BTC";
+  const cohortPrefix = (t.startsWith("lth_") ? "LTH " : t.startsWith("sth_") ? "STH " : "");
+  const isLoss = t.includes("_loss_");
+  const isProfit = t.includes("_profit_");
+  // ── Realised Price family (line indicators) ────────────────────────
+  if (t === "realised_price" || t === "lth_realised_price" || t === "sth_realised_price"
+   || t === "realised_price_usd" || t === "lth_realised_price_usd" || t === "sth_realised_price_usd"
+   || /^(?:lth_|sth_)?rp(?:_(?:profit|loss))?_(?:btc|usd|cd|vd)$/.test(t)) {
+    const numW = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    let formula;
+    if (isProfit) {
+      formula = `μ<sub>RP,P</sub> ≡ Σ<sub>P<sub>i</sub>≤spot</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>P<sub>i</sub>≤spot</sub> ${numW}<sub>i</sub>`;
+    } else if (isLoss) {
+      formula = `μ<sub>RP,L</sub> ≡ Σ<sub>P<sub>i</sub>>spot</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>P<sub>i</sub>>spot</sub> ${numW}<sub>i</sub>`;
+    } else {
+      formula = `μ<sub>RP</sub> ≡ Σ<sub>i</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>i</sub> ${numW}<sub>i</sub>`;
+    }
+    const description = `${cohortPrefix}${wtLabel}-weighted mean of UTXO cost-basis prices${isProfit ? " filtered to UTXOs in profit (P ≤ spot)" : isLoss ? " filtered to UTXOs in loss (P > spot)" : ""}.`;
+    const credit = (wt === "cd" || wt === "vd")
+      ? "Cointime Economics framework — David Puell &amp; James Check (2023)"
+      : "Realised Price — Coinmetrics, David Puell &amp; Pierre Rochard (2018)";
+    return { title: dn, description, formula, credit };
+  }
+  // ── Spent Price family (line indicators, FLOW) ─────────────────────
+  if (/^(?:lth_|sth_)?sp(?:_(?:profit|loss))?_(?:btc|usd|cd|vd)$/.test(t)) {
+    const numW = wt === "usd" ? "ΔRC" : wt === "cd" ? "ΔCD" : wt === "vd" ? "ΔVD" : "ΔS";
+    let formula;
+    if (isProfit) {
+      formula = `μ<sub>SP,P</sub> ≡ Σ<sub>P<sub>i</sub>≤spot</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>P<sub>i</sub>≤spot</sub> ${numW}<sub>i</sub>`;
+    } else if (isLoss) {
+      formula = `μ<sub>SP,L</sub> ≡ Σ<sub>P<sub>i</sub>>spot</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>P<sub>i</sub>>spot</sub> ${numW}<sub>i</sub>`;
+    } else {
+      formula = `μ<sub>SP</sub> ≡ Σ<sub>i</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>i</sub> ${numW}<sub>i</sub>`;
+    }
+    const description = `${cohortPrefix}${wtLabel}-weighted mean of cost-basis prices for supply <em>spent</em> in the day. Approximated from the day-over-day URPD difference (Δ).`;
+    const credit = "SOPD / Spent Output Price — David Puell (Coinmetrics, 2019)";
+    return { title: dn, description, formula, credit };
+  }
+  // ── URPD histograms (bottom pane, Profit/Loss split) ───────────────
+  if (t === "urpd_profile" || t === "urpd_profile_usd" || t === "urpd_profile_cd" || t === "urpd_profile_vd") {
+    const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    const formula = `URPD(P) ≡ Σ ${wField}<sub>i</sub>  ∀ utxo with cost-basis P<sub>i</sub> ∈ [P, P+ΔP)`;
+    const description = `Distribution of bitcoin's supply by the price at which each UTXO was last moved, weighted by ${wtLabel}. Bars left of the spot price are "in profit" (green), right are "in loss" (red).`;
+    const credit = (wt === "cd" || wt === "vd")
+      ? "Cointime Economics framework — David Puell &amp; James Check (2023)"
+      : "URPD — Glassnode (2018)";
+    return { title: dn, description, formula, credit };
+  }
+  // ── URPD LTH/STH split histograms ──────────────────────────────────
+  if (t.startsWith("urpd_lth_sth_history")) {
+    const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    const formula = `URPD<sub>LTH/STH</sub>(P) ≡ Σ<sub>cohort∈{LTH,STH}</sub> ${wField}<sub>cohort,i</sub>(P)`;
+    const description = `URPD split by holder cohort: long-term holders (UTXO age ≥ 155 days) vs. short-term holders. Stacked so LTH sits on the baseline, STH stacks above.`;
+    return { title: dn, description, formula,
+      credit: "LTH/STH split — Glassnode 155-day threshold convention" };
+  }
+  // ── URPD AGE histograms ────────────────────────────────────────────
+  if (t.startsWith("urpd_age_history")) {
+    const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    const formula = `URPD<sub>AGE</sub>(P) ≡ Σ<sub>k=1..21</sub> ${wField}<sub>age<sub>k</sub>,i</sub>(P)`;
+    const description = `URPD split into 21 UTXO age bands (under 1h … over 15y). Stacked oldest-on-baseline. Reveals which holding cohorts hold supply at each price level.`;
+    return { title: dn, description, formula,
+      credit: "Age-band UTXO breakdown — Glassnode HODL-waves convention" };
+  }
+  // ── URPD EPOCH histograms ──────────────────────────────────────────
+  if (t.startsWith("urpd_epoch_history")) {
+    const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    const formula = `URPD<sub>EPOCH</sub>(P) ≡ Σ<sub>e=1..5</sub> ${wField}<sub>epoch<sub>e</sub>,i</sub>(P)`;
+    const description = `URPD split into 5 Bitcoin halving epochs. UTXOs assigned to the epoch their (current-age-derived) creation date falls into. Aggregated from the 21 age bands.`;
+    return { title: dn, description, formula,
+      credit: "Halving epoch convention — Bitcoin protocol; aggregation by bitcointerminal.net" };
+  }
+  // ── SOPD - Profit/Loss histogram ───────────────────────────────────
+  if (t === "sopd_profit_loss" || t === "sopd_profit_loss_usd" || t === "sopd_profit_loss_cd" || t === "sopd_profit_loss_vd") {
+    const wField = wt === "usd" ? "ΔRC" : wt === "cd" ? "ΔCD" : wt === "vd" ? "ΔVD" : "ΔS";
+    const formula = `SOPD(P) ≡ ${wField}<sub>i</sub>(P) = ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>prev</sub>(P) − ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>curr</sub>(P)  ∀ ${wField} > 0`;
+    const description = `Spent Output Price Distribution — supply <em>spent</em> during the day, broken down by the cost basis it was spent at, weighted by ${wtLabel}. Approximated from the day-over-day URPD difference at the raw price-floor level.`;
+    return { title: dn, description, formula,
+      credit: "SOPD — David Puell (Coinmetrics, 2019)" };
+  }
+  // ── SOPD LTH/STH / AGE / EPOCH histograms ──────────────────────────
+  if (t.startsWith("sopd_lth_sth_history") || t.startsWith("sopd_age_history") || t.startsWith("sopd_epoch_history")) {
+    const wField = wt === "usd" ? "ΔRC" : wt === "cd" ? "ΔCD" : wt === "vd" ? "ΔVD" : "ΔS";
+    let split = "cohort", cohorts = "{LTH,STH}";
+    if (t.startsWith("sopd_age_history")) { split = "age"; cohorts = "k=1..21 age bands"; }
+    else if (t.startsWith("sopd_epoch_history")) { split = "epoch"; cohorts = "e=1..5 halving epochs"; }
+    const formula = `SOPD<sub>${split}</sub>(P) ≡ Σ<sub>${cohorts}</sub> ${wField}<sub>${split},i</sub>(P)`;
+    const description = `SOPD split by ${split} (${cohorts}). Same diff math as the unfiltered SOPD, applied per cohort then stacked.`;
+    return { title: dn, description, formula,
+      credit: "SOPD — David Puell (Coinmetrics, 2019); split by bitcointerminal.net" };
+  }
+  // ── BTC Price ──────────────────────────────────────────────────────
+  if (t === "btc_price") {
+    return {
+      title: "BTC / USD",
+      description: "Daily closing price of bitcoin in U.S. dollars. The base series every other indicator references.",
+      formula: "P<sub>t</sub> = close price on day t",
+      credit: "Bitcoin Research Kit (BRK) — Brk_query &amp; bitview.space",
+    };
+  }
+  // Fallback for anything we don't have a custom entry for
+  return {
+    title: dn,
+    description: "No description available.",
+    formula: "—",
+    credit: "—",
+  };
+}
+
+function openExplainerModal() {
+  const modal = document.getElementById("modal");
+  const bg    = document.getElementById("modal-bg");
+  // Collect active indicators (skip the always-present BTC and the
+  // hidden Spot helper — they're not user-added).
+  const items = [...activeIndicators.values()]
+    .filter(ind => ind.constructor.type !== "spot_line");
+  let html =
+    `<div class="modal-header">` +
+      `<h3>Explainer</h3>` +
+      `<span class="modal-disclaimer">Formulas, descriptions, and creator credits for the indicators on your chart</span>` +
+      `<button class="modal-x" id="modal-x" title="Close">×</button>` +
+    `</div>` +
+    `<div class="modal-body" id="modal-body">`;
+  if (items.length === 0) {
+    html += `<div style="padding:24px 18px;color:#888;font-size:13px;">No indicators on the chart yet — add some via the <strong>Indicators</strong> button to see their explanations here.</div>`;
+  } else {
+    for (const ind of items) {
+      const e = _explainerEntryFor(ind);
+      html += `<div class="explainer-row">` +
+        `<div class="explainer-title">${e.title}</div>` +
+        `<div class="explainer-desc">${e.description}</div>` +
+        `<div class="explainer-formula">${e.formula}</div>` +
+        `<div class="explainer-credit">${e.credit}</div>` +
+      `</div>`;
+    }
+  }
+  html += `</div>`;
+  modal.innerHTML = html;
+  bg.classList.add("show");
+  modal.querySelector("#modal-x").addEventListener("click", () => bg.classList.remove("show"));
+}
+
+document.getElementById("btn-explainer")?.addEventListener("click", openExplainerModal);
 
 // ───────────────────────────────────────────────────────────────────────────
 // Chart type selector — 12 series styles. BRK only has daily close, so OHLC
