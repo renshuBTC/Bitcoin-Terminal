@@ -1817,7 +1817,8 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
   }
 }
 
-// LTH/STH split: STH (younger, gold) at the bottom, LTH (older, blue) on top.
+// LTH/STH split: LTH (older, blue) at the bottom (x-axis), STH (younger,
+// gold) on top — older cohorts sit on the baseline, younger stack above.
 class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_lth_sth_history";
   static displayName = "URPD History - LTH/STH (BTC-weighted)";
@@ -1825,14 +1826,17 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
   ];
-  cohortKeys()   { return ["sth", "lth"]; }
-  cohortLabels() { return ["STH", "LTH"]; }
-  cohortColors() { return [THEME.sth, THEME.lth]; }
-  swatchColor() { return `linear-gradient(90deg, ${THEME.sth}, ${THEME.lth})`; }
+  cohortKeys()   { return ["lth", "sth"]; }
+  cohortLabels() { return ["LTH", "STH"]; }
+  cohortColors() { return [THEME.lth, THEME.sth]; }
+  swatchColor() { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
   displayName() { return "URPD History - LTH/STH (BTC)"; }
 }
 
-// AGE-band split: 21 cohorts from <1h (red, bottom) to >15y (violet, top).
+// AGE-band split: 21 cohorts stacked OLDEST-FIRST. Oldest (>15y, violet)
+// sits on the x-axis, youngest (<1h, red) on top — reverses the natural
+// _AGE_BANDS order so the visible stack reads "old at the baseline,
+// younger as you climb the bar".
 class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_age_history";
   static displayName = "URPD History - AGE (BTC-weighted)";
@@ -1840,11 +1844,12 @@ class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
   ];
-  cohortKeys()   { return _AGE_BANDS.map(b => b.cohort); }
-  cohortLabels() { return _AGE_BANDS.map(b => b.label); }
-  cohortColors() { return _AGE_BAND_COLORS.slice(); }
+  cohortKeys()   { return _AGE_BANDS.map(b => b.cohort).reverse(); }
+  cohortLabels() { return _AGE_BANDS.map(b => b.label).reverse(); }
+  cohortColors() { return _AGE_BAND_COLORS.slice().reverse(); }
   swatchColor() {
-    return `linear-gradient(90deg, ${_AGE_BAND_COLORS[0]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[20]})`;
+    // Read swatch left→right as bottom→top of the stack: oldest first.
+    return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
   }
   displayName() { return "URPD History - AGE (BTC)"; }
 }
