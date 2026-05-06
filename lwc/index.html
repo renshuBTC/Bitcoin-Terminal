@@ -1780,7 +1780,7 @@ for (const c of _RP_COHORTS) {
   // Unfiltered: "Spent Price (BTC|USD) (FLOW)"
   for (const w of _RP_WEIGHTS) {
     const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}_${w.short}`;
-    const display = `${c.prefix}Spent Price (${w.label}) (FLOW) (Derived from Approximated SOPD)`;
+    const display = `${c.prefix}Spent Price (Derived from Approximated SOPD) (${w.label}) (FLOW)`;
     const fieldName = w.short; // "btc" or "usd"
     const Cls = class extends SpentPriceFilteredIndicator {
       static type = typeName;
@@ -1797,7 +1797,7 @@ for (const c of _RP_COHORTS) {
   for (const pl of _RP_PL) {
     for (const w of _RP_WEIGHTS) {
       const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}${pl.suffix}_${w.short}`;
-      const display = `${c.prefix}Spent Price ${pl.label} (${w.label}) (FLOW) (Derived from Approximated SOPD)`;
+      const display = `${c.prefix}Spent Price ${pl.label} (Derived from Approximated SOPD) (${w.label}) (FLOW)`;
       const fieldName = w.short + (pl.profit ? "Profit" : "Loss"); // e.g. "btcProfit"
       const Cls = class extends SpentPriceFilteredIndicator {
         static type = typeName;
@@ -2440,7 +2440,7 @@ class URPDAgeHistoryUSDIndicator extends URPDAgeHistoryIndicator {
 // (in-Profit bins green, in-Loss bins red), single histogram pane.
 class SOPDProfitLossIndicator extends ProfileHistogramIndicator {
   static type = "sopd_profit_loss";
-  static displayName = "SOPD - Profit/Loss (BTC) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - Profit/Loss (Approximated from URPD Difference) (BTC) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2457,13 +2457,13 @@ class SOPDProfitLossIndicator extends ProfileHistogramIndicator {
     return diffAggRaw(prev.buckets, curr.buckets);
   }
   swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
-  displayName() { return `SOPD - Profit/Loss (${this.config.weight.toUpperCase()}) (FLOW)`; }
+  displayName() { return `SOPD - Profit/Loss (Approximated from URPD Difference) (${this.config.weight.toUpperCase()}) (FLOW)`; }
 }
 
 // USD-weighted variant.
 class SOPDProfitLossUSDIndicator extends SOPDProfitLossIndicator {
   static type = "sopd_profit_loss_usd";
-  static displayName = "SOPD - Profit/Loss (USD) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - Profit/Loss (Approximated from URPD Difference) (USD) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
@@ -2475,7 +2475,7 @@ class SOPDProfitLossUSDIndicator extends SOPDProfitLossIndicator {
 // LTH/STH split — diff each cohort's URPD against yesterday and stack.
 class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "sopd_lth_sth_history";
-  static displayName = "SOPD - LTH/STH (BTC) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - LTH/STH (Approximated from URPD Difference) (BTC) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2486,7 +2486,7 @@ class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   cohortLabels() { return ["LTH", "STH"]; }
   cohortColors() { return [THEME.lth, THEME.sth]; }
   swatchColor() { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
-  displayName() { return `SOPD - LTH/STH (${(this.config.weight || "btc").toUpperCase()}) (FLOW)`; }
+  displayName() { return `SOPD - LTH/STH (Approximated from URPD Difference) (${(this.config.weight || "btc").toUpperCase()}) (FLOW)`; }
 
   async _fetchCohortResponse(dateStr, cohortKey) {
     const prevDate = prevDateStrOf(dateStr);
@@ -2502,7 +2502,7 @@ class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
 // USD-weighted variant.
 class SOPDLTHSTHHistoryUSDIndicator extends SOPDLTHSTHHistoryIndicator {
   static type = "sopd_lth_sth_history_usd";
-  static displayName = "SOPD - LTH/STH (USD) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - LTH/STH (Approximated from URPD Difference) (USD) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
@@ -2514,7 +2514,7 @@ class SOPDLTHSTHHistoryUSDIndicator extends SOPDLTHSTHHistoryIndicator {
 // 21 age-cohort split — diff each cohort vs yesterday and stack.
 class SOPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "sopd_age_history";
-  static displayName = "SOPD - AGE (BTC) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - AGE (Approximated from URPD Difference) (BTC) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2527,7 +2527,7 @@ class SOPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   swatchColor() {
     return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
   }
-  displayName() { return `SOPD - AGE (${(this.config.weight || "btc").toUpperCase()}) (FLOW)`; }
+  displayName() { return `SOPD - AGE (Approximated from URPD Difference) (${(this.config.weight || "btc").toUpperCase()}) (FLOW)`; }
 
   async _fetchCohortResponse(dateStr, cohortKey) {
     const prevDate = prevDateStrOf(dateStr);
@@ -2543,7 +2543,7 @@ class SOPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
 // USD-weighted variant.
 class SOPDAgeHistoryUSDIndicator extends SOPDAgeHistoryIndicator {
   static type = "sopd_age_history_usd";
-  static displayName = "SOPD - AGE (USD) (FLOW) (Approximated from URPD Difference)";
+  static displayName = "SOPD - AGE (Approximated from URPD Difference) (USD) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
@@ -2651,7 +2651,7 @@ function _aggregateEpochBuckets(ageResps, dateStr) {
 // "older atop x-axis" pattern as URPD - AGE.
 class URPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_epoch_history";
-  static displayName = "URPD - EPOCH (BTC) (STOCK) (Aggregated from Age Bands)";
+  static displayName = "URPD - EPOCH (Aggregated from Age Bands) (BTC) (STOCK)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2664,7 +2664,7 @@ class URPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
   swatchColor() {
     return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
   }
-  displayName() { return `URPD - EPOCH (${(this.config.weight || "btc").toUpperCase()}) (STOCK) (Aggregated from Age Bands)`; }
+  displayName() { return `URPD - EPOCH (Aggregated from Age Bands) (${(this.config.weight || "btc").toUpperCase()}) (STOCK)`; }
 
   // Memoised per-date aggregator — first cohort fetch kicks off the 21-band
   // download + epoch aggregation, the other four reuse the cached result.
@@ -2692,7 +2692,7 @@ class URPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
 // USD-weighted variant.
 class URPDEpochHistoryUSDIndicator extends URPDEpochHistoryIndicator {
   static type = "urpd_epoch_history_usd";
-  static displayName = "URPD - EPOCH (USD) (STOCK) (Aggregated from Age Bands)";
+  static displayName = "URPD - EPOCH (Aggregated from Age Bands) (USD) (STOCK)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
@@ -2706,7 +2706,7 @@ class URPDEpochHistoryUSDIndicator extends URPDEpochHistoryIndicator {
 // today's (via diffAggRaw — bin-level cancellation avoided).
 class SOPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "sopd_epoch_history";
-  static displayName = "SOPD - EPOCH (BTC) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)";
+  static displayName = "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (BTC) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2719,7 +2719,7 @@ class SOPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
   swatchColor() {
     return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
   }
-  displayName() { return `SOPD - EPOCH (${(this.config.weight || "btc").toUpperCase()}) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)`; }
+  displayName() { return `SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (${(this.config.weight || "btc").toUpperCase()}) (FLOW)`; }
 
   async _fetchCohortResponse(dateStr, cohortKey) {
     if (!this._epochCache || this._epochCache.dateStr !== dateStr) {
@@ -2752,7 +2752,7 @@ class SOPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
 // USD-weighted variant.
 class SOPDEpochHistoryUSDIndicator extends SOPDEpochHistoryIndicator {
   static type = "sopd_epoch_history_usd";
-  static displayName = "SOPD - EPOCH (USD) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)";
+  static displayName = "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (USD) (FLOW)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
