@@ -1066,6 +1066,261 @@ async function buildSPFilteredTS(cohort) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Coindays / Valuedays weighting — verbatim ports of rp.js's CD/VD math
+// (lines 1314-1398). Each age band's bucket contributes its supply (or
+// realized_cap) multiplied by the band's midpoint age in days. So a UTXO
+// that's been held longer counts more, and the unit becomes "BTC·days"
+// for CD or "USD·days" for VD.
+//
+// This requires fetching ALL 21 age cohort URPDs at the target date(s)
+// because CD/VD per price-floor needs Σ_age(supply × mid_days). BTC/USD
+// is computed from a single cohort fetch ("all", "lth", or "sth"); CD/VD
+// must fan out to the per-age bands. Net result: 21× the API cost vs.
+// BTC/USD lines. Cached per (cohort, date) via urpdCache, so siblings
+// (e.g. CD-in-Profit and VD-in-Loss for the same cohort) share fetches.
+// ───────────────────────────────────────────────────────────────────────────
+
+// LTH/STH band partition by midpoint age. BRK uses ~155-day cutoff
+// (the standard glassnode definition). Bands with mid >= 155 are LTH.
+// _AGE_BANDS / _AGE_BAND_MID_DAYS are declared later in the file (with
+// the EPOCH constants), so these caches stay null until first use and
+// are populated lazily — that way the helpers below don't crash at
+// module-load time on a TDZ access.
+let _LTH_BAND_INDICES_CACHED = null;
+let _STH_BAND_INDICES_CACHED = null;
+let _ALL_BAND_INDICES_CACHED = null;
+function _bandIndicesForCohort(cohort) {
+  if (_ALL_BAND_INDICES_CACHED === null) {
+    _ALL_BAND_INDICES_CACHED = _AGE_BANDS.map((_, i) => i);
+    _LTH_BAND_INDICES_CACHED = [];
+    _STH_BAND_INDICES_CACHED = [];
+    for (let i = 0; i < _AGE_BAND_MID_DAYS.length; i++) {
+      (_AGE_BAND_MID_DAYS[i] >= 155 ? _LTH_BAND_INDICES_CACHED : _STH_BAND_INDICES_CACHED).push(i);
+    }
+  }
+  if (cohort === "lth") return _LTH_BAND_INDICES_CACHED;
+  if (cohort === "sth") return _STH_BAND_INDICES_CACHED;
+  return _ALL_BAND_INDICES_CACHED;
+}
+
+// Fetch all 21 age cohort URPDs at a given date in parallel. urpdCache
+// dedupes — calling this from multiple indicators only pays once.
+// Returns an array indexed by _AGE_BANDS index, with null for failed.
+async function getAllAgeCohorts(dateStr) {
+  return await Promise.all(
+    _AGE_BANDS.map(b => getURPDCohort(dateStr, b.cohort).catch(() => null))
+  );
+}
+
+// Coindays/Valuedays-weighted means (URPD-style — single date snapshot).
+// Mirrors rp.js's `computeCDVDMeanFromCohorts` (line 1314) but extends
+// it with optional spot-price filter for in-Profit / in-Loss splits.
+// Returns {cd, vd, cdProfit, cdLoss, vdProfit, vdLoss} matching the
+// shape of `computeMeansFromBuckets` so the line-builder code can index
+// into it identically to the BTC/USD payload.
+function computeCDVDMeansFromCohorts(ageResps, spot, bandIndices) {
+  const cdBins = new Map(), vdBins = new Map();
+  for (const i of bandIndices) {
+    const resp = ageResps[i];
+    if (!resp || !resp.buckets) continue;
+    const mid = _AGE_BAND_MID_DAYS[i];
+    for (const b of resp.buckets) {
+      const p = b.price_floor;
+      cdBins.set(p, (cdBins.get(p) || 0) + (b.supply || 0) * mid);
+      vdBins.set(p, (vdBins.get(p) || 0) + (b.realized_cap || 0) * mid);
+    }
+  }
+  let nCD = 0, dCD = 0, nVD = 0, dVD = 0;
+  let nCP = 0, dCP = 0, nVP = 0, dVP = 0;
+  let nCL = 0, dCL = 0, nVL = 0, dVL = 0;
+  const useSpot = (typeof spot === "number" && spot > 0);
+  cdBins.forEach((cd, p) => {
+    nCD += p * cd; dCD += cd;
+    if (useSpot) {
+      if (p <= spot) { nCP += p * cd; dCP += cd; }
+      else           { nCL += p * cd; dCL += cd; }
+    }
+  });
+  vdBins.forEach((vd, p) => {
+    nVD += p * vd; dVD += vd;
+    if (useSpot) {
+      if (p <= spot) { nVP += p * vd; dVP += vd; }
+      else           { nVL += p * vd; dVL += vd; }
+    }
+  });
+  return {
+    cd: dCD > 0 ? nCD / dCD : null,
+    vd: dVD > 0 ? nVD / dVD : null,
+    cdProfit: dCP > 0 ? nCP / dCP : null,
+    cdLoss:   dCL > 0 ? nCL / dCL : null,
+    vdProfit: dVP > 0 ? nVP / dVP : null,
+    vdLoss:   dVL > 0 ? nVL / dVL : null,
+  };
+}
+
+// SOPD CD/VD means — diffs prev vs curr URPD per age band, then weights
+// the spent supply / realized_cap by the band's midpoint age. Mirrors
+// rp.js `computeSOPDCDVDMeanFromPair` (line 1348).
+function computeSOPDCDVDMeansFromCohortPair(prevAgeResps, currAgeResps, spot, bandIndices) {
+  const cdBins = new Map(), vdBins = new Map();
+  for (const i of bandIndices) {
+    const prevR = prevAgeResps[i];
+    const currR = currAgeResps[i];
+    if (!prevR || !prevR.buckets || !currR || !currR.buckets) continue;
+    const mid = _AGE_BAND_MID_DAYS[i];
+    const prevMapS = new Map(), prevMapR = new Map();
+    const currMapS = new Map(), currMapR = new Map();
+    for (const b of prevR.buckets) {
+      prevMapS.set(b.price_floor, b.supply || 0);
+      prevMapR.set(b.price_floor, b.realized_cap || 0);
+    }
+    for (const b of currR.buckets) {
+      currMapS.set(b.price_floor, b.supply || 0);
+      currMapR.set(b.price_floor, b.realized_cap || 0);
+    }
+    const allP = new Set();
+    prevR.buckets.forEach(b => allP.add(b.price_floor));
+    currR.buckets.forEach(b => allP.add(b.price_floor));
+    allP.forEach(p => {
+      const dS = (prevMapS.get(p) || 0) - (currMapS.get(p) || 0);
+      const dR = (prevMapR.get(p) || 0) - (currMapR.get(p) || 0);
+      if (dS > 0) cdBins.set(p, (cdBins.get(p) || 0) + dS * mid);
+      if (dR > 0) vdBins.set(p, (vdBins.get(p) || 0) + dR * mid);
+    });
+  }
+  let nCD = 0, dCD = 0, nVD = 0, dVD = 0;
+  let nCP = 0, dCP = 0, nVP = 0, dVP = 0;
+  let nCL = 0, dCL = 0, nVL = 0, dVL = 0;
+  const useSpot = (typeof spot === "number" && spot > 0);
+  cdBins.forEach((cd, p) => {
+    nCD += p * cd; dCD += cd;
+    if (useSpot) {
+      if (p <= spot) { nCP += p * cd; dCP += cd; }
+      else           { nCL += p * cd; dCL += cd; }
+    }
+  });
+  vdBins.forEach((vd, p) => {
+    nVD += p * vd; dVD += vd;
+    if (useSpot) {
+      if (p <= spot) { nVP += p * vd; dVP += vd; }
+      else           { nVL += p * vd; dVL += vd; }
+    }
+  });
+  return {
+    cd: dCD > 0 ? nCD / dCD : null,
+    vd: dVD > 0 ? nVD / dVD : null,
+    cdProfit: dCP > 0 ? nCP / dCP : null,
+    cdLoss:   dCL > 0 ? nCL / dCL : null,
+    vdProfit: dVP > 0 ? nVP / dVP : null,
+    vdLoss:   dVL > 0 ? nVL / dVL : null,
+  };
+}
+
+// CD/VD time-series builder for realised-price line indicators. Same
+// sampling strategy as buildRPFilteredTS but fetches 21 age bands per
+// sample date. Smaller batch size (4 dates × 21 bands = 84 in-flight)
+// to avoid hammering bitview.space and triggering QUIC errors.
+const _rpFilteredTSCDVDPromise = new Map();
+async function buildRPFilteredTSCDVD(cohort) {
+  if (_rpFilteredTSCDVDPromise.has(cohort)) return _rpFilteredTSCDVDPromise.get(cohort);
+  const p = (async () => {
+    const sampleDates = _rpFilteredSampleDates();
+    const out = {
+      dates: [],
+      cd: [], vd: [],
+      cdProfit: [], cdLoss: [], vdProfit: [], vdLoss: [],
+    };
+    const BATCH = 4;
+    const status = document.getElementById("status");
+    const bandIndices = _bandIndicesForCohort(cohort);
+    let done = 0;
+    for (let bi = 0; bi < sampleDates.length; bi += BATCH) {
+      const batch = sampleDates.slice(bi, bi + BATCH);
+      const ageRespsPerDate = await Promise.all(batch.map(d => getAllAgeCohorts(d)));
+      for (let i = 0; i < ageRespsPerDate.length; i++) {
+        const ageResps = ageRespsPerDate[i];
+        const date = batch[i];
+        const spot = getSpotForDate(date);
+        if (!ageResps || ageResps.every(r => !r || !r.buckets)) {
+          out.dates.push(date);
+          out.cd.push(null); out.vd.push(null);
+          out.cdProfit.push(null); out.cdLoss.push(null);
+          out.vdProfit.push(null); out.vdLoss.push(null);
+          continue;
+        }
+        const m = computeCDVDMeansFromCohorts(ageResps, spot, bandIndices);
+        out.dates.push(date);
+        out.cd.push(m.cd); out.vd.push(m.vd);
+        out.cdProfit.push(m.cdProfit); out.cdLoss.push(m.cdLoss);
+        out.vdProfit.push(m.vdProfit); out.vdLoss.push(m.vdLoss);
+      }
+      done += batch.length;
+      if (status) status.textContent =
+        `Building ${cohort.toUpperCase()} CD/VD realised-price TS… ${done}/${sampleDates.length}`;
+    }
+    if (status) status.textContent =
+      `${cohort.toUpperCase()} CD/VD realised-price TS ready (${sampleDates.length} pts)`;
+    return out;
+  })();
+  _rpFilteredTSCDVDPromise.set(cohort, p);
+  return p;
+}
+
+// CD/VD time-series builder for spent-price line indicators. Same as
+// realised-price CDVD builder but fetches today's + yesterday's 21
+// bands per sample date, then runs computeSOPDCDVDMeansFromCohortPair.
+const _spFilteredTSCDVDPromise = new Map();
+async function buildSPFilteredTSCDVD(cohort) {
+  if (_spFilteredTSCDVDPromise.has(cohort)) return _spFilteredTSCDVDPromise.get(cohort);
+  const p = (async () => {
+    const sampleDates = _rpFilteredSampleDates();
+    const out = {
+      dates: [],
+      cd: [], vd: [],
+      cdProfit: [], cdLoss: [], vdProfit: [], vdLoss: [],
+    };
+    const BATCH = 3;  // 3 dates × 2 days × 21 bands = 126 in-flight max
+    const status = document.getElementById("status");
+    const bandIndices = _bandIndicesForCohort(cohort);
+    let done = 0;
+    for (let bi = 0; bi < sampleDates.length; bi += BATCH) {
+      const batch = sampleDates.slice(bi, bi + BATCH);
+      const pairs = await Promise.all(batch.map(async (d) => {
+        const prevD = prevDateStrOf(d);
+        const [curr, prev] = await Promise.all([
+          getAllAgeCohorts(d),
+          getAllAgeCohorts(prevD),
+        ]);
+        return { date: d, curr, prev };
+      }));
+      for (const { date, curr, prev } of pairs) {
+        const spot = getSpotForDate(date);
+        if (!curr || !prev || !spot) {
+          out.dates.push(date);
+          out.cd.push(null); out.vd.push(null);
+          out.cdProfit.push(null); out.cdLoss.push(null);
+          out.vdProfit.push(null); out.vdLoss.push(null);
+          continue;
+        }
+        const m = computeSOPDCDVDMeansFromCohortPair(prev, curr, spot, bandIndices);
+        out.dates.push(date);
+        out.cd.push(m.cd); out.vd.push(m.vd);
+        out.cdProfit.push(m.cdProfit); out.cdLoss.push(m.cdLoss);
+        out.vdProfit.push(m.vdProfit); out.vdLoss.push(m.vdLoss);
+      }
+      done += batch.length;
+      if (status) status.textContent =
+        `Building ${cohort.toUpperCase()} CD/VD spent-price TS… ${done}/${sampleDates.length}`;
+    }
+    if (status) status.textContent =
+      `${cohort.toUpperCase()} CD/VD spent-price TS ready (${sampleDates.length} pts)`;
+    return out;
+  })();
+  _spFilteredTSCDVDPromise.set(cohort, p);
+  return p;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator base class — every indicator owns LWC series and a config
 // ───────────────────────────────────────────────────────────────────────────
 class Indicator {
@@ -1809,6 +2064,166 @@ for (const c of _RP_COHORTS) {
       };
       Object.defineProperty(Cls, "name", { value: typeName });
       _SP_VARIANTS.push(Cls);
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Coindays / Valuedays line indicators — same render shape as the BTC/USD
+// realised-price + spent-price lines, but the time-series source pulls
+// from the buildRPFilteredTSCDVD / buildSPFilteredTSCDVD payloads
+// (21-cohort fan-out per sample date — see the helpers above). Matches
+// version 1 (rp.js) which also exposed CD and VD as alternate weights.
+// One subclass per builder; the weight (cd vs vd) is a fieldName on the
+// concrete variants below.
+// ───────────────────────────────────────────────────────────────────────────
+class RealisedPriceFilteredCDVDIndicator extends Indicator {
+  static pane = "top";
+  cohort()    { return "all"; }
+  fieldName() { throw new Error("fieldName not implemented"); }  // cd|vd|cdProfit|cdLoss|vdProfit|vdLoss
+  isDashed()  { return false; }
+
+  async load() {
+    const ts = await buildRPFilteredTSCDVD(this.cohort());
+    const arr = ts[this.fieldName()];
+    const points = [];
+    for (let i = 0; i < ts.dates.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        points.push({ time: ts.dates[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
+                                 : LightweightCharts.LineStyle.Solid,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.constructor.displayName,
+    });
+    series.setData(points);
+    this.series.push(series);
+  }
+  swatchColor() { return this.config.color; }
+  seriesTitle() { return this.constructor.displayName; }
+}
+
+class SpentPriceFilteredCDVDIndicator extends RealisedPriceFilteredCDVDIndicator {
+  async load() {
+    // Override only the data source — render path is identical.
+    const ts = await buildSPFilteredTSCDVD(this.cohort());
+    const arr = ts[this.fieldName()];
+    const points = [];
+    for (let i = 0; i < ts.dates.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        points.push({ time: ts.dates[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
+                                 : LightweightCharts.LineStyle.Solid,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.constructor.displayName,
+    });
+    series.setData(points);
+    this.series.push(series);
+  }
+}
+
+// CD/VD weight definitions for the line template loops below.
+const _CDVD_WEIGHTS = [
+  { short: "cd", label: "Coinday"  },
+  { short: "vd", label: "Valueday" },
+];
+
+// 18 RP CD/VD line variants (3 cohorts × 1 unfiltered + 2 P/L × 2 weights).
+// Each is rendered identically to the BTC/USD lines — the only difference
+// is the data source. Per-cohort the sampling is shared with siblings, so
+// adding a CD-in-Profit and a VD-in-Loss for the same cohort is just one
+// 21-band fetch sequence.
+const _RP_CDVD_VARIANTS = [];
+for (const c of _RP_COHORTS) {
+  const colorKey = c.color === "mean" ? THEME.mean
+                 : c.color === "lth"  ? THEME.lth
+                 : THEME.sth;
+  // Unfiltered: "Realised Price (Coinday|Valueday) (STOCK)"
+  for (const w of _CDVD_WEIGHTS) {
+    const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}_${w.short}`;
+    const display = `${c.prefix}Realised Price (${w.label}) (STOCK)`;
+    const fieldName = w.short; // "cd" or "vd"
+    const Cls = class extends RealisedPriceFilteredCDVDIndicator {
+      static type = typeName;
+      static displayName = display;
+      static configSchema = _rpFilteredSchema(colorKey);
+      cohort()    { return c.key; }
+      fieldName() { return fieldName; }
+      isDashed()  { return false; }
+    };
+    Object.defineProperty(Cls, "name", { value: typeName });
+    _RP_CDVD_VARIANTS.push(Cls);
+  }
+  // Filtered: "Realised Price in Profit/Loss (Coinday|Valueday) (STOCK)"
+  for (const pl of _RP_PL) {
+    for (const w of _CDVD_WEIGHTS) {
+      const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}${pl.suffix}_${w.short}`;
+      const display = `${c.prefix}Realised Price ${pl.label} (${w.label}) (STOCK)`;
+      const fieldName = w.short + (pl.profit ? "Profit" : "Loss");
+      const Cls = class extends RealisedPriceFilteredCDVDIndicator {
+        static type = typeName;
+        static displayName = display;
+        static configSchema = _rpFilteredSchema(colorKey);
+        cohort()    { return c.key; }
+        fieldName() { return fieldName; }
+        isDashed()  { return !pl.profit; }
+      };
+      Object.defineProperty(Cls, "name", { value: typeName });
+      _RP_CDVD_VARIANTS.push(Cls);
+    }
+  }
+}
+
+// 18 SP CD/VD line variants — same shape as the RP set, FLOW disclaimer
+// matching the existing BTC/USD spent-price labels.
+const _SP_CDVD_VARIANTS = [];
+for (const c of _RP_COHORTS) {
+  const colorKey = c.color === "mean" ? THEME.mean
+                 : c.color === "lth"  ? THEME.lth
+                 : THEME.sth;
+  for (const w of _CDVD_WEIGHTS) {
+    const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}_${w.short}`;
+    const display = `${c.prefix}Spent Price (Derived from Approximated SOPD) (${w.label}) (FLOW)`;
+    const fieldName = w.short;
+    const Cls = class extends SpentPriceFilteredCDVDIndicator {
+      static type = typeName;
+      static displayName = display;
+      static configSchema = _spFilteredSchema(colorKey);
+      cohort()    { return c.key; }
+      fieldName() { return fieldName; }
+      isDashed()  { return false; }
+    };
+    Object.defineProperty(Cls, "name", { value: typeName });
+    _SP_CDVD_VARIANTS.push(Cls);
+  }
+  for (const pl of _RP_PL) {
+    for (const w of _CDVD_WEIGHTS) {
+      const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}${pl.suffix}_${w.short}`;
+      const display = `${c.prefix}Spent Price ${pl.label} (Derived from Approximated SOPD) (${w.label}) (FLOW)`;
+      const fieldName = w.short + (pl.profit ? "Profit" : "Loss");
+      const Cls = class extends SpentPriceFilteredCDVDIndicator {
+        static type = typeName;
+        static displayName = display;
+        static configSchema = _spFilteredSchema(colorKey);
+        cohort()    { return c.key; }
+        fieldName() { return fieldName; }
+        isDashed()  { return !pl.profit; }
+      };
+      Object.defineProperty(Cls, "name", { value: typeName });
+      _SP_CDVD_VARIANTS.push(Cls);
     }
   }
 }
@@ -2762,6 +3177,404 @@ class SOPDEpochHistoryUSDIndicator extends SOPDEpochHistoryIndicator {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// CD/VD histogram variants — synthesise buckets where the `supply` field
+// holds the Coindays (supply × mid_age_days) or Valuedays (realized_cap ×
+// mid_age_days) total. The base histogram code reads bucket.supply as
+// the bar height when weight!="usd", so storing CD/VD there lets the
+// rendering pipeline stay completely unchanged.
+// ───────────────────────────────────────────────────────────────────────────
+function _synthCDVDBuckets(ageResps, bandIndices, weightKind) {
+  const bins = new Map();
+  for (const i of bandIndices) {
+    const resp = ageResps[i];
+    if (!resp || !resp.buckets) continue;
+    const mid = _AGE_BAND_MID_DAYS[i];
+    for (const b of resp.buckets) {
+      const base = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      const v = base * mid;
+      if (v > 0) bins.set(b.price_floor, (bins.get(b.price_floor) || 0) + v);
+    }
+  }
+  const out = [];
+  bins.forEach((v, p) => out.push({ price_floor: p, supply: v, realized_cap: 0 }));
+  out.sort((a, b) => a.price_floor - b.price_floor);
+  return out;
+}
+function _synthSOPDCDVDBuckets(prevAgeResps, currAgeResps, bandIndices, weightKind) {
+  const bins = new Map();
+  for (const i of bandIndices) {
+    const prevR = prevAgeResps[i];
+    const currR = currAgeResps[i];
+    if (!prevR || !prevR.buckets || !currR || !currR.buckets) continue;
+    const mid = _AGE_BAND_MID_DAYS[i];
+    const prevMap = new Map(), currMap = new Map();
+    for (const b of prevR.buckets) {
+      const v = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      prevMap.set(b.price_floor, v);
+    }
+    for (const b of currR.buckets) {
+      const v = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      currMap.set(b.price_floor, v);
+    }
+    const allP = new Set();
+    prevR.buckets.forEach(b => allP.add(b.price_floor));
+    currR.buckets.forEach(b => allP.add(b.price_floor));
+    allP.forEach(p => {
+      const d = (prevMap.get(p) || 0) - (currMap.get(p) || 0);
+      if (d > 0) bins.set(p, (bins.get(p) || 0) + d * mid);
+    });
+  }
+  const out = [];
+  bins.forEach((v, p) => out.push({ price_floor: p, supply: v, realized_cap: 0 }));
+  out.sort((a, b) => a.price_floor - b.price_floor);
+  return out;
+}
+function _cdvdHistogramSchema() {
+  return [
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+}
+
+// URPD - Profit/Loss CD/VD — single-pane histogram, all 21 bands aggregated.
+class URPDProfileCDIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_profile_cd";
+  static displayName = "URPD - Profit/Loss (Coinday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  async fetchBuckets(dateStr) {
+    const ageResps = await getAllAgeCohorts(dateStr);
+    return _synthCDVDBuckets(ageResps, _bandIndicesForCohort("all"), "cd");
+  }
+  swatchColor() { return THEME.profit; }
+  displayName() { return "URPD - Profit/Loss (Coinday) (STOCK)"; }
+}
+class URPDProfileVDIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_profile_vd";
+  static displayName = "URPD - Profit/Loss (Valueday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  async fetchBuckets(dateStr) {
+    const ageResps = await getAllAgeCohorts(dateStr);
+    return _synthCDVDBuckets(ageResps, _bandIndicesForCohort("all"), "vd");
+  }
+  swatchColor() { return THEME.magenta; }
+  displayName() { return "URPD - Profit/Loss (Valueday) (STOCK)"; }
+}
+class SOPDProfitLossCDIndicator extends ProfileHistogramIndicator {
+  static type = "sopd_profit_loss_cd";
+  static displayName = "SOPD - Profit/Loss (Approximated from URPD Difference) (Coinday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  async fetchBuckets(dateStr) {
+    const prevDate = prevDateStrOf(dateStr);
+    const [curr, prev] = await Promise.all([getAllAgeCohorts(dateStr), getAllAgeCohorts(prevDate)]);
+    return _synthSOPDCDVDBuckets(prev, curr, _bandIndicesForCohort("all"), "cd");
+  }
+  swatchColor() { return THEME.profit; }
+  displayName() { return "SOPD - Profit/Loss (Approximated from URPD Difference) (Coinday) (FLOW)"; }
+}
+class SOPDProfitLossVDIndicator extends ProfileHistogramIndicator {
+  static type = "sopd_profit_loss_vd";
+  static displayName = "SOPD - Profit/Loss (Approximated from URPD Difference) (Valueday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  async fetchBuckets(dateStr) {
+    const prevDate = prevDateStrOf(dateStr);
+    const [curr, prev] = await Promise.all([getAllAgeCohorts(dateStr), getAllAgeCohorts(prevDate)]);
+    return _synthSOPDCDVDBuckets(prev, curr, _bandIndicesForCohort("all"), "vd");
+  }
+  swatchColor() { return THEME.magenta; }
+  displayName() { return "SOPD - Profit/Loss (Approximated from URPD Difference) (Valueday) (FLOW)"; }
+}
+
+// URPD - LTH/STH CD/VD — 21-band fetch memoised per dateStr; cohorts pull
+// LTH or STH band subsets from the cached payload.
+class URPDLTHSTHHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return ["lth", "sth"]; }
+  cohortLabels() { return ["LTH", "STH"]; }
+  cohortColors() { return [THEME.lth, THEME.sth]; }
+  swatchColor()  { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    if (!this._cdvdCache || this._cdvdCache.dateStr !== dateStr) {
+      this._cdvdCache = { dateStr, promise: getAllAgeCohorts(dateStr) };
+    }
+    const ageResps = await this._cdvdCache.promise;
+    if (!ageResps) return null;
+    const buckets = _synthCDVDBuckets(ageResps, _bandIndicesForCohort(cohortKey), this.weightKind());
+    return { buckets };
+  }
+}
+class URPDLTHSTHHistoryCDIndicator extends URPDLTHSTHHistoryCDVDBaseIndicator {
+  static type = "urpd_lth_sth_history_cd";
+  static displayName = "URPD - LTH/STH (Coinday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "URPD - LTH/STH (Coinday) (STOCK)"; }
+}
+class URPDLTHSTHHistoryVDIndicator extends URPDLTHSTHHistoryCDVDBaseIndicator {
+  static type = "urpd_lth_sth_history_vd";
+  static displayName = "URPD - LTH/STH (Valueday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "URPD - LTH/STH (Valueday) (STOCK)"; }
+}
+class SOPDLTHSTHHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return ["lth", "sth"]; }
+  cohortLabels() { return ["LTH", "STH"]; }
+  cohortColors() { return [THEME.lth, THEME.sth]; }
+  swatchColor()  { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    const prevDate = prevDateStrOf(dateStr);
+    if (!this._cdvdCache || this._cdvdCache.dateStr !== dateStr) {
+      this._cdvdCache = { dateStr, promise: Promise.all([getAllAgeCohorts(dateStr), getAllAgeCohorts(prevDate)]) };
+    }
+    const [curr, prev] = await this._cdvdCache.promise;
+    if (!curr || !prev) return null;
+    const buckets = _synthSOPDCDVDBuckets(prev, curr, _bandIndicesForCohort(cohortKey), this.weightKind());
+    return { buckets };
+  }
+}
+class SOPDLTHSTHHistoryCDIndicator extends SOPDLTHSTHHistoryCDVDBaseIndicator {
+  static type = "sopd_lth_sth_history_cd";
+  static displayName = "SOPD - LTH/STH (Approximated from URPD Difference) (Coinday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "SOPD - LTH/STH (Approximated from URPD Difference) (Coinday) (FLOW)"; }
+}
+class SOPDLTHSTHHistoryVDIndicator extends SOPDLTHSTHHistoryCDVDBaseIndicator {
+  static type = "sopd_lth_sth_history_vd";
+  static displayName = "SOPD - LTH/STH (Approximated from URPD Difference) (Valueday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "SOPD - LTH/STH (Approximated from URPD Difference) (Valueday) (FLOW)"; }
+}
+
+// URPD - AGE CD/VD — each cohort is one age band, so multiply that band's
+// buckets by its mid_days. No 21-fan-out needed — each cohort fetches
+// its own URPD response (same as the existing AGE indicator).
+class URPDAgeHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return _AGE_BANDS.map(b => b.cohort).reverse(); }
+  cohortLabels() { return _AGE_BANDS.map(b => b.label).reverse(); }
+  cohortColors() { return _AGE_BAND_COLORS.slice().reverse(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
+  }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    const resp = await getURPDCohort(dateStr, cohortKey).catch(() => null);
+    if (!resp || !resp.buckets) return null;
+    const bandIdx = _AGE_BANDS.findIndex(b => b.cohort === cohortKey);
+    const mid = bandIdx >= 0 ? _AGE_BAND_MID_DAYS[bandIdx] : 1;
+    const wk = this.weightKind();
+    const buckets = resp.buckets.map(b => ({
+      price_floor: b.price_floor,
+      supply: ((wk === "vd" ? (b.realized_cap || 0) : (b.supply || 0)) * mid),
+      realized_cap: 0,
+    }));
+    return { buckets };
+  }
+}
+class URPDAgeHistoryCDIndicator extends URPDAgeHistoryCDVDBaseIndicator {
+  static type = "urpd_age_history_cd";
+  static displayName = "URPD - AGE (Coinday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "URPD - AGE (Coinday) (STOCK)"; }
+}
+class URPDAgeHistoryVDIndicator extends URPDAgeHistoryCDVDBaseIndicator {
+  static type = "urpd_age_history_vd";
+  static displayName = "URPD - AGE (Valueday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "URPD - AGE (Valueday) (STOCK)"; }
+}
+class SOPDAgeHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return _AGE_BANDS.map(b => b.cohort).reverse(); }
+  cohortLabels() { return _AGE_BANDS.map(b => b.label).reverse(); }
+  cohortColors() { return _AGE_BAND_COLORS.slice().reverse(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
+  }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    const prevDate = prevDateStrOf(dateStr);
+    const [curr, prev] = await Promise.all([
+      getURPDCohort(dateStr, cohortKey).catch(() => null),
+      getURPDCohort(prevDate, cohortKey).catch(() => null),
+    ]);
+    if (!curr || !curr.buckets || !prev || !prev.buckets) return null;
+    const bandIdx = _AGE_BANDS.findIndex(b => b.cohort === cohortKey);
+    const mid = bandIdx >= 0 ? _AGE_BAND_MID_DAYS[bandIdx] : 1;
+    const wk = this.weightKind();
+    const prevMap = new Map(), currMap = new Map();
+    for (const b of prev.buckets) {
+      const v = wk === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      prevMap.set(b.price_floor, v);
+    }
+    for (const b of curr.buckets) {
+      const v = wk === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      currMap.set(b.price_floor, v);
+    }
+    const allP = new Set();
+    prev.buckets.forEach(b => allP.add(b.price_floor));
+    curr.buckets.forEach(b => allP.add(b.price_floor));
+    const buckets = [];
+    allP.forEach(p => {
+      const d = (prevMap.get(p) || 0) - (currMap.get(p) || 0);
+      if (d > 0) buckets.push({ price_floor: p, supply: d * mid, realized_cap: 0 });
+    });
+    buckets.sort((a, b) => a.price_floor - b.price_floor);
+    return { buckets };
+  }
+}
+class SOPDAgeHistoryCDIndicator extends SOPDAgeHistoryCDVDBaseIndicator {
+  static type = "sopd_age_history_cd";
+  static displayName = "SOPD - AGE (Approximated from URPD Difference) (Coinday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "SOPD - AGE (Approximated from URPD Difference) (Coinday) (FLOW)"; }
+}
+class SOPDAgeHistoryVDIndicator extends SOPDAgeHistoryCDVDBaseIndicator {
+  static type = "sopd_age_history_vd";
+  static displayName = "SOPD - AGE (Approximated from URPD Difference) (Valueday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "SOPD - AGE (Approximated from URPD Difference) (Valueday) (FLOW)"; }
+}
+
+// URPD/SOPD - EPOCH CD/VD — re-uses the EPOCH age-band-aggregation but
+// each band's contribution is multiplied by its mid_age_days.
+function _aggregateEpochCDVDBuckets(ageResps, dateStr, weightKind) {
+  const epochBins = [new Map(), new Map(), new Map(), new Map(), new Map()];
+  for (let i = 0; i < ageResps.length; i++) {
+    const resp = ageResps[i];
+    if (!resp || !resp.buckets) continue;
+    const k = _epochOfAgeBandIdx(i, dateStr);
+    const mid = _AGE_BAND_MID_DAYS[i];
+    for (const b of resp.buckets) {
+      const base = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+      const v = base * mid;
+      if (v > 0) epochBins[k].set(b.price_floor, (epochBins[k].get(b.price_floor) || 0) + v);
+    }
+  }
+  return epochBins.map(bins => {
+    const list = [];
+    bins.forEach((v, p) => list.push({ price_floor: p, supply: v, realized_cap: 0 }));
+    list.sort((a, b) => a.price_floor - b.price_floor);
+    return list;
+  });
+}
+class URPDEpochHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return ["epoch1","epoch2","epoch3","epoch4","epoch5"]; }
+  cohortLabels() { return _EPOCH_LABELS.slice(); }
+  cohortColors() { return _EPOCH_COLORS.slice(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
+  }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    if (!this._cdvdCache || this._cdvdCache.dateStr !== dateStr) {
+      this._cdvdCache = { dateStr, promise: this._buildEpochMap(dateStr) };
+    }
+    const map = await this._cdvdCache.promise;
+    return map[cohortKey] || null;
+  }
+  async _buildEpochMap(dateStr) {
+    const ageResps = await getAllAgeCohorts(dateStr);
+    const lists = _aggregateEpochCDVDBuckets(ageResps, dateStr, this.weightKind());
+    const out = {};
+    for (let k = 0; k < 5; k++) out["epoch" + (k + 1)] = { buckets: lists[k] };
+    return out;
+  }
+}
+class URPDEpochHistoryCDIndicator extends URPDEpochHistoryCDVDBaseIndicator {
+  static type = "urpd_epoch_history_cd";
+  static displayName = "URPD - EPOCH (Aggregated from Age Bands) (Coinday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "URPD - EPOCH (Aggregated from Age Bands) (Coinday) (STOCK)"; }
+}
+class URPDEpochHistoryVDIndicator extends URPDEpochHistoryCDVDBaseIndicator {
+  static type = "urpd_epoch_history_vd";
+  static displayName = "URPD - EPOCH (Aggregated from Age Bands) (Valueday) (STOCK)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "URPD - EPOCH (Aggregated from Age Bands) (Valueday) (STOCK)"; }
+}
+
+function _aggregateEpochSOPDCDVDBuckets(prevAgeResps, currAgeResps, dateStr, prevDate, weightKind) {
+  const prevEpoch = [new Map(),new Map(),new Map(),new Map(),new Map()];
+  const currEpoch = [new Map(),new Map(),new Map(),new Map(),new Map()];
+  for (let i = 0; i < currAgeResps.length; i++) {
+    const mid = _AGE_BAND_MID_DAYS[i];
+    const currR = currAgeResps[i];
+    const prevR = prevAgeResps[i];
+    if (currR && currR.buckets) {
+      const k = _epochOfAgeBandIdx(i, dateStr);
+      for (const b of currR.buckets) {
+        const base = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+        if (base > 0) currEpoch[k].set(b.price_floor, (currEpoch[k].get(b.price_floor) || 0) + base * mid);
+      }
+    }
+    if (prevR && prevR.buckets) {
+      const k = _epochOfAgeBandIdx(i, prevDate);
+      for (const b of prevR.buckets) {
+        const base = weightKind === "vd" ? (b.realized_cap || 0) : (b.supply || 0);
+        if (base > 0) prevEpoch[k].set(b.price_floor, (prevEpoch[k].get(b.price_floor) || 0) + base * mid);
+      }
+    }
+  }
+  return prevEpoch.map((prevBins, k) => {
+    const currBins = currEpoch[k];
+    const allP = new Set([...prevBins.keys(), ...currBins.keys()]);
+    const list = [];
+    allP.forEach(p => {
+      const d = (prevBins.get(p) || 0) - (currBins.get(p) || 0);
+      if (d > 0) list.push({ price_floor: p, supply: d, realized_cap: 0 });
+    });
+    list.sort((a, b) => a.price_floor - b.price_floor);
+    return list;
+  });
+}
+class SOPDEpochHistoryCDVDBaseIndicator extends StackedURPDHistoryIndicator {
+  weightKind() { throw new Error("weightKind not implemented"); }
+  cohortKeys()   { return ["epoch1","epoch2","epoch3","epoch4","epoch5"]; }
+  cohortLabels() { return _EPOCH_LABELS.slice(); }
+  cohortColors() { return _EPOCH_COLORS.slice(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
+  }
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    if (!this._cdvdCache || this._cdvdCache.dateStr !== dateStr) {
+      this._cdvdCache = { dateStr, promise: this._buildEpochMap(dateStr) };
+    }
+    const map = await this._cdvdCache.promise;
+    return map[cohortKey] || null;
+  }
+  async _buildEpochMap(dateStr) {
+    const prevDate = prevDateStrOf(dateStr);
+    const [currR, prevR] = await Promise.all([getAllAgeCohorts(dateStr), getAllAgeCohorts(prevDate)]);
+    const lists = _aggregateEpochSOPDCDVDBuckets(prevR, currR, dateStr, prevDate, this.weightKind());
+    const out = {};
+    for (let k = 0; k < 5; k++) out["epoch" + (k + 1)] = { buckets: lists[k] };
+    return out;
+  }
+}
+class SOPDEpochHistoryCDIndicator extends SOPDEpochHistoryCDVDBaseIndicator {
+  static type = "sopd_epoch_history_cd";
+  static displayName = "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (Coinday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "cd"; }
+  displayName() { return "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (Coinday) (FLOW)"; }
+}
+class SOPDEpochHistoryVDIndicator extends SOPDEpochHistoryCDVDBaseIndicator {
+  static type = "sopd_epoch_history_vd";
+  static displayName = "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (Valueday) (FLOW)";
+  static configSchema = _cdvdHistogramSchema();
+  weightKind() { return "vd"; }
+  displayName() { return "SOPD - EPOCH (Aggregated from Age Bands; Approximated from URPD Difference) (Valueday) (FLOW)"; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator registry — all addable types live here.
 // Add a new indicator: just register the class. UI auto-picks it up.
 // ───────────────────────────────────────────────────────────────────────────
@@ -2779,9 +3592,14 @@ const INDICATOR_TYPES = [
   // Top-pane profit/loss-filtered means (per-date horizontal price line)
   // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
   ..._RP_FILTERED_VARIANTS,
+  // CD/VD line variants — same shapes as the BTC/USD set, but weights are
+  // Coindays (supply × mid_age) or Valuedays (realized_cap × mid_age),
+  // built from 21-cohort fan-out per sample date (rp.js parity).
+  ..._RP_CDVD_VARIANTS,
   // FLOW counterparts: 18 spent-price lines (6 unfiltered + 12 filtered)
   // built from day-over-day SOPD means via computeSOPDMeansFromPair.
   ..._SP_VARIANTS,
+  ..._SP_CDVD_VARIANTS,
   SpotPriceLineIndicator,
   // Bottom-pane profile histograms (point-in-time, follow tracer in nav mode).
   // Each split gets a BTC and a USD entry: BTC weights bars by supply, USD
@@ -2789,24 +3607,40 @@ const INDICATOR_TYPES = [
   // and StackedURPDHistoryIndicator's weightField).
   URPDProfileIndicator,
   URPDProfileUSDIndicator,
+  URPDProfileCDIndicator,
+  URPDProfileVDIndicator,
   URPDLTHSTHHistoryIndicator,
   URPDLTHSTHHistoryUSDIndicator,
+  URPDLTHSTHHistoryCDIndicator,
+  URPDLTHSTHHistoryVDIndicator,
   URPDAgeHistoryIndicator,
   URPDAgeHistoryUSDIndicator,
+  URPDAgeHistoryCDIndicator,
+  URPDAgeHistoryVDIndicator,
   // EPOCH = halving-epoch aggregation of the 21 age bands; cohort assigned
   // by each band's midpoint creation date relative to the halving dates.
   URPDEpochHistoryIndicator,
   URPDEpochHistoryUSDIndicator,
+  URPDEpochHistoryCDIndicator,
+  URPDEpochHistoryVDIndicator,
   // SOPD = day-over-day URPD diff (rp.js: diffAggRaw); approximates the
   // distribution of supply spent at each cost-basis bin during the day.
   SOPDProfitLossIndicator,
   SOPDProfitLossUSDIndicator,
+  SOPDProfitLossCDIndicator,
+  SOPDProfitLossVDIndicator,
   SOPDLTHSTHHistoryIndicator,
   SOPDLTHSTHHistoryUSDIndicator,
+  SOPDLTHSTHHistoryCDIndicator,
+  SOPDLTHSTHHistoryVDIndicator,
   SOPDAgeHistoryIndicator,
   SOPDAgeHistoryUSDIndicator,
+  SOPDAgeHistoryCDIndicator,
+  SOPDAgeHistoryVDIndicator,
   SOPDEpochHistoryIndicator,
   SOPDEpochHistoryUSDIndicator,
+  SOPDEpochHistoryCDIndicator,
+  SOPDEpochHistoryVDIndicator,
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
