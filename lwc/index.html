@@ -59,32 +59,31 @@ window.__loadMp4Muxer = function() {
   #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222;
-    display: flex; flex-direction: column; }
-  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0;
-    display: flex; flex-direction: column; }
-  #chart-top, #chart-bottom { width: 100%; flex: 1; min-height: 0; }
+  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222; }
+  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0; }
+  #chart-top, #chart-bottom { width: 100%; height: 100%; }
 
-  /* Pane header bar — sits above each chart, TradingView-style */
-  .pane-header { display: flex; align-items: center; gap: 10px; padding: 5px 10px;
-    background: rgba(15,15,15,0.95); border-bottom: 1px solid #1f1f1f;
-    font-size: 11px; color: #888; min-height: 28px; flex-wrap: wrap; flex-shrink: 0; }
-  .pane-header .pane-title { color: #d4d4d4; font-weight: 700; letter-spacing: 0.4px;
-    display: inline-flex; align-items: center; gap: 6px; }
-  .pane-header .pane-title .sep { color: #555; font-weight: 400; }
-  .pane-header .pane-title .source { color: #ff8c00; }
-  .pane-header .ind-badge { display: inline-flex; align-items: center; gap: 5px;
-    padding: 2px 7px; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 2px; font-size: 10px; line-height: 1.4; }
-  .pane-header .ind-badge .dot { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; }
-  .pane-header .ind-badge .ind-label { color: #d4d4d4; }
-  .pane-header .ind-badge .ind-value { color: #fff; font-weight: 700; }
+  /* Pane label — floats INSIDE the chart at top-left, TradingView-style.
+     Sits on top of the chart canvas via absolute positioning, not a header bar. */
+  .pane-label { position: absolute; top: 8px; left: 12px; z-index: 4;
+    display: flex; align-items: center; gap: 8px; pointer-events: none;
+    font-size: 12px; color: #888; flex-wrap: wrap; max-width: calc(100% - 80px); }
+  .pane-label .pane-title { color: #d4d4d4; font-weight: 700; letter-spacing: 0.3px;
+    display: inline-flex; align-items: center; gap: 5px; }
+  .pane-label .pane-title .sep { color: #555; font-weight: 400; }
+  .pane-label .pane-title .source { color: #ff8c00; }
+  .pane-label .ind-badge { display: inline-flex; align-items: center; gap: 4px;
+    padding: 1px 6px; background: rgba(0,0,0,0.4); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 2px; font-size: 10px; line-height: 1.3; }
+  .pane-label .ind-badge .dot { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; }
+  .pane-label .ind-badge .ind-label { color: #d4d4d4; }
 
   #status { position: absolute; bottom: 6px; left: 14px; color: #666; font-size: 11px; pointer-events: none; }
 
-  /* Stats stack — one box per URPD-style indicator, stacked vertically */
-  #stats-stack { position: absolute; top: 8px; left: 8px; display: flex;
-    flex-direction: column; gap: 6px; z-index: 5; pointer-events: none; max-height: calc(100% - 24px); overflow-y: auto; }
+  /* Stats stack — one box per URPD-style indicator, stacked vertically.
+     Pushed down to avoid overlapping the floating .pane-label at the very top. */
+  #stats-stack { position: absolute; top: 32px; left: 8px; display: flex;
+    flex-direction: column; gap: 6px; z-index: 5; pointer-events: none; max-height: calc(100% - 48px); overflow-y: auto; }
   .stat-box { background: rgba(0,0,0,0.85); border: 1px solid #222;
     padding: 6px 8px; font-size: 11px; line-height: 1.5; min-width: 220px; }
   .stat-box .label { color: #888; }
@@ -210,7 +209,8 @@ window.__loadMp4Muxer = function() {
 
   <div id="chart-stack">
     <div id="chart-top-wrap">
-      <div class="pane-header" id="header-top">
+      <div id="chart-top"></div>
+      <div class="pane-label" id="header-top">
         <span class="pane-title">
           <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
           <span class="sep">·</span><span>D</span>
@@ -218,17 +218,16 @@ window.__loadMp4Muxer = function() {
         </span>
         <span id="header-top-badges" style="display:contents"></span>
       </div>
-      <div id="chart-top"></div>
     </div>
     <div id="chart-bottom-wrap">
-      <div class="pane-header" id="header-bottom">
+      <div id="chart-bottom"></div>
+      <div class="pane-label" id="header-bottom">
         <span class="pane-title">
           <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
           <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
         </span>
         <span id="header-bottom-badges" style="display:contents"></span>
       </div>
-      <div id="chart-bottom"></div>
       <div id="stats-stack"></div>
       <div id="ind-panel">
         <div class="ip-title">INDICATORS</div>
