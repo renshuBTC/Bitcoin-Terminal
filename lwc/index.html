@@ -1186,7 +1186,7 @@ class ProfileHistogramIndicator extends Indicator {
 
     const spot = getSpotForDate(dateStr) || 0;
     const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
-    const TARGET_BINS = this.config.bins || 500;
+    const TARGET_BINS = this.config.bins || 750;
 
     // Aggregate raw bins → fixed-width buckets
     let minPrice = Infinity, maxPrice = -Infinity;
@@ -1252,11 +1252,14 @@ class ProfileHistogramIndicator extends Indicator {
     // the values themselves before sending to the series, then let
     // autoScale fit naturally to [0, p99]. The full-precision totals/stats
     // are read from this._stats below, so the hover tooltip is unaffected.
+    const Y_CAP_PCT = 99;
     let renderPoints = dataPoints;
+    let yCapValue = null;
     if (isVisibleScale && dataPoints.length >= 5) {
       const sorted = dataPoints.map(d => d.value).sort((a, b) => a - b);
-      const p99 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.99))];
+      const p99 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * (Y_CAP_PCT / 100)))];
       if (p99 > 0) {
+        yCapValue = p99;
         renderPoints = dataPoints.map(d => d.value > p99 ? { ...d, value: p99 } : d);
       }
       try {
@@ -1277,6 +1280,7 @@ class ProfileHistogramIndicator extends Indicator {
     this._stats = {
       spot, total, profit, loss, pctProfit, weightField, dateStr,
       binCount: dataPoints.length, fmtCount,
+      yCapPct: Y_CAP_PCT, yCapValue,
     };
   }
 
@@ -1309,7 +1313,7 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 750 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "all");
@@ -1326,7 +1330,7 @@ class URPDLTHProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 750 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "lth");
@@ -1343,7 +1347,7 @@ class URPDSTHProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 750 },
   ];
   async fetchBuckets(dateStr) {
     const resp = await getURPDCohort(dateStr, "sth");
@@ -1360,7 +1364,7 @@ class SOPDProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 750 },
     { key: "cohort", label: "Cohort", type: "select",
       options: [{v:"all",l:"All"},{v:"lth",l:"LTH only"},{v:"sth",l:"STH only"}], default: "all" },
   ];
@@ -1428,7 +1432,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
     { key: "bins", label: "Bins", type: "select",
-      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 500 },
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 750 },
   ];
 
   // fetchBuckets is unused for this indicator (we override onDateChange instead)
@@ -1455,7 +1459,7 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
 
     const spot = getSpotForDate(dateStr) || 0;
     const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
-    const TARGET_BINS = this.config.bins || 500;
+    const TARGET_BINS = this.config.bins || 750;
 
     // Find combined min/max price across all cohorts
     let minPrice = Infinity, maxPrice = -Infinity;
@@ -2373,6 +2377,9 @@ function _renderHoverStats(stack, currentDateStr) {
         `<div style="color:#666">no data for ${s.dateStr}</div></div>`;
       continue;
     }
+    const capLine = (s.yCapPct && s.yCapValue != null)
+      ? `<div><span class="label">Y-cap</span> <span class="value">p${s.yCapPct} = ${s.fmtCount(s.yCapValue)}</span></div>`
+      : "";
     html += `<div class="stat-box"><div class="title-row">` +
       `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
       `<span class="name">${ind.displayName()}</span>` +
@@ -2380,6 +2387,7 @@ function _renderHoverStats(stack, currentDateStr) {
       `<div><span class="label">Spot</span> <span class="value">$${s.spot.toLocaleString("en-US",{maximumFractionDigits:0})}</span></div>` +
       `<div><span class="label">Total</span> <span class="value">${s.fmtCount(s.total)}</span> &nbsp;` +
         `<span class="label">Bins</span> <span class="value">${s.binCount}</span></div>` +
+      capLine +
       `<div><span class="profit">In Profit ${s.pctProfit.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>` +
       `<div><span class="loss">In Loss ${(100-s.pctProfit).toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>` +
       `</div>`;
