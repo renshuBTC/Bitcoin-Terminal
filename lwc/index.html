@@ -458,9 +458,6 @@ window.__loadMp4Muxer = function() {
       <button class="bb-btn" data-lb="3650" title="10 Years">10Y</button>
       <button class="bb-btn active" data-lb="all" title="All">All</button>
     </div>
-    <button id="btn-date-picker" class="bb-icon-btn" title="Go to date" aria-label="Go to date">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="3" y="5" width="18" height="16" rx="2" stroke="currentColor" stroke-width="1.6"/><path d="M3 9h18M8 3v4M16 3v4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
-    </button>
     <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
     <select id="cycle-select" title="Jump to a cycle top or bottom">
       <option value="">Cycle Top/Bottom ▾</option>
@@ -3226,13 +3223,42 @@ function _renderHoverStats(stack, currentDateStr) {
 
 document.getElementById("date-input").addEventListener("change", (e) => setCurrentDate(e.target.value));
 
-// Cycle landmarks dropdown — jump to known cycle top/bottom dates.
-// Resets to placeholder after selection so it always reads "CYCLE TOP/BTM…"
+// Cycle landmarks dropdown — jump to a known cycle top/bottom date and
+// centre the BTC chart's visible window on it. Mirrors version 1
+// (rp.js ~line 3709): pick a half-window of max(currentLookback, 365)
+// days on each side of the landmark so users see the run-up + drawdown.
+// Resets to placeholder after selection so it always reads "Cycle Top/Bottom".
 document.getElementById("cycle-select").addEventListener("change", (e) => {
   const v = e.target.value;
   if (!v) return;
   setCurrentDate(v);
+  // Compute symmetric window around the landmark date.
+  const lbDaysRaw = (typeof currentLookback === "number") ? currentLookback : 0;
+  const halfWindow = lbDaysRaw && lbDaysRaw < 365 ? 365 : (lbDaysRaw || 365);
+  const dCenter = new Date(v + "T00:00:00");
+  const dFrom = new Date(dCenter); dFrom.setDate(dFrom.getDate() - halfWindow);
+  const dTo   = new Date(dCenter); dTo.setDate(dTo.getDate()   + halfWindow);
+  const fmt = (d) => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${dd}`;
+  };
+  let fromStr = fmt(dFrom), toStr = fmt(dTo);
+  // Clamp to available data range so LWC doesn't refuse the call.
+  if (priceDateStrs && priceDateStrs.length > 0) {
+    const earliest = priceDateStrs[0];
+    const latest   = priceDateStrs[priceDateStrs.length - 1];
+    if (fromStr < earliest) fromStr = earliest;
+    if (toStr   > latest)   toStr   = latest;
+  }
+  try {
+    topChart.timeScale().setVisibleRange({ from: fromStr, to: toStr });
+  } catch (err) {
+    console.warn("cycle landmark setVisibleRange:", err);
+  }
   e.target.value = "";
+  saveStateToURL();
 });
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -4016,25 +4042,6 @@ document.getElementById("btn-copy-link").addEventListener("click", async () => {
   tick();
   setInterval(tick, 1000);
 })();
-
-// Calendar icon button — opens the native date picker. The hidden date input
-// is the one wired to setCurrentDate, so opening it via showPicker() preserves
-// every existing onChange handler.
-document.getElementById("btn-date-picker").addEventListener("click", () => {
-  const d = document.getElementById("date-input");
-  if (!d) return;
-  if (typeof d.showPicker === "function") {
-    try { d.showPicker(); return; } catch (e) {}
-  }
-  // Fallback for browsers without showPicker support
-  d.style.position = "static";
-  d.style.opacity = "1";
-  d.style.width = "auto";
-  d.style.height = "auto";
-  d.style.pointerEvents = "auto";
-  d.focus();
-  d.click();
-});
 
 // Price-scale toggles — operate on the top chart's right price scale.
 // % and log are mutually exclusive modes; auto is independent.
