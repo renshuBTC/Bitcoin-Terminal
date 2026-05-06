@@ -1924,6 +1924,30 @@ function _bottomPaneCount() {
   return n;
 }
 
+// Force every LWC pane on bottomChart to the same pixel height. Without
+// this, LWC keeps each pane at whatever height it had when created —
+// adding a 2nd pane gives it a small default while the 1st keeps its
+// original (full) height, so the chart visually splits ~70/30 instead of
+// 50/50. We sum the wrap's pixel height, divide evenly, and call
+// `pane.setHeight()` on each. Called from `refreshPaneHeaders`'s
+// requestAnimationFrame after every add/remove.
+function _equaliseBottomPanes() {
+  if (!bottomChart || typeof bottomChart.panes !== "function") return;
+  const panes = bottomChart.panes();
+  if (!panes || panes.length === 0) return;
+  const wrap = document.getElementById("chart-bottom-wrap");
+  if (!wrap) return;
+  const totalH = wrap.clientHeight;
+  if (totalH < 20) return; // hidden / not laid out yet — skip
+  // Reserve 1px per pane separator. LWC draws separators between panes,
+  // so the available content height = total - (N - 1) px.
+  const sepPx = 1;
+  const each = Math.max(40, Math.floor((totalH - (panes.length - 1) * sepPx) / panes.length));
+  for (const p of panes) {
+    try { if (typeof p.setHeight === "function") p.setHeight(each); } catch (e) {}
+  }
+}
+
 function refreshIndicatorPanel() {
   // The side panel (#ind-panel) has been removed — indicator management
   // happens via the in-chart hover rows under each pane title. Keep this
@@ -2021,6 +2045,13 @@ function refreshPaneHeaders() {
       const bEl = document.getElementById("chart-bottom");
       if (bEl && bottomChart && bottomChart.resize) bottomChart.resize(bEl.clientWidth, bEl.clientHeight);
     } catch (e) {}
+    // Force every bottom-pane pane to the same pixel height. LWC v5
+    // doesn't auto-equalise — newly-added panes inherit a default height
+    // and existing panes keep their previous size, which leaves the chart
+    // visually lopsided (pane 0 taller than pane 1, etc.). Explicit
+    // setHeight makes the layout match the `top: i/N * 100%` math the
+    // label renderer relies on.
+    try { _equaliseBottomPanes(); } catch (e) {}
     // Re-apply right-scale minimumWidth to every pane (count may have just
     // changed if an indicator was added/removed). Cheap; no-op if widths
     // already match.
