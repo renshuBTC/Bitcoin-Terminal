@@ -1732,7 +1732,7 @@ let _visibleScaleOwner = null;
 // ───────────────────────────────────────────────────────────────────────────
 class URPDProfileIndicator extends ProfileHistogramIndicator {
   static type = "urpd_profile";
-  static displayName = "URPD History - Profit/Loss (BTC)";
+  static displayName = "URPD - Profit/Loss (BTC)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -1744,7 +1744,7 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
     return resp.buckets;
   }
   swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
-  displayName() { return `URPD History - Profit/Loss (${this.config.weight.toUpperCase()})`; }
+  displayName() { return `URPD - Profit/Loss (${this.config.weight.toUpperCase()})`; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1866,7 +1866,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     const TARGET_BINS = this.config.bins || 600;
 
     // Fetch all cohort URPDs in parallel — getURPDCohort() dedupes inflight
-    // requests, so siblings sharing cohorts (e.g. URPD History - Profit/Loss
+    // requests, so siblings sharing cohorts (e.g. URPD - Profit/Loss
     // already loaded "all") don't re-fetch.
     const responses = await Promise.all(keys.map(k =>
       getURPDCohort(dateStr, k).catch(() => null)
@@ -2008,7 +2008,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 // gold) on top — older cohorts sit on the baseline, younger stack above.
 class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_lth_sth_history";
-  static displayName = "URPD History - LTH/STH (BTC)";
+  static displayName = "URPD - LTH/STH (BTC)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2017,7 +2017,7 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   cohortLabels() { return ["LTH", "STH"]; }
   cohortColors() { return [THEME.lth, THEME.sth]; }
   swatchColor() { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
-  displayName() { return "URPD History - LTH/STH (BTC)"; }
+  displayName() { return "URPD - LTH/STH (BTC)"; }
 }
 
 // AGE-band split: 21 cohorts stacked OLDEST-FIRST. Oldest (>15y, violet)
@@ -2026,7 +2026,7 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
 // younger as you climb the bar".
 class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_age_history";
-  static displayName = "URPD History - AGE (BTC)";
+  static displayName = "URPD - AGE (BTC)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2038,7 +2038,7 @@ class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
     // Read swatch left→right as bottom→top of the stack: oldest first.
     return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
   }
-  displayName() { return "URPD History - AGE (BTC)"; }
+  displayName() { return "URPD - AGE (BTC)"; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
