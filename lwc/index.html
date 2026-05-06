@@ -209,13 +209,12 @@ window.__loadMp4Muxer = function() {
     display: none; }
   #date-tracer.show { display: block; }
   #date-tracer .line { display: none; }
-  /* Keyboard-nav instruction overlay — fades in on click, fades out idle. */
-  #nav-instruction { position: absolute; top: 12px; left: 50%;
-    transform: translateX(-50%); background: rgba(20,20,20,0.92);
-    border: 1px solid #2a2a2a; padding: 5px 12px; font-size: 11px;
-    color: #d4d4d4; pointer-events: none; z-index: 7; border-radius: 3px;
-    white-space: nowrap; opacity: 0; transition: opacity 0.2s ease; }
-  #nav-instruction.show { opacity: 1; }
+  /* Keyboard-nav instruction — sits inline inside the bottom-pane label,
+     just below the URPD/SOPD indicator rows. Hidden by default; shown
+     while the click-locked tracer is active. */
+  #nav-instruction { display: none; color: #888; font-size: 12px;
+    margin-top: 4px; padding-left: 14px; }
+  #nav-instruction.show { display: block; }
   #nav-instruction kbd { background: #0a0a0a; border: 1px solid #444;
     border-radius: 2px; padding: 1px 5px; font-family: inherit;
     font-size: 10px; color: #d4d4d4; margin: 0 1px; }
@@ -378,8 +377,7 @@ window.__loadMp4Muxer = function() {
   <div id="chart-stack">
     <div id="chart-top-wrap">
       <div id="chart-top"></div>
-      <div id="date-tracer" title="Click to clear"><div class="line"></div></div>
-      <div id="nav-instruction"></div>
+      <div id="date-tracer"><div class="line"></div></div>
       <div class="pane-label" id="header-top">
         <div class="pane-title-row">
           <span class="pane-title">
@@ -397,6 +395,7 @@ window.__loadMp4Muxer = function() {
       <div id="chart-bottom"></div>
       <div class="pane-label" id="header-bottom">
         <div class="ind-rows" id="ind-rows-bottom"></div>
+        <div id="nav-instruction"></div>
       </div>
       <div id="stats-stack"></div>
       <div id="status">Loading…</div>
@@ -2106,7 +2105,6 @@ topChart.subscribeCrosshairMove((param) => {
 const dateTracerEl     = document.getElementById("date-tracer");
 const navInstructionEl = document.getElementById("nav-instruction");
 let _navMode      = false;
-let _instructionTimer = null;
 
 function _paramTimeToDateStr(t) {
   if (!t) return null;
@@ -2162,15 +2160,11 @@ function showInstruction(text) {
   if (!navInstructionEl) return;
   navInstructionEl.innerHTML = text;
   navInstructionEl.classList.add("show");
-  if (_instructionTimer) clearTimeout(_instructionTimer);
-  _instructionTimer = setTimeout(() => {
-    navInstructionEl.classList.remove("show");
-  }, 4000);
 }
 function hideInstruction() {
   if (!navInstructionEl) return;
   navInstructionEl.classList.remove("show");
-  if (_instructionTimer) { clearTimeout(_instructionTimer); _instructionTimer = null; }
+  navInstructionEl.innerHTML = "";
 }
 
 function enterNavMode(dateStr) {
@@ -2179,7 +2173,7 @@ function enterNavMode(dateStr) {
   setCurrentDate(dateStr);
   updateTracerPosition();
   showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click tracer to clear`
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`
   );
 }
 function exitNavMode() {
@@ -2200,11 +2194,12 @@ topChart.subscribeClick((param) => {
   enterNavMode(ds);
 });
 
-// Double-click on tracer → exit nav mode. Single clicks are swallowed so
-// they don't fall through to the chart's click handler and re-lock the date.
-if (dateTracerEl) {
-  dateTracerEl.addEventListener("click", (e) => { e.stopPropagation(); });
-  dateTracerEl.addEventListener("dblclick", (e) => {
+// Double-click anywhere on the BTC price chart → exit nav mode.
+// Listener attached at the chart-top container so it covers the whole pane.
+const _chartTopEl = document.getElementById("chart-top");
+if (_chartTopEl) {
+  _chartTopEl.addEventListener("dblclick", (e) => {
+    if (!_navMode) return;
     e.stopPropagation();
     e.preventDefault();
     exitNavMode();
@@ -2269,7 +2264,7 @@ document.addEventListener("keydown", (e) => {
   updateTracerPosition();
   // Refresh the instruction's auto-hide timer so it stays while navigating
   showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click tracer to clear`
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`
   );
 });
 
