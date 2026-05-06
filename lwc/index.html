@@ -1019,8 +1019,9 @@ class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
 // ───────────────────────────────────────────────────────────────────────────
 class RealisedPriceFilteredIndicator extends Indicator {
   static pane = "top";
-  cohort()   { return "all"; }   // "all" | "lth" | "sth"
-  isProfit() { return true; }    // overridden by Loss subclasses
+  cohort()      { return "all"; }     // "all" | "lth" | "sth"
+  isProfit()    { return true; }      // overridden by Loss subclasses
+  weightField() { return "supply"; }  // "supply" (BTC) | "realized_cap" (USD)
 
   async load() {
     this._priceLine = null;
@@ -1038,8 +1039,9 @@ class RealisedPriceFilteredIndicator extends Indicator {
     const buckets = (resp && resp.buckets) || [];
     let num = 0, den = 0;
     const profit = this.isProfit();
+    const wf = this.weightField();
     for (const b of buckets) {
-      const w = b.supply || 0;
+      const w = (b[wf] != null ? b[wf] : 0);
       if (w <= 0) continue;
       const p = (b.price_floor !== undefined ? b.price_floor : b.price) || 0;
       if (profit ? p <= spot : p > spot) { num += p * w; den += w; }
@@ -1091,41 +1093,46 @@ function _rpFilteredSchema(defaultColor) {
   ];
 }
 
-class RPInProfitIndicator extends RealisedPriceFilteredIndicator {
-  static type = "rp_in_profit";
-  static displayName = "Realised Price in Profit";
-  static configSchema = _rpFilteredSchema(THEME.profit);
-  cohort() { return "all"; } isProfit() { return true; }
-}
-class RPInLossIndicator extends RealisedPriceFilteredIndicator {
-  static type = "rp_in_loss";
-  static displayName = "Realised Price in Loss";
-  static configSchema = _rpFilteredSchema(THEME.loss);
-  cohort() { return "all"; } isProfit() { return false; }
-}
-class LTHRPInProfitIndicator extends RealisedPriceFilteredIndicator {
-  static type = "lth_rp_in_profit";
-  static displayName = "LTH Realised Price in Profit";
-  static configSchema = _rpFilteredSchema(THEME.lth);
-  cohort() { return "lth"; } isProfit() { return true; }
-}
-class LTHRPInLossIndicator extends RealisedPriceFilteredIndicator {
-  static type = "lth_rp_in_loss";
-  static displayName = "LTH Realised Price in Loss";
-  static configSchema = _rpFilteredSchema(THEME.lth);
-  cohort() { return "lth"; } isProfit() { return false; }
-}
-class STHRPInProfitIndicator extends RealisedPriceFilteredIndicator {
-  static type = "sth_rp_in_profit";
-  static displayName = "STH Realised Price in Profit";
-  static configSchema = _rpFilteredSchema(THEME.sth);
-  cohort() { return "sth"; } isProfit() { return true; }
-}
-class STHRPInLossIndicator extends RealisedPriceFilteredIndicator {
-  static type = "sth_rp_in_loss";
-  static displayName = "STH Realised Price in Loss";
-  static configSchema = _rpFilteredSchema(THEME.sth);
-  cohort() { return "sth"; } isProfit() { return false; }
+// Generate the 12 weight-aware variants (3 cohorts × 2 P/L × 2 weights).
+// CD/VD weights are not yet wired up — would require fetching all 21 age
+// cohort URPDs per date and aggregating by mid-age. Add them later if the
+// performance hit is acceptable, or once BRK exposes a precomputed
+// coindays/valuedays field on the URPD bin response.
+const _RP_FILTERED_VARIANTS = [];
+const _RP_COHORTS = [
+  { key: "all", prefix: "",    color: "profit" }, // profit color for in-Profit, loss color for in-Loss
+  { key: "lth", prefix: "LTH ", color: "lth" },
+  { key: "sth", prefix: "STH ", color: "sth" },
+];
+const _RP_PL = [
+  { profit: true,  label: "in Profit", suffix: "_profit" },
+  { profit: false, label: "in Loss",   suffix: "_loss"   },
+];
+const _RP_WEIGHTS = [
+  { key: "supply",       short: "btc", label: "BTC" },
+  { key: "realized_cap", short: "usd", label: "USD" },
+];
+for (const c of _RP_COHORTS) {
+  for (const pl of _RP_PL) {
+    for (const w of _RP_WEIGHTS) {
+      const colorKey = c.color === "profit"
+        ? (pl.profit ? THEME.profit : THEME.loss)
+        : (c.color === "lth" ? THEME.lth : THEME.sth);
+      const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}${pl.suffix}_${w.short}`;
+      const display = `${c.prefix}Realised Price ${pl.label} (${w.label}-weighted)`;
+      const Cls = class extends RealisedPriceFilteredIndicator {
+        static type = typeName;
+        static displayName = display;
+        static configSchema = _rpFilteredSchema(colorKey);
+        cohort()      { return c.key; }
+        isProfit()    { return pl.profit; }
+        weightField() { return w.key; }
+      };
+      // Give each anonymous class a debugger-friendly name
+      Object.defineProperty(Cls, "name", { value: typeName });
+      _RP_FILTERED_VARIANTS.push(Cls);
+    }
+  }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1551,17 +1558,13 @@ class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
 // Add a new indicator: just register the class. UI auto-picks it up.
 // ───────────────────────────────────────────────────────────────────────────
 const INDICATOR_TYPES = [
-  // Top-pane line series (BRK precomputed)
+  // Top-pane line series (BRK precomputed; only BTC-weighted is exposed)
   RealisedPriceIndicator,
   LTHRealisedPriceIndicator,
   STHRealisedPriceIndicator,
   // Top-pane profit/loss-filtered means (per-date horizontal price line)
-  RPInProfitIndicator,
-  RPInLossIndicator,
-  LTHRPInProfitIndicator,
-  LTHRPInLossIndicator,
-  STHRPInProfitIndicator,
-  STHRPInLossIndicator,
+  // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
+  ..._RP_FILTERED_VARIANTS,
   SpotPriceLineIndicator,
   // Bottom-pane profile histograms (point-in-time, follow crosshair scrub)
   URPDProfileIndicator,
