@@ -1308,7 +1308,7 @@ for (const c of _RP_COHORTS) {
                      : c.color === "lth"  ? THEME.lth
                      : THEME.sth;
       const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}${pl.suffix}_${w.short}`;
-      const display = `${c.prefix}Realised Price ${pl.label} (${w.label}-weighted)`;
+      const display = `${c.prefix}Realised Price ${pl.label} (${w.label})`;
       const Cls = class extends RealisedPriceFilteredIndicator {
         static type = typeName;
         static displayName = display;
@@ -1821,7 +1821,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 // gold) on top — older cohorts sit on the baseline, younger stack above.
 class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_lth_sth_history";
-  static displayName = "URPD History - LTH/STH (BTC-weighted)";
+  static displayName = "URPD History - LTH/STH (BTC)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -1839,7 +1839,7 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
 // younger as you climb the bar".
 class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_age_history";
-  static displayName = "URPD History - AGE (BTC-weighted)";
+  static displayName = "URPD History - AGE (BTC)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
