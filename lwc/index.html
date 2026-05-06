@@ -124,8 +124,10 @@ window.__loadMp4Muxer = function() {
   /* Pane label — floats INSIDE the chart at top-left, TradingView-style.
      Sits on top of the chart canvas via absolute positioning, not a header bar. */
   .pane-label { position: absolute; top: 8px; left: 12px; z-index: 4;
-    display: flex; align-items: center; gap: 10px; pointer-events: none;
-    font-size: 15px; color: #888; flex-wrap: wrap; max-width: calc(100% - 80px); }
+    display: flex; flex-direction: column; align-items: flex-start; gap: 4px;
+    pointer-events: none;
+    font-size: 15px; color: #888; max-width: calc(100% - 80px); }
+  .pane-label .pane-title-row { display: inline-flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .pane-label .pane-title { color: #d4d4d4; font-weight: 400; letter-spacing: 0.3px;
     display: inline-flex; align-items: center; gap: 5px; }
   .pane-label .pane-title .sep { color: #555; font-weight: 400; }
@@ -141,6 +143,21 @@ window.__loadMp4Muxer = function() {
   .pane-label .hover-readout .price { color: #d4d4d4; font-weight: 700; }
   .pane-label .hover-readout .change-up { color: #2ecc71; }
   .pane-label .hover-readout .change-down { color: #ff5c5c; }
+
+  /* Per-indicator rows below the pane title — TradingView-style with hover actions. */
+  .ind-rows { display: flex; flex-direction: column; gap: 2px; }
+  .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
+    font-size: 13px; line-height: 1.4; padding: 0; }
+  .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
+  .ind-row .name { color: #d4d4d4; }
+  .ind-row.is-hidden .name, .ind-row.is-hidden .swatch { opacity: 0.4; }
+  .ind-row .actions { display: none; gap: 2px; margin-left: 4px; align-items: center; }
+  .ind-row:hover .actions { display: inline-flex; }
+  .ind-row .act-btn { background: rgba(20,20,20,0.85); border: 1px solid rgba(255,255,255,0.08);
+    color: #d4d4d4; cursor: pointer; padding: 2px 5px; border-radius: 2px;
+    font-size: 11px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; }
+  .ind-row .act-btn:hover { background: #2a2a2a; color: #fff; border-color: rgba(255,255,255,0.18); }
+  .ind-row .act-btn svg { display: block; }
 
   #status { position: absolute; bottom: 6px; left: 14px; color: #666; font-size: 11px; pointer-events: none; }
 
@@ -281,21 +298,27 @@ window.__loadMp4Muxer = function() {
     <div id="chart-top-wrap">
       <div id="chart-top"></div>
       <div class="pane-label" id="header-top">
-        <span class="pane-title">
-          <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
-          <span class="sep">·</span><span>D</span>
-          <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
-        </span>
-        <span class="hover-readout" id="hover-top"></span>
+        <div class="pane-title-row">
+          <span class="pane-title">
+            <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
+            <span class="sep">·</span><span>D</span>
+            <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
+          </span>
+          <span class="hover-readout" id="hover-top"></span>
+        </div>
+        <div class="ind-rows" id="ind-rows-top"></div>
       </div>
     </div>
     <div id="chart-bottom-wrap">
       <div id="chart-bottom"></div>
       <div class="pane-label" id="header-bottom">
-        <span class="pane-title">
-          <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
-          <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
-        </span>
+        <div class="pane-title-row">
+          <span class="pane-title">
+            <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
+            <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
+          </span>
+        </div>
+        <div class="ind-rows" id="ind-rows-bottom"></div>
       </div>
       <div id="stats-stack"></div>
       <div id="ind-panel">
@@ -488,6 +511,7 @@ class Indicator {
     this.series = [];
     this.priceLines = [];
     this.disposed = false;
+    this.visible = true;
   }
   defaultConfig() {
     const out = {};
@@ -502,6 +526,16 @@ class Indicator {
   async load() { throw new Error("not implemented"); }
   // Some indicators need to update when the date changes (URPD profile etc.)
   onDateChange(dateStr) {}
+  // Toggle the rendered visibility of all owned series. Doesn't remove the
+  // indicator — it can be re-shown via setVisible(true). Subclasses that draw
+  // via price lines or other non-series mechanisms should override this.
+  setVisible(v) {
+    this.visible = !!v;
+    for (const s of this.series) {
+      try { s.applyOptions({ visible: this.visible }); } catch (e) {}
+    }
+  }
+  toggleVisible() { this.setVisible(!this.visible); }
   remove() {
     if (this.disposed) return;
     for (const s of this.series) {
@@ -737,6 +771,19 @@ class SpotPriceLineIndicator extends Indicator {
       }
     }
     super.remove();
+  }
+  // Spot uses a price line on the BTC series, not a series of its own.
+  // Hide by zeroing line width + axis label; restore by re-creating on toggle.
+  setVisible(v) {
+    this.visible = !!v;
+    if (!this._priceLine) return;
+    try {
+      if (this.visible) {
+        this._priceLine.applyOptions({ lineWidth: 1, axisLabelVisible: true });
+      } else {
+        this._priceLine.applyOptions({ lineWidth: 0, axisLabelVisible: false });
+      }
+    } catch (e) {}
   }
 }
 
@@ -1313,6 +1360,30 @@ function badgeHTML(ind) {
   return `<span class="ind-badge"><span class="dot" style="${dotStyle}"></span>` +
     `<span class="ind-label">${shortDisplayName(ind)}</span></span>`;
 }
+// SVG icons for the in-chart indicator-row hover action buttons.
+const ICON_EYE_OPEN  = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.7"/></svg>`;
+const ICON_EYE_CLOSED = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 3l18 18" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/><path d="M10.6 6.1A10 10 0 0 1 12 6c6 0 10 7 10 7a18 18 0 0 1-3.2 3.7M6.6 6.6A18 18 0 0 0 2 13s4 7 10 7c1.5 0 2.9-.4 4.1-1" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/></svg>`;
+const ICON_TRASH = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+function indRowHTML(ind) {
+  const swatch = ind.swatchColor();
+  const dotStyle = `background:${swatch}`;
+  const hiddenClass = ind.visible ? "" : " is-hidden";
+  const eyeIcon = ind.visible ? ICON_EYE_OPEN : ICON_EYE_CLOSED;
+  const eyeTitle = ind.visible ? "Hide" : "Show";
+  const isBTC = ind.constructor.type === "btc_price";
+  const trashBtn = isBTC ? "" :
+    `<button class="act-btn act-trash" data-id="${ind.id}" title="Remove">${ICON_TRASH}</button>`;
+  return `<div class="ind-row${hiddenClass}" data-id="${ind.id}">` +
+    `<span class="swatch" style="${dotStyle}"></span>` +
+    `<span class="name">${ind.displayName()}</span>` +
+    `<span class="actions">` +
+      `<button class="act-btn act-eye" data-id="${ind.id}" title="${eyeTitle}">${eyeIcon}</button>` +
+      trashBtn +
+    `</span>` +
+  `</div>`;
+}
+
 function refreshPaneHeaders() {
   // Bottom pane title flips based on what's loaded
   let hasURPD = false, hasSOPD = false;
@@ -1328,7 +1399,48 @@ function refreshPaneHeaders() {
   else                     botTitle = "REALIZED PRICE DISTRIBUTION";
   document.getElementById("header-bottom-title").textContent = botTitle;
   document.getElementById("header-bottom-date").textContent = currentDateStr || "—";
+
+  // Build per-indicator rows, one per pane
+  const topRows = [], botRows = [];
+  for (const ind of activeIndicators.values()) {
+    const html = indRowHTML(ind);
+    if (ind.pane() === "top") topRows.push(html); else botRows.push(html);
+  }
+  const topHost = document.getElementById("ind-rows-top");
+  const botHost = document.getElementById("ind-rows-bottom");
+  if (topHost) topHost.innerHTML = topRows.join("");
+  if (botHost) botHost.innerHTML = botRows.join("");
 }
+
+// Delegated click handler for the in-chart per-indicator action buttons.
+// We attach once at the pane-label container level and dispatch by class.
+function _wireIndRowActions(rootId) {
+  const root = document.getElementById(rootId);
+  if (!root || root._wired) return;
+  root._wired = true;
+  root.addEventListener("click", async (e) => {
+    const btn = e.target.closest("button.act-btn");
+    if (!btn) return;
+    const id = btn.getAttribute("data-id");
+    const ind = activeIndicators.get(id);
+    if (!ind) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.classList.contains("act-eye")) {
+      ind.toggleVisible();
+      // Re-render rows so swatch/name dim and the icon flips
+      refreshPaneHeaders();
+      saveStateToURL();
+      if (typeof recordHistory === "function") recordHistory();
+    } else if (btn.classList.contains("act-trash")) {
+      try { ind.remove(); } catch (err) { console.warn("trash:", err); }
+      activeIndicators.delete(id);
+      refreshIndicatorPanel();
+    }
+  });
+}
+_wireIndRowActions("ind-rows-top");
+_wireIndRowActions("ind-rows-bottom");
 
 // ───────────────────────────────────────────────────────────────────────────
 // Edit an existing indicator's config in place. Tears down its chart series
@@ -1603,7 +1715,10 @@ function setChartType(type) {
   oldInd.series = [];
   oldInd._priceSeries = null;
   // Re-load with the new chart type
-  oldInd.load().catch(e => console.error("chart type swap:", e));
+  // After rebuild, re-apply visibility if user had hidden BTC.
+  oldInd.load()
+    .then(() => { if (oldInd.visible === false) oldInd.setVisible(false); })
+    .catch(e => console.error("chart type swap:", e));
   document.getElementById("status").textContent = `Chart type: ${def.label}`;
 }
 
@@ -1806,7 +1921,7 @@ function saveStateToURL() {
       iv: typeof currentInterval   !== "undefined" ? currentInterval   : undefined,
       ind: [...activeIndicators.values()]
         .filter(ind => ind.constructor.type !== "btc_price") // BTC is always-present, not part of state
-        .map(ind => ({ t: ind.constructor.type, c: ind.config })),
+        .map(ind => ({ t: ind.constructor.type, c: ind.config, h: ind.visible === false ? 1 : 0 })),
     };
     try {
       const hash = "#s=" + encodeURIComponent(btoa(JSON.stringify(state)));
@@ -1851,6 +1966,7 @@ async function restoreState(state) {
     activeIndicators.set(ind.id, ind);
     try {
       await ind.load();
+      if (i.h) ind.setVisible(false);
       restored++;
     } catch (e) {
       console.error(`restore ${i.t}:`, e);
@@ -1901,7 +2017,7 @@ function snapshotState() {
     iv: currentInterval,
     ind: [...activeIndicators.values()]
       .filter(ind => ind.constructor.type !== "btc_price")
-      .map(ind => ({ t: ind.constructor.type, c: ind.config })),
+      .map(ind => ({ t: ind.constructor.type, c: ind.config, h: ind.visible === false ? 1 : 0 })),
   };
 }
 
@@ -1965,6 +2081,7 @@ async function applyState(state) {
       activeIndicators.set(ind.id, ind);
       try {
         await ind.load();
+        if (i.h) ind.setVisible(false);
       } catch (e) {
         console.error("apply: ind.load failed", i.t, e);
         try { ind.remove(); } catch (e2) {}
