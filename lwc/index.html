@@ -438,7 +438,7 @@ window.__loadMp4Muxer = function() {
     </div>
     <span class="bb-sep"></span>
     <button id="btn-pct"  class="bb-btn" title="Toggle Percentage">%</button>
-    <button id="btn-log"  class="bb-btn active" title="Toggle Log Scale">log</button>
+    <button id="btn-log"  class="bb-btn" title="Toggle Log Scale">log</button>
     <button id="btn-auto" class="bb-btn active" title="Toggle Auto Scale">auto</button>
     <span class="bb-sep"></span>
     <div id="export-wrap">
@@ -490,7 +490,7 @@ function commonChartOpts() {
 }
 
 const topChart = LightweightCharts.createChart(topContainer, Object.assign(commonChartOpts(), {
-  rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Logarithmic, autoScale: true },
+  rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Normal, autoScale: true },
   // Hide the top chart's time axis — it's rendered in the shared #chart-time-axis below.
   timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false,
     rightOffset: 12, barSpacing: 2, visible: false },
@@ -3290,7 +3290,7 @@ document.getElementById("btn-date-picker").addEventListener("click", () => {
 // Price-scale toggles — operate on the top chart's right price scale.
 // % and log are mutually exclusive modes; auto is independent.
 const PSM = LightweightCharts.PriceScaleMode || { Normal: 0, Logarithmic: 1, Percentage: 2, IndexedTo100: 3 };
-let psState = { pct: false, log: true, auto: true };
+let psState = { pct: false, log: false, auto: true };
 
 function _topRightScale() { return topChart.priceScale("right"); }
 function _readActualAuto() {
