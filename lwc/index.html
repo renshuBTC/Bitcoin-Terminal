@@ -786,6 +786,26 @@ function computeMeansFromBuckets(buckets, spot) {
 // corrupt the recent endpoint values, mirroring rp.js's experience).
 // Re-uses priceDateStrs as the date universe.
 // ───────────────────────────────────────────────────────────────────────────
+// 5-bin moving average — verbatim port of the SMOOTH_WINDOW=5 smoother
+// in rp.js (line 818). Without this, the URPD histograms render with
+// visible "spikes" in sparse-data regions where a few non-zero bins are
+// surrounded by empty ones; the moving average bleeds each bin's value
+// into its neighbours so the histogram reads as a continuous distribution
+// the way the previous Plotly version did.
+const URPD_SMOOTH_WINDOW = 5;
+function _smoothBins(values) {
+  const half = Math.floor(URPD_SMOOTH_WINDOW / 2);
+  const result = new Array(values.length);
+  for (let i = 0; i < values.length; i++) {
+    const lo = Math.max(0, i - half);
+    const hi = Math.min(values.length, i + half + 1);
+    let sum = 0;
+    for (let j = lo; j < hi; j++) sum += values[j];
+    result[i] = sum / (hi - lo);
+  }
+  return result;
+}
+
 function _rpFilteredSampleDates() {
   if (!priceDateStrs || priceDateStrs.length === 0) return [];
   const RECENT_STEP = 1;
@@ -1563,6 +1583,15 @@ class ProfileHistogramIndicator extends Indicator {
       agg[idx].weight += w;
     }
 
+    // 5-bin moving-average smoothing — same as the previous Plotly
+    // version (rp.js: SMOOTH_WINDOW = 5). Eliminates the "spiky"
+    // visual where a few non-zero bins sit beside many empty ones,
+    // by bleeding each bin's mass into its 4 neighbours.
+    {
+      const smoothed = _smoothBins(agg.map(a => a.weight));
+      for (let i = 0; i < agg.length; i++) agg[i].weight = smoothed[i];
+    }
+
     // Include EVERY bin (even zero-weight ones) so LWC renders bars at all
     // 600 evenly-spaced time positions. Empty bins get a transparent
     // zero-height bar — invisible to the eye but they reserve their slot
@@ -1870,6 +1899,17 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
         }
       }
       weights.push(arr);
+    }
+
+    // 5-bin moving-average smoothing per cohort, BEFORE the cumulative
+    // pass. Smoothing the raw cohort arrays (rather than the cumulative
+    // tops) preserves the relative cohort proportions at every bin —
+    // the stacked colors still represent each cohort's local share, but
+    // the visible bars read as a continuous distribution instead of
+    // isolated spikes. Same SMOOTH_WINDOW = 5 the previous Plotly
+    // version used (rp.js).
+    for (let k = 0; k < N; k++) {
+      weights[k] = _smoothBins(weights[k]);
     }
 
     // Cumulative bottom→top: cum[k][b] = sum of weights[0..k][b].
