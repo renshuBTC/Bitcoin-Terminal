@@ -373,12 +373,6 @@ window.__loadMp4Muxer = function() {
     <div id="chart-bottom-wrap">
       <div id="chart-bottom"></div>
       <div class="pane-label" id="header-bottom">
-        <div class="pane-title-row">
-          <span class="pane-title">
-            <span id="header-bottom-title">REALIZED PRICE DISTRIBUTION</span>
-            <span class="sep">·</span><span id="header-bottom-date" style="color:#ff8c00">—</span>
-          </span>
-        </div>
         <div class="ind-rows" id="ind-rows-bottom"></div>
       </div>
       <div id="stats-stack"></div>
@@ -1636,25 +1630,17 @@ function indRowHTML(ind) {
 }
 
 function refreshPaneHeaders() {
-  // Bottom pane title flips based on what's loaded — and the entire bottom
-  // pane label hides when there's no URPD/SOPD profile indicator (since the
-  // "cost basis / distribution" UI only makes sense when a profile is shown).
-  let hasURPD = false, hasSOPD = false, hasAnyBottom = false;
+  // The bottom pane no longer has a fixed "REALIZED PRICE DISTRIBUTION"
+  // header — its identity is conveyed entirely through the in-chart
+  // indicator rows below (URPD Profile, SOPD Profile, etc.).
+  // We still hide the entire pane-label container if there's nothing
+  // bottom-pane to label.
+  let hasAnyBottom = false;
   for (const ind of activeIndicators.values()) {
-    if (ind.pane() !== "bottom") continue;
-    hasAnyBottom = true;
-    const t = ind.constructor.type;
-    if (t.startsWith("urpd")) hasURPD = true;
-    if (t.startsWith("sopd")) hasSOPD = true;
+    if (ind.pane() === "bottom") { hasAnyBottom = true; break; }
   }
   const headerBot = document.getElementById("header-bottom");
-  if (headerBot) headerBot.style.display = hasURPD || hasSOPD ? "" : "none";
-  let botTitle;
-  if (hasURPD && hasSOPD) botTitle = "URPD + SOPD";
-  else if (hasSOPD)        botTitle = "SOPD (1d diff)";
-  else                     botTitle = "REALIZED PRICE DISTRIBUTION";
-  document.getElementById("header-bottom-title").textContent = botTitle;
-  document.getElementById("header-bottom-date").textContent = currentDateStr || "—";
+  if (headerBot) headerBot.style.display = hasAnyBottom ? "" : "none";
 
   // Build per-indicator rows, one per pane. BTC/USD is shown in the pane title
   // itself, so we skip rendering a row for it. We also skip the Spot Price
@@ -2320,9 +2306,6 @@ refreshIndicatorPanel = function() {
 const _origSetCurrentDate = setCurrentDate;
 setCurrentDate = function(dateStr) {
   _origSetCurrentDate(dateStr);
-  // Update the date in the bottom-pane header
-  const dateSpan = document.getElementById("header-bottom-date");
-  if (dateSpan) dateSpan.textContent = dateStr || "—";
   saveStateToURL();
   // NOTE: don't recordHistory here — date changes from crosshair scrub are too noisy.
 };
