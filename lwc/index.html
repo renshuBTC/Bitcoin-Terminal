@@ -1957,10 +1957,21 @@ function _bottomPaneCount() {
 // 50/50. We sum the wrap's pixel height, divide evenly, and call
 // `pane.setHeight()` on each. Called from `refreshPaneHeaders`'s
 // requestAnimationFrame after every add/remove.
+// Snapshot the pane count after the last equalise so we can skip on
+// re-renders triggered by anything other than add/remove (date scrubs,
+// visibility toggles, URL state restores, etc.). Without this guard,
+// _equaliseBottomPanes would clobber any manual divider drag the user
+// performed by resetting all pane heights back to equal share.
+let _lastEqualisedPaneCount = -1;
 function _equaliseBottomPanes() {
   if (!bottomChart || typeof bottomChart.panes !== "function") return;
   const panes = bottomChart.panes();
   if (!panes || panes.length === 0) return;
+  // Skip when the pane count hasn't changed since the previous equalise
+  // — that means no indicator was added or removed, so any current pane
+  // sizing is the user's manual drag and should be preserved.
+  if (panes.length === _lastEqualisedPaneCount) return;
+  _lastEqualisedPaneCount = panes.length;
   const wrap = document.getElementById("chart-bottom-wrap");
   if (!wrap) return;
   const totalH = wrap.clientHeight;
