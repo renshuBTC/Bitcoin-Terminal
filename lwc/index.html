@@ -2570,15 +2570,17 @@ const _HALVING_DATES = [
 const _EPOCH_LABELS = [
   "Epoch 1", "Epoch 2", "Epoch 3", "Epoch 4", "Epoch 5",
 ];
-// Bloomberg-style cool→warm 5-color gradient (deep blue, oldest → orange,
-// newest). Picked from the same hue family as the existing _AGE_BAND_COLORS
-// palette so the EPOCH stack reads as a coarser version of AGE.
+// Bloomberg-style high-contrast 5-color palette — saturated terminal hues
+// alternating warm/cool so every adjacent pair in the stack has maximum
+// visual separation. Each colour is one of the canonical Bloomberg
+// terminal accent hues (orange = signature, plus cyan/green/magenta/
+// yellow), picked so no two adjacent epochs share a hue family.
 const _EPOCH_COLORS = [
-  "#1c58a8", // Epoch 1 (pre-2012-halving, oldest): deep blue
-  "#287888", // Epoch 2: teal
-  "#5aaf54", // Epoch 3: green
-  "#ffd42e", // Epoch 4: yellow
-  "#ff8c00", // Epoch 5 (post-2024-halving, newest): Bloomberg orange
+  "#ff8c00", // Epoch 1 (pre-2012, oldest): Bloomberg orange — warm
+  "#00e676", // Epoch 2: bright green — cool
+  "#ff5cb3", // Epoch 3: magenta/pink — warm
+  "#00d4ff", // Epoch 4: cyan — cool
+  "#ffeb3b", // Epoch 5 (post-2024, newest): yellow — warm
 ];
 // Midpoint age in days for each entry of _AGE_BANDS (index-aligned).
 // Used to map an age band's mid-creation-date to a halving epoch.
