@@ -1,0 +1,1623 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BITCOINTERMINAL.NET (Indicator Framework)</title>
+<link rel="preconnect" href="https://bitview.space" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&display=swap">
+<script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<!-- html2canvas for PNG export. Loaded on first click via dynamic import to avoid up-front cost. -->
+<script>
+window.__loadHtml2canvas = function() {
+  if (window.html2canvas) return Promise.resolve(window.html2canvas);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js";
+    s.onload = () => resolve(window.html2canvas);
+    s.onerror = () => reject(new Error("html2canvas failed to load"));
+    document.head.appendChild(s);
+  });
+};
+// mp4-muxer for WebCodecs MP4 encoding (lazy-loaded on first MP4 click)
+window.__loadMp4Muxer = function() {
+  if (window.Mp4Muxer) return Promise.resolve(window.Mp4Muxer);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement("script");
+    s.src = "https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.1/build/mp4-muxer.min.js";
+    s.onload = () => resolve(window.Mp4Muxer);
+    s.onerror = () => reject(new Error("mp4-muxer failed to load"));
+    document.head.appendChild(s);
+  });
+};
+</script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #0a0a0a; color: #d4d4d4;
+    font-family: 'Source Code Pro', Consolas, monospace; font-size: 13px; }
+  #app { display: flex; flex-direction: column; height: 100vh; }
+  #toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    background: #111; border-bottom: 1px solid #222; flex-wrap: wrap; }
+  #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; }
+  #toolbar .spacer { flex: 1; }
+  #toolbar input[type="date"] { background: #1a1a1a; color: #d4d4d4;
+    border: 1px solid #2a2a2a; padding: 4px 8px; font-family: inherit; font-size: 12px; }
+  #toolbar label { color: #888; font-size: 11px; }
+  #toolbar input[type="checkbox"] { vertical-align: middle; }
+  #toolbar button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 5px 10px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 2px; }
+  #toolbar button:hover { border-color: #444; color: #fff; }
+  #toolbar button.primary { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+  #toolbar button.primary:hover { background: #ffa330; }
+  /* Lookback button group */
+  #lb-group { display: flex; gap: 0; }
+  #lb-group button { padding: 5px 8px; font-size: 11px; border-radius: 0; min-width: 36px; }
+  #lb-group button:not(:first-child) { border-left: none; }
+  #lb-group button:first-child { border-radius: 2px 0 0 2px; }
+  #lb-group button:last-child { border-radius: 0 2px 2px 0; }
+  #lb-group button.active { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+
+  #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222; }
+  #chart-bottom-wrap { flex: 1; position: relative; min-height: 0; }
+  #chart-top, #chart-bottom { width: 100%; height: 100%; }
+
+  #status { position: absolute; bottom: 6px; left: 14px; color: #666; font-size: 11px; pointer-events: none; }
+
+  /* Stats stack — one box per URPD-style indicator, stacked vertically */
+  #stats-stack { position: absolute; top: 8px; left: 8px; display: flex;
+    flex-direction: column; gap: 6px; z-index: 5; pointer-events: none; max-height: calc(100% - 24px); overflow-y: auto; }
+  .stat-box { background: rgba(0,0,0,0.85); border: 1px solid #222;
+    padding: 6px 8px; font-size: 11px; line-height: 1.5; min-width: 220px; }
+  .stat-box .label { color: #888; }
+  .stat-box .value { color: #fff; }
+  .stat-box .profit { color: #2ecc71; }
+  .stat-box .loss { color: #ff5c5c; }
+  .stat-box .title-row { display: flex; align-items: center; gap: 6px; margin-bottom: 3px; }
+  .stat-box .title-row .swatch { width: 8px; height: 8px; border-radius: 1px; }
+  .stat-box .title-row .name { color: #ff8c00; font-weight: 700; flex: 1; }
+  .stat-box .title-row .date { color: #d4d4d4; font-size: 10px; }
+
+  /* Indicator panel — right side */
+  #ind-panel { position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.85); border: 1px solid #222; padding: 6px 8px;
+    font-size: 11px; min-width: 240px; z-index: 5; }
+  #ind-panel .ip-title { color: #ff8c00; font-weight: 700; margin-bottom: 4px; }
+  #ind-panel .ip-row { display: flex; align-items: center; gap: 6px; padding: 3px 0;
+    border-bottom: 1px solid rgba(255,255,255,0.05); }
+  #ind-panel .ip-row:last-child { border-bottom: none; }
+  #ind-panel .ip-swatch { width: 10px; height: 10px; border-radius: 1px; flex-shrink: 0; }
+  #ind-panel .ip-name { flex: 1; color: #d4d4d4; }
+  #ind-panel .ip-pane { color: #666; font-size: 10px; }
+  #ind-panel .ip-x, #ind-panel .ip-cog { background: none; border: none; color: #888; cursor: pointer;
+    font-family: inherit; font-size: 12px; padding: 0 3px; }
+  #ind-panel .ip-x:hover { color: #ff5c5c; }
+  #ind-panel .ip-cog:hover { color: #ff8c00; }
+
+  /* ─────────────────────────────────────────────────────────────────────
+   * Mobile responsiveness — viewports ≤768px wide.
+   * Goals: toolbar fits on multiple wrapped lines without overflow,
+   * touch-friendly hit targets, stat boxes don't dominate the chart,
+   * indicator panel relocates so it doesn't cover the histogram.
+   * ───────────────────────────────────────────────────────────────────── */
+  @media (max-width: 768px) {
+    body { font-size: 12px; }
+    #toolbar { padding: 6px 8px; gap: 6px; }
+    #toolbar .brand { font-size: 12px; }
+    #toolbar > span:nth-of-type(2) { display: none; } /* hide subtitle to save space */
+    #toolbar button, #toolbar select, #toolbar input[type="date"] { font-size: 11px; padding: 6px 8px; }
+    #lb-group button { min-width: 30px; padding: 5px 4px; }
+    /* Top chart shrinks slightly so the histogram has more room */
+    #chart-top-wrap { flex: 0 0 50%; }
+    /* Stat boxes: smaller, scroll if many */
+    #stats-stack { top: 6px; left: 6px; max-width: calc(100% - 12px); gap: 4px; }
+    .stat-box { font-size: 10px; padding: 5px 6px; min-width: 0; max-width: 100%; }
+    /* Indicator panel becomes a horizontal strip at the bottom-right */
+    #ind-panel { right: 4px; top: auto; bottom: 4px; min-width: 0; max-width: 60%;
+      max-height: 40%; overflow-y: auto; padding: 4px 6px; font-size: 10px; }
+    #ind-panel .ip-pane { display: none; } /* hide the "top"/"bottom" tag to save width */
+    #status { font-size: 10px; }
+    /* Modal: full-width on mobile */
+    #modal { min-width: 0; width: calc(100vw - 24px); padding: 12px; }
+  }
+  @media (max-width: 480px) {
+    /* Smallest phones: even tighter */
+    #toolbar { padding: 4px 6px; gap: 4px; }
+    #toolbar button, #toolbar select { font-size: 10px; padding: 5px 6px; }
+    /* On tiny screens, indicator panel covers the bottom; show only count */
+    #ind-panel { max-height: 30%; }
+  }
+
+  /* Add-indicator modal */
+  #modal-bg { position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100;
+    display: none; align-items: center; justify-content: center; }
+  #modal-bg.show { display: flex; }
+  #modal { background: #111; border: 1px solid #333; padding: 16px; min-width: 360px;
+    max-height: 80vh; overflow-y: auto; }
+  #modal h3 { color: #ff8c00; margin-bottom: 8px; font-size: 13px; letter-spacing: 0.5px; }
+  #modal .section { margin-bottom: 12px; }
+  #modal .section-title { color: #888; font-size: 11px; margin-bottom: 4px; text-transform: uppercase; }
+  #modal .ind-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px;
+    cursor: pointer; border: 1px solid transparent; }
+  #modal .ind-option:hover { background: #1a1a1a; border-color: #2a2a2a; }
+  #modal .ind-option .swatch { width: 10px; height: 10px; border-radius: 1px; }
+  #modal .ind-option .name { color: #d4d4d4; flex: 1; }
+  #modal .ind-option .pane-tag { color: #666; font-size: 10px; }
+  #modal .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 12px; }
+  #modal button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 6px 12px; cursor: pointer; font-family: inherit; font-size: 12px; }
+  #modal button:hover { border-color: #444; }
+  #modal button.primary { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+  #modal label { color: #888; font-size: 11px; display: block; margin-bottom: 3px; }
+  #modal select, #modal input[type="text"] { background: #1a1a1a; color: #d4d4d4;
+    border: 1px solid #2a2a2a; padding: 5px 8px; font-family: inherit; font-size: 12px;
+    width: 100%; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="toolbar">
+    <span class="brand">BITCOINTERMINAL.NET</span>
+    <span style="color:#666">| Indicator Framework</span>
+    <span style="background:#ff8c00;color:#0a0a0a;font-weight:700;padding:2px 6px;border-radius:2px;font-size:10px;letter-spacing:0.5px">BETA</span>
+    <a href="/" style="color:#888;text-decoration:none;font-size:11px;border:1px solid #2a2a2a;padding:4px 8px;border-radius:2px" title="Back to the classic Plotly version">← classic</a>
+    <span class="spacer"></span>
+    <label>Date:</label>
+    <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
+    <select id="cycle-select" title="Jump to a cycle top or bottom">
+      <option value="">CYCLE TOP/BTM…</option>
+      <option value="2011-06-08">Cycle 1 Top — 2011-06-08</option>
+      <option value="2011-11-18">Cycle 1 Bottom — 2011-11-18</option>
+      <option value="2013-11-29">Cycle 2 Top — 2013-11-29</option>
+      <option value="2015-01-14">Cycle 2 Bottom — 2015-01-14</option>
+      <option value="2017-12-17">Cycle 3 Top — 2017-12-17</option>
+      <option value="2018-12-15">Cycle 3 Bottom — 2018-12-15</option>
+      <option value="2021-11-10">Cycle 4 Top — 2021-11-10</option>
+      <option value="2022-11-21">Cycle 4 Bottom — 2022-11-21</option>
+      <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
+    </select>
+    <label><input type="checkbox" id="scrub-toggle" checked> Scrub</label>
+    <div id="lb-group" title="Lookback window for the price chart">
+      <button data-lb="365">1Y</button>
+      <button data-lb="1825">5Y</button>
+      <button data-lb="3650">10Y</button>
+      <button data-lb="all" class="active">ALL</button>
+    </div>
+    <button id="btn-add" class="primary">+ Add Indicator</button>
+    <button id="btn-copy-link" title="Copy a sharable link to this chart configuration">Copy Link</button>
+    <button id="btn-png" title="Download a PNG snapshot of the current chart">📷 PNG</button>
+    <button id="btn-mp4" title="Animate through a date range and export as MP4">▶ MP4</button>
+  </div>
+
+  <div id="chart-stack">
+    <div id="chart-top-wrap">
+      <div id="chart-top"></div>
+    </div>
+    <div id="chart-bottom-wrap">
+      <div id="chart-bottom"></div>
+      <div id="stats-stack"></div>
+      <div id="ind-panel">
+        <div class="ip-title">INDICATORS</div>
+        <div id="ip-list"></div>
+      </div>
+      <div id="status">Loading…</div>
+    </div>
+  </div>
+</div>
+
+<div id="modal-bg"><div id="modal"></div></div>
+
+<script>
+"use strict";
+
+const BASE = "https://bitview.space";
+const PRICE_EPOCH_DATE = new Date(2009, 0, 3);
+
+const THEME = {
+  background: "#0a0a0a", text: "#d4d4d4", grid: "rgba(255,255,255,0.05)", border: "#222",
+  crosshair: "rgba(255,140,0,0.5)", priceLine: "rgba(255,255,255,0.85)",
+  spot: "#ff8c00", profit: "#2ecc71", loss: "#e74c3c",
+  cyan: "#00d4ff", lth: "#3aa3ff", sth: "#ff5c8a", magenta: "#d94fff", yellow: "#ffd34f",
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// Charts
+// ───────────────────────────────────────────────────────────────────────────
+const topContainer = document.getElementById("chart-top");
+const bottomContainer = document.getElementById("chart-bottom");
+
+function commonChartOpts() {
+  return {
+    layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
+      fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11 },
+    grid: { vertLines: { color: THEME.grid }, horzLines: { color: THEME.grid } },
+    rightPriceScale: { borderColor: THEME.border },
+    timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
+      vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
+      horzLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted } },
+  };
+}
+
+const topChart = LightweightCharts.createChart(topContainer, Object.assign(commonChartOpts(), {
+  rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Logarithmic, autoScale: true },
+  timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false, rightOffset: 12, barSpacing: 2 },
+}));
+
+const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign(commonChartOpts(), {
+  rightPriceScale: { borderColor: THEME.border, autoScale: true, scaleMargins: { top: 0.05, bottom: 0.05 } },
+  timeScale: {
+    borderColor: THEME.border, timeVisible: false, secondsVisible: false,
+    rightOffset: 0, barSpacing: 4,
+    tickMarkFormatter: (time) => {
+      const v = typeof time === "number" ? time : 0;
+      if (v >= 1_000_000) return `$${(v/1_000_000).toFixed(1)}M`;
+      if (v >= 1_000)     return `$${Math.round(v/1_000)}K`;
+      if (v >= 1)         return `$${v.toFixed(0)}`;
+      return `$${v.toFixed(2)}`;
+    },
+  },
+  localization: {
+    priceFormatter: (price) => price >= 1e6 ? `${(price/1e6).toFixed(2)}M` : Math.round(price).toLocaleString(),
+    timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
+  },
+}));
+
+function syncSizes() {
+  topChart.applyOptions({ width: topContainer.clientWidth, height: topContainer.clientHeight });
+  bottomChart.applyOptions({ width: bottomContainer.clientWidth, height: bottomContainer.clientHeight });
+}
+window.addEventListener("resize", syncSizes);
+// Orientation change on mobile: fires after the visual viewport has settled
+window.addEventListener("orientationchange", () => setTimeout(syncSizes, 200));
+syncSizes();
+
+// ───────────────────────────────────────────────────────────────────────────
+// Data layer
+// ───────────────────────────────────────────────────────────────────────────
+let priceArray = null;
+let priceDateStrs = null;
+const urpdCache = new Map();
+const inflight = new Map();
+
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("fetch " + url + " → " + r.status);
+  return r.json();
+}
+function indexToDateStr(i) {
+  const d = new Date(PRICE_EPOCH_DATE);
+  d.setDate(d.getDate() + i);
+  return d.toISOString().slice(0, 10);
+}
+function getSpotForDate(dateStr) {
+  if (!priceDateStrs) return null;
+  const idx = priceDateStrs.indexOf(dateStr);
+  if (idx < 0) return null;
+  return priceArray[idx];
+}
+async function getURPDCohort(dateStr, cohort /* "all" | "lth" | "sth" */) {
+  const key = cohort + ":" + dateStr;
+  if (urpdCache.has(key)) return urpdCache.get(key);
+  if (inflight.has(key)) return inflight.get(key);
+  const p = (async () => {
+    const resp = await fetchJSON(BASE + "/api/urpd/" + cohort + "/" + dateStr);
+    urpdCache.set(key, resp);
+    inflight.delete(key);
+    return resp;
+  })();
+  inflight.set(key, p);
+  return p;
+}
+const getURPD = (d) => getURPDCohort(d, "all"); // back-compat shorthand
+
+// Yesterday's date string (used by SOPD which is the daily URPD diff)
+function prevDateStrOf(dateStr) {
+  const d = new Date(dateStr + "T00:00:00");
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
+
+// Bin-level diff: SOPD = URPD(today) − URPD(yesterday), preserving spending at
+// raw price_floor resolution before any aggregation. Mirrors the diffAggRaw fn
+// in rp.js (task #227 — fixed bin-level cancellation).
+function diffAggRaw(prevBuckets, currBuckets) {
+  const prevMap = {}, currMap = {};
+  prevBuckets.forEach(b => prevMap[b.price_floor] = b);
+  currBuckets.forEach(b => currMap[b.price_floor] = b);
+  const allPrices = new Set();
+  prevBuckets.forEach(b => allPrices.add(b.price_floor));
+  currBuckets.forEach(b => allPrices.add(b.price_floor));
+  const result = [];
+  allPrices.forEach(p => {
+    const prev = prevMap[p] || { supply: 0, realized_cap: 0 };
+    const curr = currMap[p] || { supply: 0, realized_cap: 0 };
+    const dSup = prev.supply - curr.supply;
+    const dRC  = prev.realized_cap - curr.realized_cap;
+    if (dSup > 0) {
+      result.push({ price_floor: p, supply: dSup, realized_cap: dRC > 0 ? dRC : dSup * p });
+    }
+  });
+  result.sort((a, b) => a.price_floor - b.price_floor);
+  return result;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator base class — every indicator owns LWC series and a config
+// ───────────────────────────────────────────────────────────────────────────
+class Indicator {
+  static type = "base";
+  static displayName = "Base";
+  static pane = "top"; // "top" or "bottom"
+  static configSchema = []; // [{key, label, type, options?, default}, ...]
+
+  constructor(config = {}) {
+    this.id = "ind_" + Math.random().toString(36).slice(2, 9);
+    this.config = Object.assign({}, this.defaultConfig(), config);
+    this.series = [];
+    this.priceLines = [];
+    this.disposed = false;
+  }
+  defaultConfig() {
+    const out = {};
+    for (const f of this.constructor.configSchema) out[f.key] = f.default;
+    return out;
+  }
+  pane() { return this.constructor.pane; }
+  chart() { return this.pane() === "top" ? topChart : bottomChart; }
+  displayName() { return this.constructor.displayName; }
+  swatchColor() { return this.config.color || THEME.cyan; }
+  // Subclasses override
+  async load() { throw new Error("not implemented"); }
+  // Some indicators need to update when the date changes (URPD profile etc.)
+  onDateChange(dateStr) {}
+  remove() {
+    if (this.disposed) return;
+    for (const s of this.series) {
+      try { this.chart().removeSeries(s); } catch (e) {}
+    }
+    // Price lines on a series die with the series
+    this.series = [];
+    this.priceLines = [];
+    this.disposed = true;
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator: BTC Price — always present, always first
+// ───────────────────────────────────────────────────────────────────────────
+class BTCPriceIndicator extends Indicator {
+  static type = "btc_price";
+  static displayName = "BTC/USD";
+  static pane = "top";
+  static configSchema = [];
+
+  async load() {
+    const points = [];
+    for (let i = 0; i < priceArray.length; i++) {
+      const v = priceArray[i];
+      if (typeof v === "number" && v > 0) points.push({ time: priceDateStrs[i], value: v });
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: THEME.priceLine, lineWidth: 2, priceLineVisible: false, lastValueVisible: true, title: "BTC/USD",
+    });
+    series.setData(points);
+    this.series.push(series);
+    this._priceSeries = series;
+    topChart.timeScale().fitContent();
+  }
+  swatchColor() { return THEME.priceLine; }
+  // Used by SpotPriceLineIndicator + others to attach price lines to BTC series
+  getPriceSeries() { return this._priceSeries; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator: Spot Price Line — orange dashed line at current date's spot
+// Tracks the global "current date" — moves with crosshair scrub.
+// ───────────────────────────────────────────────────────────────────────────
+class SpotPriceLineIndicator extends Indicator {
+  static type = "spot_line";
+  static displayName = "Spot Price Line";
+  static pane = "top";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.spot },
+  ];
+
+  async load() {
+    this._priceLine = null;
+    this.onDateChange(currentDateStr);
+  }
+  swatchColor() { return this.config.color; }
+  onDateChange(dateStr) {
+    const spot = getSpotForDate(dateStr);
+    if (!spot) return;
+    const btcInd = activeIndicators.values().next().value;
+    if (!btcInd || !btcInd.getPriceSeries) return;
+    const series = btcInd.getPriceSeries();
+    if (this._priceLine) {
+      try { series.removePriceLine(this._priceLine); } catch (e) {}
+    }
+    this._priceLine = series.createPriceLine({
+      price: spot, color: this.config.color, lineWidth: 1,
+      lineStyle: LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true, title: `spot ${dateStr}`,
+    });
+  }
+  remove() {
+    if (this._priceLine) {
+      const btcInd = activeIndicators.values().next().value;
+      if (btcInd && btcInd.getPriceSeries) {
+        try { btcInd.getPriceSeries().removePriceLine(this._priceLine); } catch (e) {}
+      }
+    }
+    super.remove();
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator: Realised Price Line (URPD mean over time)
+// Uses BRK's precomputed daily series for speed.
+// ───────────────────────────────────────────────────────────────────────────
+// Base for any "BRK precomputed daily series" line indicator on the top chart
+class TopPaneSeriesIndicator extends Indicator {
+  static pane = "top";
+  // Subclasses MUST override
+  endpoint() { throw new Error("endpoint not implemented"); }
+  seriesTitle() { return this.constructor.displayName; }
+
+  async load() {
+    let resp;
+    try { resp = await fetchJSON(BASE + this.endpoint()); }
+    catch (e) {
+      throw new Error(`${this.constructor.displayName}: ${e.message}`);
+    }
+    const arr = resp.data || resp;
+    const points = [];
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && v > 0 && i < priceDateStrs.length) {
+        points.push({ time: priceDateStrs[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.seriesTitle(),
+    });
+    series.setData(points);
+    this.series.push(series);
+  }
+  swatchColor() { return this.config.color; }
+}
+
+class RealisedPriceIndicator extends TopPaneSeriesIndicator {
+  static type = "realised_price";
+  static displayName = "Realised Price";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.cyan },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  endpoint() { return "/api/series/realized_price/day1"; }
+  seriesTitle() { return "Realised Price"; }
+}
+
+class LTHRealisedPriceIndicator extends TopPaneSeriesIndicator {
+  static type = "lth_realised_price";
+  static displayName = "Realised Price — LTH";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.lth },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  endpoint() { return "/api/series/lth_realized_price/day1"; }
+  seriesTitle() { return "LTH Realised Price"; }
+}
+
+class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
+  static type = "sth_realised_price";
+  static displayName = "Realised Price — STH";
+  static configSchema = [
+    { key: "color", label: "Color", type: "color", default: THEME.sth },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
+  ];
+  endpoint() { return "/api/series/sth_realized_price/day1"; }
+  seriesTitle() { return "STH Realised Price"; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator: URPD Profile (point-in-time histogram, bottom pane)
+// ───────────────────────────────────────────────────────────────────────────
+// ───────────────────────────────────────────────────────────────────────────
+// Base class for any "point-in-time histogram" indicator on the bottom pane.
+// Subclasses just override fetchBuckets(dateStr) to define the data source.
+// All shared logic — aggregation, P/L color split, stats box, per-instance
+// price scale, scale ownership handoff on removal — lives here.
+// ───────────────────────────────────────────────────────────────────────────
+class ProfileHistogramIndicator extends Indicator {
+  static pane = "bottom";
+
+  // Subclasses MUST override
+  async fetchBuckets(dateStr) { throw new Error("fetchBuckets not implemented"); }
+
+  async load() {
+    this._statBox = document.createElement("div");
+    this._statBox.className = "stat-box";
+    this._statBox.setAttribute("data-id", this.id);
+    this._statBox.innerHTML = `<div class="title-row">` +
+      `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+      `<span class="name">${this.displayName()}</span>` +
+      `<span class="date">…</span></div>` +
+      `<div style="color:#666">loading…</div>`;
+    document.getElementById("stats-stack").appendChild(this._statBox);
+    await this.onDateChange(currentDateStr);
+  }
+
+  async onDateChange(dateStr) {
+    let buckets;
+    try { buckets = await this.fetchBuckets(dateStr); }
+    catch (e) {
+      console.error(this.constructor.type, "fetch:", e);
+      if (this._statBox) this._statBox.innerHTML = `<div class="title-row">` +
+        `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+        `<span class="name">${this.displayName()}</span></div>` +
+        `<div style="color:#ff5c5c">err: ${e.message}</div>`;
+      return;
+    }
+    if (!buckets || buckets.length === 0) {
+      if (this._statBox) this._statBox.innerHTML = `<div class="title-row">` +
+        `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+        `<span class="name">${this.displayName()}</span></div>` +
+        `<div style="color:#666">no data for ${dateStr}</div>`;
+      return;
+    }
+
+    const spot = getSpotForDate(dateStr) || 0;
+    const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
+    const TARGET_BINS = this.config.bins || 500;
+
+    // Aggregate raw bins → fixed-width buckets
+    let minPrice = Infinity, maxPrice = -Infinity;
+    for (const b of buckets) {
+      if (!b[weightField] || b[weightField] <= 0) continue;
+      if (b.price_floor < minPrice) minPrice = b.price_floor;
+      if (b.price_floor > maxPrice) maxPrice = b.price_floor;
+    }
+    if (!isFinite(minPrice) || !isFinite(maxPrice) || maxPrice <= minPrice) return;
+    if (minPrice < 1) minPrice = 1;
+    const binWidth = (maxPrice - minPrice) / TARGET_BINS;
+    const agg = new Array(TARGET_BINS).fill(0).map((_, i) => ({
+      price: minPrice + i * binWidth, weight: 0,
+    }));
+    for (const b of buckets) {
+      const w = b[weightField];
+      if (!w || w <= 0) continue;
+      if (b.price_floor < minPrice) continue;
+      let idx = Math.floor((b.price_floor - minPrice) / binWidth);
+      if (idx >= TARGET_BINS) idx = TARGET_BINS - 1;
+      if (idx < 0) continue;
+      agg[idx].weight += w;
+    }
+
+    const dataPoints = [];
+    let total = 0, profit = 0, loss = 0;
+    let lastTime = -Infinity;
+    for (const a of agg) {
+      if (a.weight <= 0) continue;
+      let t = a.price;
+      if (t <= lastTime) t = lastTime + 0.0001;
+      lastTime = t;
+      total += a.weight;
+      const inProfit = a.price <= spot;
+      if (inProfit) profit += a.weight; else loss += a.weight;
+      dataPoints.push({ time: t, value: a.weight, color: inProfit ? THEME.profit : THEME.loss });
+    }
+
+    // Replace series; per-instance price scale (first profile claims visible right axis)
+    if (this._series) {
+      try { bottomChart.removeSeries(this._series); } catch (e) {}
+      const idx = this.series.indexOf(this._series);
+      if (idx >= 0) this.series.splice(idx, 1);
+    }
+    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+    const isVisibleScale = (_visibleScaleOwner === this.id);
+    const scaleId = isVisibleScale ? "right" : this.id;
+
+    this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
+      priceScaleId: scaleId,
+      priceFormat: { type: "volume" },
+      priceLineVisible: false, lastValueVisible: false,
+      title: weightField === "supply" ? "BTC supply" : "USD realised cap",
+    });
+    if (!isVisibleScale) {
+      bottomChart.priceScale(scaleId).applyOptions({
+        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    }
+    this._series.setData(dataPoints);
+    this.series.push(this._series);
+    bottomChart.timeScale().fitContent();
+
+    // Update our stats box
+    const fmtCount = (n) => weightField === "supply" ? `${(n/1e6).toFixed(2)}M BTC` : `$${(n/1e9).toFixed(2)}B`;
+    const pctProfit = total > 0 ? (100 * profit / total) : 0;
+    if (this._statBox) {
+      this._statBox.innerHTML = `<div class="title-row">` +
+        `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+        `<span class="name">${this.displayName()}</span>` +
+        `<span class="date">${dateStr}</span></div>` +
+        `<div><span class="label">Spot</span> <span class="value">$${spot.toLocaleString("en-US",{maximumFractionDigits:0})}</span></div>` +
+        `<div><span class="label">Total</span> <span class="value">${fmtCount(total)}</span> &nbsp;` +
+          `<span class="label">Bins</span> <span class="value">${dataPoints.length}</span></div>` +
+        `<div><span class="profit">In Profit ${pctProfit.toFixed(1)}% (${fmtCount(profit)})</span></div>` +
+        `<div><span class="loss">In Loss ${(100-pctProfit).toFixed(1)}% (${fmtCount(loss)})</span></div>`;
+    }
+  }
+
+  remove() {
+    if (_visibleScaleOwner === this.id) {
+      _visibleScaleOwner = null;
+      for (const ind of activeIndicators.values()) {
+        if (ind !== this && ind instanceof ProfileHistogramIndicator) {
+          _visibleScaleOwner = ind.id;
+          if (typeof ind.onDateChange === "function") ind.onDateChange(currentDateStr);
+          break;
+        }
+      }
+    }
+    if (this._statBox && this._statBox.parentNode) this._statBox.parentNode.removeChild(this._statBox);
+    this._statBox = null;
+    super.remove();
+  }
+}
+
+// Tracks which bottom-pane indicator owns the visible right Y-axis.
+let _visibleScaleOwner = null;
+
+// ───────────────────────────────────────────────────────────────────────────
+// Concrete profile indicators — each is just a different fetchBuckets()
+// ───────────────────────────────────────────────────────────────────────────
+class URPDProfileIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_profile";
+  static displayName = "URPD Profile";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:1000,l:"1000"}], default: 500 },
+  ];
+  async fetchBuckets(dateStr) {
+    const resp = await getURPDCohort(dateStr, "all");
+    return resp.buckets;
+  }
+  swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
+  displayName() { return `URPD Profile (${this.config.weight.toUpperCase()})`; }
+}
+
+class URPDLTHProfileIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_lth_profile";
+  static displayName = "URPD Profile — LTH";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:1000,l:"1000"}], default: 500 },
+  ];
+  async fetchBuckets(dateStr) {
+    const resp = await getURPDCohort(dateStr, "lth");
+    return resp.buckets;
+  }
+  swatchColor() { return THEME.lth; }
+  displayName() { return `URPD LTH (${this.config.weight.toUpperCase()})`; }
+}
+
+class URPDSTHProfileIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_sth_profile";
+  static displayName = "URPD Profile — STH";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:1000,l:"1000"}], default: 500 },
+  ];
+  async fetchBuckets(dateStr) {
+    const resp = await getURPDCohort(dateStr, "sth");
+    return resp.buckets;
+  }
+  swatchColor() { return THEME.sth; }
+  displayName() { return `URPD STH (${this.config.weight.toUpperCase()})`; }
+}
+
+class SOPDProfileIndicator extends ProfileHistogramIndicator {
+  static type = "sopd_profile";
+  static displayName = "SOPD Profile (1d diff)";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:1000,l:"1000"}], default: 500 },
+    { key: "cohort", label: "Cohort", type: "select",
+      options: [{v:"all",l:"All"},{v:"lth",l:"LTH only"},{v:"sth",l:"STH only"}], default: "all" },
+  ];
+  async fetchBuckets(dateStr) {
+    const prev = prevDateStrOf(dateStr);
+    const cohort = this.config.cohort || "all";
+    const [currResp, prevResp] = await Promise.all([
+      getURPDCohort(dateStr, cohort),
+      getURPDCohort(prev, cohort),
+    ]);
+    if (!currResp || !currResp.buckets || !prevResp || !prevResp.buckets) return [];
+    return diffAggRaw(prevResp.buckets, currResp.buckets);
+  }
+  swatchColor() { return THEME.yellow; }
+  displayName() {
+    const c = (this.config.cohort || "all").toUpperCase();
+    return `SOPD ${c} (${this.config.weight.toUpperCase()})`;
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// 21 UTXO age cohorts + matching rainbow palette (mirrors live site)
+// ───────────────────────────────────────────────────────────────────────────
+const AGE_BANDS = [
+  { cohort: "utxos_under_1h_old",   label: "<1h"    },
+  { cohort: "utxos_1h_to_1d_old",   label: "1h-1d"  },
+  { cohort: "utxos_1d_to_1w_old",   label: "1d-1w"  },
+  { cohort: "utxos_1w_to_1m_old",   label: "1w-1m"  },
+  { cohort: "utxos_1m_to_2m_old",   label: "1m-2m"  },
+  { cohort: "utxos_2m_to_3m_old",   label: "2m-3m"  },
+  { cohort: "utxos_3m_to_4m_old",   label: "3m-4m"  },
+  { cohort: "utxos_4m_to_5m_old",   label: "4m-5m"  },
+  { cohort: "utxos_5m_to_6m_old",   label: "5m-6m"  },
+  { cohort: "utxos_6m_to_1y_old",   label: "6m-1y"  },
+  { cohort: "utxos_1y_to_2y_old",   label: "1y-2y"  },
+  { cohort: "utxos_2y_to_3y_old",   label: "2y-3y"  },
+  { cohort: "utxos_3y_to_4y_old",   label: "3y-4y"  },
+  { cohort: "utxos_4y_to_5y_old",   label: "4y-5y"  },
+  { cohort: "utxos_5y_to_6y_old",   label: "5y-6y"  },
+  { cohort: "utxos_6y_to_7y_old",   label: "6y-7y"  },
+  { cohort: "utxos_7y_to_8y_old",   label: "7y-8y"  },
+  { cohort: "utxos_8y_to_10y_old",  label: "8y-10y" },
+  { cohort: "utxos_10y_to_12y_old", label: "10y-12y" },
+  { cohort: "utxos_12y_to_15y_old", label: "12y-15y" },
+  { cohort: "utxos_over_15y_old",   label: ">15y"   },
+];
+const AGE_BAND_COLORS = [
+  "#FF3B2E", "#FF5A2E", "#FF7A2E", "#FF9A2E", "#FFB82E",
+  "#FFD42E", "#E8D834", "#C8D43A", "#A0C840", "#5AAF54",
+  "#3A9A6A", "#2E8878", "#287888", "#226898", "#1C58A8",
+  "#1848B8", "#2040C0", "#4858C8", "#6878D8", "#90A0E8",
+  "#B8C8F0",
+];
+
+// ───────────────────────────────────────────────────────────────────────────
+// AGE-band URPD: fetches all 21 cohort URPDs in parallel, colors each bar by
+// the dominant cohort at that price level. Overrides onDateChange entirely so
+// per-cohort breakdown survives aggregation (the base class only tracks total
+// weight per agg bin).
+// ───────────────────────────────────────────────────────────────────────────
+class URPDAgeBandProfileIndicator extends ProfileHistogramIndicator {
+  static type = "urpd_age_band";
+  static displayName = "URPD Profile — Age Bands";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:1000,l:"1000"}], default: 500 },
+  ];
+
+  // fetchBuckets is unused for this indicator (we override onDateChange instead)
+  async fetchBuckets() { return []; }
+
+  async onDateChange(dateStr) {
+    if (this._statBox) {
+      this._statBox.querySelector(".date").textContent = dateStr;
+    }
+    // Fetch all 21 cohorts in parallel, ignore individual failures
+    const cohortResps = await Promise.all(AGE_BANDS.map(b =>
+      getURPDCohort(dateStr, b.cohort).catch(() => null)
+    ));
+    const fetched = cohortResps.filter(r => r && r.buckets).length;
+    if (fetched === 0) {
+      if (this._statBox) {
+        this._statBox.innerHTML = `<div class="title-row">` +
+          `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+          `<span class="name">${this.displayName()}</span></div>` +
+          `<div style="color:#ff5c5c">no cohort data for ${dateStr}</div>`;
+      }
+      return;
+    }
+
+    const spot = getSpotForDate(dateStr) || 0;
+    const weightField = this.config.weight === "usd" ? "realized_cap" : "supply";
+    const TARGET_BINS = this.config.bins || 500;
+
+    // Find combined min/max price across all cohorts
+    let minPrice = Infinity, maxPrice = -Infinity;
+    for (const resp of cohortResps) {
+      if (!resp || !resp.buckets) continue;
+      for (const b of resp.buckets) {
+        if (!b[weightField] || b[weightField] <= 0) continue;
+        if (b.price_floor < minPrice) minPrice = b.price_floor;
+        if (b.price_floor > maxPrice) maxPrice = b.price_floor;
+      }
+    }
+    if (!isFinite(minPrice) || !isFinite(maxPrice) || maxPrice <= minPrice) return;
+    if (minPrice < 1) minPrice = 1;
+    const binWidth = (maxPrice - minPrice) / TARGET_BINS;
+
+    // Aggregate: per agg bin, accumulate weight per band so we can pick dominant
+    const agg = new Array(TARGET_BINS).fill(0).map((_, i) => ({
+      price: minPrice + i * binWidth,
+      total: 0,
+      perBand: new Array(AGE_BANDS.length).fill(0),
+    }));
+    for (let bandIdx = 0; bandIdx < AGE_BANDS.length; bandIdx++) {
+      const resp = cohortResps[bandIdx];
+      if (!resp || !resp.buckets) continue;
+      for (const b of resp.buckets) {
+        const w = b[weightField];
+        if (!w || w <= 0) continue;
+        if (b.price_floor < minPrice) continue;
+        let idx = Math.floor((b.price_floor - minPrice) / binWidth);
+        if (idx >= TARGET_BINS) idx = TARGET_BINS - 1;
+        if (idx < 0) continue;
+        agg[idx].total += w;
+        agg[idx].perBand[bandIdx] += w;
+      }
+    }
+
+    // Build LWC data points + per-band total tally for the stats box
+    const dataPoints = [];
+    let total = 0;
+    let lastTime = -Infinity;
+    const bandTotals = new Array(AGE_BANDS.length).fill(0);
+    for (const a of agg) {
+      if (a.total <= 0) continue;
+      let t = a.price;
+      if (t <= lastTime) t = lastTime + 0.0001;
+      lastTime = t;
+      total += a.total;
+      // Find dominant band at this bin
+      let maxIdx = 0, maxV = a.perBand[0];
+      for (let i = 1; i < a.perBand.length; i++) {
+        if (a.perBand[i] > maxV) { maxV = a.perBand[i]; maxIdx = i; }
+        bandTotals[i] += a.perBand[i];
+      }
+      bandTotals[0] += a.perBand[0];
+      dataPoints.push({ time: t, value: a.total, color: AGE_BAND_COLORS[maxIdx] });
+    }
+
+    // Replace series + own a unique price scale
+    if (this._series) {
+      try { bottomChart.removeSeries(this._series); } catch (e) {}
+      const idx = this.series.indexOf(this._series);
+      if (idx >= 0) this.series.splice(idx, 1);
+    }
+    if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+    const isVisibleScale = (_visibleScaleOwner === this.id);
+    const scaleId = isVisibleScale ? "right" : this.id;
+    this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
+      priceScaleId: scaleId,
+      priceFormat: { type: "volume" },
+      priceLineVisible: false, lastValueVisible: false,
+      title: weightField === "supply" ? "BTC supply" : "USD realised cap",
+    });
+    if (!isVisibleScale) {
+      bottomChart.priceScale(scaleId).applyOptions({
+        visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+      });
+    }
+    this._series.setData(dataPoints);
+    this.series.push(this._series);
+    bottomChart.timeScale().fitContent();
+
+    // Update stats box with top-3 dominant cohorts
+    const fmtCount = (n) => weightField === "supply" ? `${(n/1e6).toFixed(2)}M BTC` : `$${(n/1e9).toFixed(2)}B`;
+    const ranked = bandTotals.map((v, i) => ({ v, i }))
+      .filter(x => x.v > 0)
+      .sort((a, b) => b.v - a.v)
+      .slice(0, 5);
+    const topRows = ranked.map(r =>
+      `<div><span style="color:${AGE_BAND_COLORS[r.i]}">█</span> ` +
+      `<span class="label">${AGE_BANDS[r.i].label}</span> ` +
+      `<span class="value">${fmtCount(r.v)} (${(100*r.v/total).toFixed(1)}%)</span></div>`
+    ).join("");
+    if (this._statBox) {
+      this._statBox.innerHTML = `<div class="title-row">` +
+        `<span class="swatch" style="background:${this.swatchColor()}"></span>` +
+        `<span class="name">${this.displayName()}</span>` +
+        `<span class="date">${dateStr}</span></div>` +
+        `<div><span class="label">Cohorts loaded</span> <span class="value">${fetched}/21</span></div>` +
+        `<div><span class="label">Total</span> <span class="value">${fmtCount(total)}</span> &nbsp;` +
+          `<span class="label">Bins</span> <span class="value">${dataPoints.length}</span></div>` +
+        `<div style="margin-top:3px;color:#888">Top cohorts (by ${weightField === "supply" ? "BTC" : "USD"}):</div>` +
+        topRows;
+    }
+  }
+
+  swatchColor() {
+    // Show a small rainbow gradient as the indicator's swatch
+    return `linear-gradient(90deg, ${AGE_BAND_COLORS[0]}, ${AGE_BAND_COLORS[10]}, ${AGE_BAND_COLORS[20]})`;
+  }
+  displayName() { return `URPD Age Bands (${this.config.weight.toUpperCase()})`; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator registry — all addable types live here.
+// Add a new indicator: just register the class. UI auto-picks it up.
+// ───────────────────────────────────────────────────────────────────────────
+const INDICATOR_TYPES = [
+  // Top-pane line series (BRK precomputed)
+  RealisedPriceIndicator,
+  LTHRealisedPriceIndicator,
+  STHRealisedPriceIndicator,
+  SpotPriceLineIndicator,
+  // Bottom-pane profile histograms (point-in-time, follow crosshair scrub)
+  URPDProfileIndicator,
+  URPDLTHProfileIndicator,
+  URPDSTHProfileIndicator,
+  URPDAgeBandProfileIndicator,
+  SOPDProfileIndicator,
+  // Future: BOTH-mode P/L 9-line variants, etc.
+];
+
+// ───────────────────────────────────────────────────────────────────────────
+// Active indicator state
+// ───────────────────────────────────────────────────────────────────────────
+const activeIndicators = new Map(); // id → Indicator
+let currentDateStr = document.getElementById("date-input").value;
+
+function refreshIndicatorPanel() {
+  const list = document.getElementById("ip-list");
+  list.innerHTML = "";
+  for (const [id, ind] of activeIndicators) {
+    const row = document.createElement("div");
+    row.className = "ip-row";
+    const isBTC = ind.constructor.type === "btc_price";
+    const hasConfig = ind.constructor.configSchema && ind.constructor.configSchema.length > 0;
+    row.innerHTML =
+      `<span class="ip-swatch" style="background:${ind.swatchColor()}"></span>` +
+      `<span class="ip-name">${ind.displayName()}</span>` +
+      `<span class="ip-pane">${ind.pane()}</span>` +
+      (isBTC ? "" :
+        (hasConfig ? `<button class="ip-cog" data-id="${id}" title="Settings">⚙</button>` : "") +
+        `<button class="ip-x" data-id="${id}" title="Remove">×</button>`);
+    list.appendChild(row);
+  }
+  list.querySelectorAll(".ip-x").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      const ind = activeIndicators.get(id);
+      if (ind) { ind.remove(); activeIndicators.delete(id); refreshIndicatorPanel(); }
+    });
+  });
+  list.querySelectorAll(".ip-cog").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      const ind = activeIndicators.get(id);
+      if (ind) openConfigModal(ind.constructor.type, ind);
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Edit an existing indicator's config in place. Tears down its chart series
+// and stats DOM, swaps in a new instance with the new config, and reloads.
+// The new indicator gets a fresh id; we splice it into the same position in
+// activeIndicators so panel order stays stable.
+// ───────────────────────────────────────────────────────────────────────────
+async function editIndicatorConfig(id, newConfig) {
+  const ind = activeIndicators.get(id);
+  if (!ind) return;
+  const T = ind.constructor;
+  // Capture insertion order so we can restore position
+  const ids = [...activeIndicators.keys()];
+  const idx = ids.indexOf(id);
+
+  ind.remove();
+  activeIndicators.delete(id);
+
+  const newInd = new T(newConfig);
+  // Rebuild map preserving order with new instance at the original position
+  const entries = [...activeIndicators.entries()];
+  entries.splice(idx, 0, [newInd.id, newInd]);
+  activeIndicators.clear();
+  for (const [k, v] of entries) activeIndicators.set(k, v);
+
+  refreshIndicatorPanel();
+  try {
+    await newInd.load();
+  } catch (e) {
+    console.error("config edit failed:", e);
+    document.getElementById("status").textContent = "Edit failed: " + e.message;
+    activeIndicators.delete(newInd.id);
+    refreshIndicatorPanel();
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Add Indicator modal
+// ───────────────────────────────────────────────────────────────────────────
+function openAddModal() {
+  const modal = document.getElementById("modal");
+  const bg = document.getElementById("modal-bg");
+  const top = INDICATOR_TYPES.filter(t => t.pane === "top");
+  const bot = INDICATOR_TYPES.filter(t => t.pane === "bottom");
+  let html = `<h3>+ Add Indicator</h3>`;
+  if (top.length) {
+    html += `<div class="section"><div class="section-title">Top pane (price chart)</div>`;
+    for (const T of top) html += renderTypeOption(T);
+    html += `</div>`;
+  }
+  if (bot.length) {
+    html += `<div class="section"><div class="section-title">Bottom pane (URPD/SOPD)</div>`;
+    for (const T of bot) html += renderTypeOption(T);
+    html += `</div>`;
+  }
+  html += `<div class="actions"><button id="modal-cancel">Cancel</button></div>`;
+  modal.innerHTML = html;
+  bg.classList.add("show");
+
+  modal.querySelectorAll(".ind-option").forEach(el => {
+    el.addEventListener("click", () => {
+      const type = el.getAttribute("data-type");
+      bg.classList.remove("show");
+      openConfigModal(type);
+    });
+  });
+  modal.querySelector("#modal-cancel").addEventListener("click", () => bg.classList.remove("show"));
+}
+function renderTypeOption(T) {
+  const swatch = T.prototype.swatchColor ?
+    (T.configSchema.find(f => f.key === "color") ? T.configSchema.find(f => f.key === "color").default : "#888")
+    : "#888";
+  return `<div class="ind-option" data-type="${T.type}">` +
+    `<span class="swatch" style="background:${swatch}"></span>` +
+    `<span class="name">${T.displayName}</span>` +
+    `<span class="pane-tag">${T.pane}</span>` +
+    `</div>`;
+}
+
+function openConfigModal(typeName, existingIndicator) {
+  const T = INDICATOR_TYPES.find(t => t.type === typeName);
+  if (!T) return;
+  const isEdit = !!existingIndicator;
+  const modal = document.getElementById("modal");
+  const bg = document.getElementById("modal-bg");
+  let html = `<h3>${T.displayName} — ${isEdit ? "Edit" : "Configure"}</h3>`;
+  if (T.configSchema.length === 0) {
+    html += `<div style="color:#888;margin-bottom:10px">No options for this indicator.</div>`;
+  }
+  for (const f of T.configSchema) {
+    // For edit mode, pull the current value from the existing indicator's config
+    const currentVal = (isEdit && existingIndicator.config[f.key] !== undefined)
+      ? existingIndicator.config[f.key]
+      : f.default;
+    html += `<div class="section"><label>${f.label}</label>`;
+    if (f.type === "select") {
+      html += `<select data-key="${f.key}">`;
+      for (const opt of f.options) {
+        const sel = (String(opt.v) === String(currentVal)) ? "selected" : "";
+        html += `<option value="${opt.v}" ${sel}>${opt.l}</option>`;
+      }
+      html += `</select>`;
+    } else if (f.type === "color") {
+      html += `<input type="text" data-key="${f.key}" value="${currentVal}">`;
+    } else {
+      html += `<input type="text" data-key="${f.key}" value="${currentVal}">`;
+    }
+    html += `</div>`;
+  }
+  html += `<div class="actions">
+    <button id="modal-cancel">Cancel</button>
+    <button id="modal-apply" class="primary">${isEdit ? "Apply" : "Add"}</button>
+  </div>`;
+  modal.innerHTML = html;
+  bg.classList.add("show");
+
+  modal.querySelector("#modal-cancel").addEventListener("click", () => bg.classList.remove("show"));
+  modal.querySelector("#modal-apply").addEventListener("click", async () => {
+    const config = {};
+    modal.querySelectorAll("[data-key]").forEach(el => {
+      const k = el.getAttribute("data-key");
+      let v = el.value;
+      if (el.tagName === "SELECT") {
+        const opt = T.configSchema.find(f => f.key === k);
+        if (opt && typeof opt.default === "number") v = parseInt(v, 10);
+      }
+      config[k] = v;
+    });
+    bg.classList.remove("show");
+    if (isEdit) {
+      await editIndicatorConfig(existingIndicator.id, config);
+      document.getElementById("status").textContent = `Updated: ${T.displayName}`;
+    } else {
+      const ind = new T(config);
+      activeIndicators.set(ind.id, ind);
+      refreshIndicatorPanel();
+      try {
+        await ind.load();
+        document.getElementById("status").textContent = `Added: ${ind.displayName()}`;
+      } catch (e) {
+        console.error("Add indicator failed:", e);
+        document.getElementById("status").textContent = "Failed: " + e.message;
+        ind.remove();
+        activeIndicators.delete(ind.id);
+        refreshIndicatorPanel();
+      }
+    }
+  });
+}
+
+document.getElementById("btn-add").addEventListener("click", openAddModal);
+document.getElementById("modal-bg").addEventListener("click", (e) => {
+  if (e.target.id === "modal-bg") document.getElementById("modal-bg").classList.remove("show");
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Crosshair scrub: top chart hover → currentDateStr → notify all indicators
+// ───────────────────────────────────────────────────────────────────────────
+let scrubTimer = null;
+let lastScrubDate = null;
+const SCRUB_DEBOUNCE_MS = 80;
+
+function setCurrentDate(dateStr) {
+  currentDateStr = dateStr;
+  document.getElementById("date-input").value = dateStr;
+  for (const ind of activeIndicators.values()) {
+    try { ind.onDateChange(dateStr); } catch (e) { console.error(ind.displayName(), e); }
+  }
+}
+
+const scrubToggle = document.getElementById("scrub-toggle");
+topChart.subscribeCrosshairMove((param) => {
+  if (!scrubToggle.checked) return;
+  if (!param.time) return;
+  let dateStr;
+  if (typeof param.time === "string") dateStr = param.time;
+  else if (param.time && typeof param.time === "object" && "year" in param.time) {
+    dateStr = `${param.time.year}-${String(param.time.month).padStart(2,"0")}-${String(param.time.day).padStart(2,"0")}`;
+  } else return;
+  if (dateStr === lastScrubDate) return;
+  lastScrubDate = dateStr;
+  if (!priceDateStrs || priceDateStrs.indexOf(dateStr) < 0) return;
+  if (scrubTimer) clearTimeout(scrubTimer);
+  scrubTimer = setTimeout(() => setCurrentDate(dateStr), SCRUB_DEBOUNCE_MS);
+});
+
+document.getElementById("date-input").addEventListener("change", (e) => setCurrentDate(e.target.value));
+
+// Cycle landmarks dropdown — jump to known cycle top/bottom dates.
+// Resets to placeholder after selection so it always reads "CYCLE TOP/BTM…"
+document.getElementById("cycle-select").addEventListener("change", (e) => {
+  const v = e.target.value;
+  if (!v) return;
+  setCurrentDate(v);
+  e.target.value = "";
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Lookback: controls the top chart's visible time window
+// ───────────────────────────────────────────────────────────────────────────
+let currentLookback = "all";
+
+function applyLookback(lb) {
+  currentLookback = lb;
+  // Update active class on buttons
+  document.querySelectorAll("#lb-group button").forEach(btn => {
+    btn.classList.toggle("active", btn.getAttribute("data-lb") === String(lb));
+  });
+  if (!priceDateStrs || priceDateStrs.length === 0) return;
+  const lastDate = priceDateStrs[priceDateStrs.length - 1];
+  if (lb === "all" || lb === 99999) {
+    topChart.timeScale().fitContent();
+    return;
+  }
+  const days = parseInt(lb, 10);
+  if (!isFinite(days) || days <= 0) { topChart.timeScale().fitContent(); return; }
+  const fromDate = new Date(lastDate + "T00:00:00");
+  fromDate.setDate(fromDate.getDate() - days);
+  const fromStr = fromDate.toISOString().slice(0, 10);
+  // Clamp from to earliest available date
+  const earliest = priceDateStrs[0];
+  topChart.timeScale().setVisibleRange({
+    from: fromStr < earliest ? earliest : fromStr,
+    to: lastDate,
+  });
+}
+
+document.querySelectorAll("#lb-group button").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const lb = btn.getAttribute("data-lb");
+    applyLookback(lb === "all" ? "all" : parseInt(lb, 10));
+    saveStateToURL();
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// URL persistence: serialize active indicators + current date to URL hash
+// so the configuration is bookmarkable / shareable.
+// ───────────────────────────────────────────────────────────────────────────
+let _saveStateTimer = null;
+function saveStateToURL() {
+  // Debounce — config sliders or rapid add/remove can fire many writes
+  if (_saveStateTimer) clearTimeout(_saveStateTimer);
+  _saveStateTimer = setTimeout(() => {
+    const state = {
+      v: 1, // version, in case we need to migrate later
+      d: currentDateStr,
+      lb: currentLookback,
+      ind: [...activeIndicators.values()]
+        .filter(ind => ind.constructor.type !== "btc_price") // BTC is always-present, not part of state
+        .map(ind => ({ t: ind.constructor.type, c: ind.config })),
+    };
+    try {
+      const hash = "#s=" + encodeURIComponent(btoa(JSON.stringify(state)));
+      window.history.replaceState(null, "", window.location.pathname + window.location.search + hash);
+    } catch (e) {
+      console.warn("saveStateToURL failed:", e);
+    }
+  }, 250);
+}
+
+function loadStateFromURL() {
+  const h = window.location.hash || "";
+  const m = h.match(/[#&]s=([^&]+)/);
+  if (!m) return null;
+  try {
+    return JSON.parse(atob(decodeURIComponent(m[1])));
+  } catch (e) {
+    console.warn("loadStateFromURL parse failed:", e);
+    return null;
+  }
+}
+
+async function restoreState(state) {
+  if (!state || !Array.isArray(state.ind)) return false;
+  if (state.d && priceDateStrs && priceDateStrs.indexOf(state.d) >= 0) {
+    currentDateStr = state.d;
+    document.getElementById("date-input").value = state.d;
+  }
+  if (state.lb !== undefined) applyLookback(state.lb);
+  let restored = 0;
+  for (const i of state.ind) {
+    const T = INDICATOR_TYPES.find(t => t.type === i.t);
+    if (!T) { console.warn("restore: unknown indicator type", i.t); continue; }
+    const ind = new T(i.c || {});
+    activeIndicators.set(ind.id, ind);
+    try {
+      await ind.load();
+      restored++;
+    } catch (e) {
+      console.error(`restore ${i.t}:`, e);
+      ind.remove();
+      activeIndicators.delete(ind.id);
+    }
+  }
+  refreshIndicatorPanel();
+  return restored > 0;
+}
+
+// Hook into add/remove/config flows by re-saving after each change.
+// We do this by wrapping the existing refreshIndicatorPanel + onDateChange paths.
+const _origRefreshPanel = refreshIndicatorPanel;
+refreshIndicatorPanel = function() {
+  _origRefreshPanel();
+  saveStateToURL();
+};
+
+const _origSetCurrentDate = setCurrentDate;
+setCurrentDate = function(dateStr) {
+  _origSetCurrentDate(dateStr);
+  saveStateToURL();
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// MP4 export — animates through a date range, captures each frame,
+// encodes via WebCodecs + mp4-muxer.
+// ───────────────────────────────────────────────────────────────────────────
+let _mp4Cancel = false;
+
+async function setCurrentDateAwait(dateStr) {
+  currentDateStr = dateStr;
+  document.getElementById("date-input").value = dateStr;
+  // Wait for every indicator to settle (URPD/SOPD/Age-band fetches)
+  await Promise.all([...activeIndicators.values()].map(ind => {
+    try { return Promise.resolve(ind.onDateChange(dateStr)); }
+    catch (e) { return null; }
+  }));
+}
+
+function buildDateList(fromStr, toStr, stepDays) {
+  if (!priceDateStrs) return [];
+  const fromIdx = priceDateStrs.indexOf(fromStr);
+  const toIdx = priceDateStrs.indexOf(toStr);
+  if (fromIdx < 0 || toIdx < 0 || toIdx < fromIdx) return [];
+  const out = [];
+  for (let i = fromIdx; i <= toIdx; i += stepDays) out.push(priceDateStrs[i]);
+  if (out[out.length - 1] !== priceDateStrs[toIdx]) out.push(priceDateStrs[toIdx]);
+  return out;
+}
+
+function openMp4Modal() {
+  const modal = document.getElementById("modal");
+  const bg = document.getElementById("modal-bg");
+  const lastDate = priceDateStrs ? priceDateStrs[priceDateStrs.length - 1] : currentDateStr;
+  // Default: from 2 years ago, to latest, step 7 days, 12 fps
+  const defFrom = (() => {
+    if (!priceDateStrs) return currentDateStr;
+    const d = new Date(lastDate + "T00:00:00"); d.setFullYear(d.getFullYear() - 2);
+    const s = d.toISOString().slice(0, 10);
+    const idx = priceDateStrs.indexOf(s);
+    return idx >= 0 ? s : priceDateStrs[Math.max(0, priceDateStrs.length - 730)];
+  })();
+  modal.innerHTML = `
+    <h3>▶ MP4 Export</h3>
+    <div class="section"><label>From date</label>
+      <input type="date" id="mp4-from" value="${defFrom}" min="${priceDateStrs ? priceDateStrs[0] : ""}" max="${lastDate}"></div>
+    <div class="section"><label>To date</label>
+      <input type="date" id="mp4-to" value="${lastDate}" min="${priceDateStrs ? priceDateStrs[0] : ""}" max="${lastDate}"></div>
+    <div class="section"><label>Step (days per frame)</label>
+      <select id="mp4-step">
+        <option value="1">1 day</option>
+        <option value="3">3 days</option>
+        <option value="7" selected>7 days (1 week)</option>
+        <option value="14">14 days</option>
+        <option value="30">30 days (1 month)</option>
+      </select></div>
+    <div class="section"><label>Frame rate (FPS)</label>
+      <select id="mp4-fps">
+        <option value="6">6 fps</option>
+        <option value="12" selected>12 fps</option>
+        <option value="24">24 fps</option>
+        <option value="30">30 fps</option>
+      </select></div>
+    <div id="mp4-estimate" style="color:#888;margin-bottom:8px;font-size:11px"></div>
+    <div id="mp4-progress" style="display:none;margin-bottom:8px">
+      <div style="background:#1a1a1a;height:6px;position:relative;overflow:hidden">
+        <div id="mp4-bar" style="background:#ff8c00;height:100%;width:0%;transition:width .12s linear"></div>
+      </div>
+      <div id="mp4-status" style="color:#d4d4d4;font-size:11px;margin-top:4px;">Preparing…</div>
+    </div>
+    <div class="actions">
+      <button id="modal-cancel">Cancel</button>
+      <button id="mp4-start" class="primary">Start</button>
+    </div>`;
+  bg.classList.add("show");
+
+  function updateEstimate() {
+    const f = modal.querySelector("#mp4-from").value;
+    const t = modal.querySelector("#mp4-to").value;
+    const step = parseInt(modal.querySelector("#mp4-step").value, 10);
+    const fps = parseInt(modal.querySelector("#mp4-fps").value, 10);
+    const dates = buildDateList(f, t, step);
+    const sec = (dates.length / fps).toFixed(1);
+    modal.querySelector("#mp4-estimate").textContent =
+      `${dates.length} frames @ ${fps} fps → ~${sec}s video. Capture may take ~${(dates.length * 0.5).toFixed(0)}s+ depending on indicators.`;
+  }
+  ["mp4-from","mp4-to","mp4-step","mp4-fps"].forEach(id =>
+    modal.querySelector("#"+id).addEventListener("change", updateEstimate));
+  updateEstimate();
+
+  modal.querySelector("#modal-cancel").addEventListener("click", () => {
+    _mp4Cancel = true;
+    bg.classList.remove("show");
+  });
+  modal.querySelector("#mp4-start").addEventListener("click", async () => {
+    const f = modal.querySelector("#mp4-from").value;
+    const t = modal.querySelector("#mp4-to").value;
+    const step = parseInt(modal.querySelector("#mp4-step").value, 10);
+    const fps = parseInt(modal.querySelector("#mp4-fps").value, 10);
+    const dates = buildDateList(f, t, step);
+    if (dates.length === 0) { alert("No frames in this range."); return; }
+
+    modal.querySelector("#mp4-start").disabled = true;
+    modal.querySelector("#mp4-progress").style.display = "block";
+    const bar = modal.querySelector("#mp4-bar");
+    const stat = modal.querySelector("#mp4-status");
+    _mp4Cancel = false;
+
+    try {
+      stat.textContent = "Loading encoder libraries…";
+      const [h2c, mp4mod] = await Promise.all([
+        window.__loadHtml2canvas(),
+        window.__loadMp4Muxer(),
+      ]);
+      const Mp4Muxer = mp4mod.Muxer || mp4mod.Mp4Muxer || mp4mod;
+      const ArrayBufferTarget = mp4mod.ArrayBufferTarget;
+      if (!ArrayBufferTarget) throw new Error("mp4-muxer ArrayBufferTarget not available");
+      if (typeof VideoEncoder === "undefined") throw new Error("WebCodecs VideoEncoder not supported in this browser");
+
+      // Sample one frame to discover the canvas dimensions
+      stat.textContent = "Capturing first frame to size the encoder…";
+      await setCurrentDateAwait(dates[0]);
+      const probe = await h2c(document.getElementById("chart-stack"), {
+        backgroundColor: THEME.background, scale: 1, useCORS: true, logging: false,
+      });
+      // Round dimensions to even numbers (H.264 requires even W/H)
+      const W = Math.floor(probe.width / 2) * 2;
+      const H = Math.floor(probe.height / 2) * 2;
+
+      const target = new ArrayBufferTarget();
+      const muxer = new Mp4Muxer({
+        target, fastStart: "in-memory",
+        video: { codec: "avc", width: W, height: H, frameRate: fps },
+      });
+      const encoder = new VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => { console.error("encoder:", e); throw e; },
+      });
+      encoder.configure({
+        codec: "avc1.640033", // H.264 high@5.1
+        width: W, height: H,
+        bitrate: 4_000_000, // 4 Mbps
+        framerate: fps,
+      });
+
+      // Render & encode frame loop
+      const microsPerFrame = 1_000_000 / fps;
+      let frameIdx = 0;
+      for (const dateStr of dates) {
+        if (_mp4Cancel) throw new Error("cancelled");
+        await setCurrentDateAwait(dateStr);
+        // One animation frame so the DOM repaints with the new state
+        await new Promise(r => requestAnimationFrame(r));
+        const canvas = await h2c(document.getElementById("chart-stack"), {
+          backgroundColor: THEME.background, scale: 1, useCORS: true, logging: false,
+          width: W, height: H,
+        });
+        const frame = new VideoFrame(canvas, {
+          timestamp: Math.round(frameIdx * microsPerFrame),
+        });
+        // Backpressure: don't enqueue too many frames at once
+        while (encoder.encodeQueueSize > 5) {
+          await new Promise(r => setTimeout(r, 10));
+        }
+        encoder.encode(frame, { keyFrame: frameIdx % fps === 0 });
+        frame.close();
+        frameIdx++;
+        const pct = ((frameIdx / dates.length) * 100).toFixed(1);
+        bar.style.width = pct + "%";
+        stat.textContent = `Frame ${frameIdx}/${dates.length} (${pct}%) — ${dateStr}`;
+      }
+
+      stat.textContent = "Flushing encoder…";
+      await encoder.flush();
+      muxer.finalize();
+
+      stat.textContent = "Saving file…";
+      const blob = new Blob([target.buffer], { type: "video/mp4" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bitcointerminal_${dates[0]}_to_${dates[dates.length-1]}.mp4`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+
+      stat.textContent = `Saved: ${a.download} (${(blob.size/1e6).toFixed(1)} MB)`;
+      modal.querySelector("#modal-cancel").textContent = "Close";
+    } catch (e) {
+      console.error("MP4 export failed:", e);
+      stat.textContent = "Failed: " + e.message;
+      stat.style.color = "#ff5c5c";
+      modal.querySelector("#modal-cancel").textContent = "Close";
+    }
+  });
+}
+
+document.getElementById("btn-mp4").addEventListener("click", openMp4Modal);
+
+// PNG snapshot button — uses html2canvas to rasterize chart-stack
+document.getElementById("btn-png").addEventListener("click", async () => {
+  const status = document.getElementById("status");
+  status.textContent = "Loading PNG export library…";
+  status.style.color = "#888";
+  let h2c;
+  try { h2c = await window.__loadHtml2canvas(); }
+  catch (e) {
+    status.textContent = "PNG export library failed to load: " + e.message;
+    status.style.color = "#ff5c5c";
+    return;
+  }
+  status.textContent = "Rendering snapshot…";
+  try {
+    const target = document.getElementById("chart-stack");
+    const canvas = await h2c(target, {
+      backgroundColor: THEME.background,
+      // Higher pixel ratio = crisper text and chart lines
+      scale: window.devicePixelRatio > 1 ? 2 : 1.5,
+      useCORS: true,
+      logging: false,
+    });
+    canvas.toBlob((blob) => {
+      if (!blob) { status.textContent = "PNG blob conversion failed"; status.style.color = "#ff5c5c"; return; }
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const indSummary = [...activeIndicators.values()]
+        .filter(ind => ind.constructor.type !== "btc_price")
+        .map(ind => ind.constructor.type).join("_") || "default";
+      a.href = url;
+      a.download = `bitcointerminal_${currentDateStr}_${indSummary}.png`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      status.textContent = `PNG saved: ${a.download}`;
+      status.style.color = "#2ecc71";
+      setTimeout(() => { status.style.color = "#666"; }, 2000);
+    }, "image/png");
+  } catch (e) {
+    console.error("PNG export failed:", e);
+    status.textContent = "PNG export failed: " + e.message;
+    status.style.color = "#ff5c5c";
+  }
+});
+
+// Copy-link button
+document.getElementById("btn-copy-link").addEventListener("click", async () => {
+  const url = window.location.href;
+  const status = document.getElementById("status");
+  try {
+    await navigator.clipboard.writeText(url);
+    const prev = status.textContent;
+    status.textContent = "Link copied to clipboard";
+    status.style.color = "#2ecc71";
+    setTimeout(() => { status.textContent = prev; status.style.color = "#666"; }, 1800);
+  } catch (e) {
+    // Fallback: select+prompt
+    window.prompt("Copy this link:", url);
+  }
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Boot
+// ───────────────────────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    document.getElementById("status").textContent = "Loading BTC price…";
+    const resp = await fetchJSON(BASE + "/api/series/price_close/day1");
+    priceArray = resp.data || resp;
+    priceDateStrs = new Array(priceArray.length);
+    for (let i = 0; i < priceArray.length; i++) priceDateStrs[i] = indexToDateStr(i);
+
+    // BTC price is always present
+    const btc = new BTCPriceIndicator();
+    activeIndicators.set(btc.id, btc);
+    await btc.load();
+
+    // Try to restore from URL hash; fall back to default indicator set if none
+    const savedState = loadStateFromURL();
+    if (savedState) {
+      const ok = await restoreState(savedState);
+      document.getElementById("status").textContent = ok
+        ? `Restored ${savedState.ind?.length || 0} indicators from URL`
+        : "URL state empty/invalid — booted with defaults";
+      if (!ok) await loadDefaults();
+    } else {
+      await loadDefaults();
+    }
+    refreshIndicatorPanel();
+  } catch (e) {
+    console.error("Boot failed:", e);
+    document.getElementById("status").textContent = "Boot failed: " + e.message;
+    document.getElementById("status").style.color = "#ff5c5c";
+  }
+
+  async function loadDefaults() {
+    const spot = new SpotPriceLineIndicator();
+    activeIndicators.set(spot.id, spot);
+    await spot.load();
+    const urpd = new URPDProfileIndicator();
+    activeIndicators.set(urpd.id, urpd);
+    await urpd.load();
+  }
+})();
+</script>
+</body>
+</html>

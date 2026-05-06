@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BITCOINTERMINAL.NET (LWC POC)</title>
+<link rel="preconnect" href="https://bitview.space" crossorigin>
+<link rel="preconnect" href="https://unpkg.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&display=swap">
+<script src="https://unpkg.com/lightweight-charts@4.2.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #0a0a0a; color: #d4d4d4;
+    font-family: 'Source Code Pro', Consolas, monospace; font-size: 13px; }
+
+  #app { display: flex; flex-direction: column; height: 100vh; }
+
+  /* Top toolbar */
+  #toolbar { display: flex; align-items: center; gap: 12px; padding: 8px 14px;
+    background: #111; border-bottom: 1px solid #222; }
+  #toolbar .brand { color: #ff8c00; font-weight: 700; letter-spacing: 0.5px; font-size: 14px; }
+  #toolbar button { background: #1a1a1a; color: #d4d4d4; border: 1px solid #2a2a2a;
+    padding: 5px 10px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 2px; }
+  #toolbar button:hover { border-color: #444; color: #fff; }
+  #toolbar button.primary { background: #ff8c00; color: #0a0a0a; border-color: #ff8c00; font-weight: 700; }
+  #toolbar button.primary:hover { background: #ffa330; }
+  #toolbar .spacer { flex: 1; }
+
+  /* Chart area */
+  #chart-wrap { flex: 1; position: relative; }
+  #chart { width: 100%; height: 100%; }
+
+  /* Floating tooltip */
+  #tooltip { position: absolute; pointer-events: none; display: none;
+    background: rgba(0,0,0,0.85); border: 1px solid #333; padding: 6px 9px;
+    font-size: 11px; line-height: 1.45; z-index: 10; border-radius: 2px;
+    color: #d4d4d4; white-space: nowrap; }
+  #tooltip .tt-row { display: flex; justify-content: space-between; gap: 14px; }
+  #tooltip .tt-label { color: #888; }
+  #tooltip .tt-value { color: #fff; }
+  #tooltip .tt-mean { color: #00d4ff; }
+
+  /* Indicator panel (right side) */
+  #indicators-panel { position: absolute; top: 8px; right: 8px;
+    background: rgba(0,0,0,0.7); border: 1px solid #222; padding: 8px 10px;
+    font-size: 11px; z-index: 5; min-width: 180px; }
+  #indicators-panel .ip-title { color: #ff8c00; font-weight: 700; margin-bottom: 4px; }
+  #indicators-panel .ip-row { display: flex; justify-content: space-between;
+    align-items: center; padding: 2px 0; }
+  #indicators-panel .ip-row .ip-name { color: #d4d4d4; }
+  #indicators-panel .ip-row .ip-toggle { background: none; border: none; color: #888;
+    cursor: pointer; font-family: inherit; font-size: 11px; padding: 0 4px; }
+  #indicators-panel .ip-row .ip-toggle:hover { color: #fff; }
+
+  /* Status / loading */
+  #status { position: absolute; bottom: 8px; left: 14px; color: #666;
+    font-size: 11px; pointer-events: none; }
+</style>
+</head>
+<body>
+
+<div id="app">
+  <div id="toolbar">
+    <span class="brand">BITCOINTERMINAL.NET</span>
+    <span style="color:#666">| Lightweight Charts POC (Phase 1)</span>
+    <span class="spacer"></span>
+    <button id="btn-add-realised">+ Realised Price</button>
+    <button id="btn-fit-content">Fit Content</button>
+  </div>
+  <div id="chart-wrap">
+    <div id="chart"></div>
+    <div id="tooltip"></div>
+    <div id="indicators-panel">
+      <div class="ip-title">INDICATORS</div>
+      <div id="ip-list"></div>
+    </div>
+    <div id="status">Loading…</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+
+// ───────────────────────────────────────────────────────────────────────────
+// Configuration
+// ───────────────────────────────────────────────────────────────────────────
+const BASE = "https://bitview.space";
+const PRICE_EPOCH_DATE = new Date(2009, 0, 3); // priceArray[0] is 2009-01-03
+
+// Theme — matches bitcointerminal.net's dark palette
+const THEME = {
+  background: "#0a0a0a",
+  text: "#d4d4d4",
+  grid: "rgba(255,255,255,0.05)",
+  border: "#222",
+  crosshair: "rgba(255,140,0,0.5)",
+  priceLine: "rgba(255,255,255,0.85)",
+  meanLine: "#00d4ff",
+  spot: "#ff8c00",
+  lth: "#3aa3ff",
+  sth: "#ff5c8a",
+};
+
+// ───────────────────────────────────────────────────────────────────────────
+// Chart bootstrap
+// ───────────────────────────────────────────────────────────────────────────
+const chartContainer = document.getElementById("chart");
+const tooltipEl = document.getElementById("tooltip");
+const statusEl = document.getElementById("status");
+const ipListEl = document.getElementById("ip-list");
+
+const chart = LightweightCharts.createChart(chartContainer, {
+  layout: {
+    background: { type: "solid", color: THEME.background },
+    textColor: THEME.text,
+    fontFamily: "'Source Code Pro', Consolas, monospace",
+    fontSize: 11,
+  },
+  grid: {
+    vertLines: { color: THEME.grid },
+    horzLines: { color: THEME.grid },
+  },
+  rightPriceScale: {
+    borderColor: THEME.border,
+    mode: LightweightCharts.PriceScaleMode.Logarithmic,
+    autoScale: true,
+  },
+  timeScale: {
+    borderColor: THEME.border,
+    timeVisible: false,
+    secondsVisible: false,
+    rightOffset: 12,
+    barSpacing: 2,
+  },
+  crosshair: {
+    mode: LightweightCharts.CrosshairMode.Normal,
+    vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
+    horzLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
+  },
+  handleScale: { mouseWheel: true, pinch: true },
+  handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: true },
+});
+
+// Resize handling
+function syncChartSize() {
+  chart.applyOptions({ width: chartContainer.clientWidth, height: chartContainer.clientHeight });
+}
+window.addEventListener("resize", syncChartSize);
+syncChartSize();
+
+// ───────────────────────────────────────────────────────────────────────────
+// Indicator framework
+// ───────────────────────────────────────────────────────────────────────────
+// An Indicator owns one or more LWC series and is responsible for fetching its
+// own data, populating series, and cleaning up on removal. This is the unit we
+// add/remove from the chart — same mental model as TradingView's indicator UI.
+class Indicator {
+  constructor(name) {
+    this.id = "ind_" + Math.random().toString(36).slice(2, 8);
+    this.name = name;
+    this.series = []; // tracks all LWC series objects this indicator owns
+    this.disposed = false;
+  }
+  // Subclasses override
+  async load() { throw new Error("not implemented"); }
+  // Returns "Realised Price (URPD mean, BTC)" or similar — used in indicator panel + tooltip
+  displayName() { return this.name; }
+  // Returns {label, value, color} for the tooltip at a given time, or null.
+  // Default impl reads from the first series; subclasses can override for custom formatting.
+  tooltipEntry(time) {
+    if (this.series.length === 0) return null;
+    const s = this.series[0];
+    const data = s.dataByTime ? s.dataByTime.get(time) : null;
+    if (!data) return null;
+    return { label: this.displayName(), value: "$" + Math.round(data.value).toLocaleString(), color: s._color || "#fff" };
+  }
+  remove() {
+    if (this.disposed) return;
+    for (const s of this.series) chart.removeSeries(s);
+    this.series = [];
+    this.disposed = true;
+  }
+}
+
+// Active indicators on the chart, keyed by id
+const indicators = new Map();
+
+function refreshIndicatorPanel() {
+  ipListEl.innerHTML = "";
+  for (const [id, ind] of indicators) {
+    const row = document.createElement("div");
+    row.className = "ip-row";
+    row.innerHTML = `<span class="ip-name">${ind.displayName()}</span>` +
+      `<button class="ip-toggle" data-id="${id}" title="Remove">×</button>`;
+    ipListEl.appendChild(row);
+  }
+  ipListEl.querySelectorAll(".ip-toggle").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const id = btn.getAttribute("data-id");
+      const ind = indicators.get(id);
+      if (ind) { ind.remove(); indicators.delete(id); refreshIndicatorPanel(); }
+    });
+  });
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Data helpers
+// ───────────────────────────────────────────────────────────────────────────
+async function fetchJSON(url) {
+  const r = await fetch(url);
+  if (!r.ok) throw new Error("fetch " + url + " → " + r.status);
+  return r.json();
+}
+
+// Price array index → ISO date string (matches bitcointerminal.net's epoch-based date scheme)
+function indexToDateStr(i) {
+  const d = new Date(PRICE_EPOCH_DATE);
+  d.setDate(d.getDate() + i);
+  return d.toISOString().slice(0, 10);
+}
+
+// LWC time format: 'YYYY-MM-DD' string is accepted directly for daily series
+function indexToLWCTime(i) { return indexToDateStr(i); }
+
+// ───────────────────────────────────────────────────────────────────────────
+// Concrete indicator: BTC Price line (foundation; always present)
+// ───────────────────────────────────────────────────────────────────────────
+class BTCPriceIndicator extends Indicator {
+  constructor() { super("BTC Price"); }
+  async load() {
+    statusEl.textContent = "Loading BTC price…";
+    const resp = await fetchJSON(BASE + "/api/series/price_close/day1");
+    const arr = resp.data || resp;
+    const points = [];
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && v > 0) {
+        points.push({ time: indexToLWCTime(i), value: v });
+      }
+    }
+    const series = chart.addLineSeries({
+      color: THEME.priceLine, lineWidth: 2, priceLineVisible: false,
+      lastValueVisible: true, title: "BTC/USD",
+    });
+    series._color = THEME.priceLine;
+    series.setData(points);
+    // Index by time for fast tooltip lookup
+    series.dataByTime = new Map(points.map(p => [p.time, p]));
+    this.series.push(series);
+    statusEl.textContent = `BTC price loaded: ${points.length} points`;
+    chart.timeScale().fitContent();
+  }
+  displayName() { return "BTC/USD"; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Concrete indicator: Realised Price (URPD mean over time, BTC-weighted)
+// Uses BRK's pre-computed daily series for speed (same source the live site uses
+// when meanTSReady reads the BRK realised-price feed).
+// ───────────────────────────────────────────────────────────────────────────
+class RealisedPriceIndicator extends Indicator {
+  constructor(weightMode = "btc") {
+    super("Realised Price");
+    this.weightMode = weightMode;
+  }
+  async load() {
+    statusEl.textContent = "Loading Realised Price…";
+    // BRK exposes a precomputed daily series for the all-cohort BTC-weighted mean.
+    // For USD/CD/VD we'd compute from per-date URPD buckets — out of POC scope.
+    const resp = await fetchJSON(BASE + "/api/series/realized-price/day1");
+    const arr = resp.data || resp;
+    const points = [];
+    for (let i = 0; i < arr.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && v > 0) {
+        points.push({ time: indexToLWCTime(i), value: v });
+      }
+    }
+    const series = chart.addLineSeries({
+      color: THEME.meanLine, lineWidth: 1.5, priceLineVisible: false,
+      lastValueVisible: true, title: this.displayName(),
+    });
+    series._color = THEME.meanLine;
+    series.setData(points);
+    series.dataByTime = new Map(points.map(p => [p.time, p]));
+    this.series.push(series);
+    statusEl.textContent = `Realised Price loaded: ${points.length} points`;
+  }
+  displayName() { return `Realised Price (${this.weightMode.toUpperCase()})`; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Crosshair → tooltip wiring
+// ───────────────────────────────────────────────────────────────────────────
+chart.subscribeCrosshairMove((param) => {
+  if (!param.point || !param.time || param.point.x < 0 || param.point.y < 0) {
+    tooltipEl.style.display = "none";
+    return;
+  }
+  const rows = [];
+  // Build one tooltip row per active indicator
+  for (const ind of indicators.values()) {
+    const entry = ind.tooltipEntry(param.time);
+    if (entry) {
+      rows.push(`<div class="tt-row"><span class="tt-label" style="color:${entry.color}">${entry.label}</span>` +
+        `<span class="tt-value">${entry.value}</span></div>`);
+    }
+  }
+  if (rows.length === 0) { tooltipEl.style.display = "none"; return; }
+  tooltipEl.innerHTML = `<div style="color:#888;margin-bottom:3px">${param.time}</div>` + rows.join("");
+  tooltipEl.style.display = "block";
+  // Position tooltip near cursor, but clamp to chart bounds
+  const wrap = document.getElementById("chart-wrap");
+  const wrapRect = wrap.getBoundingClientRect();
+  const ttW = tooltipEl.offsetWidth, ttH = tooltipEl.offsetHeight;
+  let left = param.point.x + 18;
+  let top = param.point.y + 18;
+  if (left + ttW > wrapRect.width - 8) left = param.point.x - ttW - 18;
+  if (top + ttH > wrapRect.height - 8) top = param.point.y - ttH - 18;
+  tooltipEl.style.left = left + "px";
+  tooltipEl.style.top = top + "px";
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Toolbar wiring
+// ───────────────────────────────────────────────────────────────────────────
+document.getElementById("btn-add-realised").addEventListener("click", async () => {
+  const ind = new RealisedPriceIndicator("btc");
+  indicators.set(ind.id, ind);
+  refreshIndicatorPanel();
+  try { await ind.load(); }
+  catch (e) {
+    console.error(e);
+    statusEl.textContent = "Failed to load Realised Price: " + e.message;
+    ind.remove();
+    indicators.delete(ind.id);
+    refreshIndicatorPanel();
+  }
+});
+
+document.getElementById("btn-fit-content").addEventListener("click", () => {
+  chart.timeScale().fitContent();
+});
+
+// ───────────────────────────────────────────────────────────────────────────
+// Boot: load BTC price as the always-present base indicator
+// ───────────────────────────────────────────────────────────────────────────
+(async function boot() {
+  try {
+    const btc = new BTCPriceIndicator();
+    indicators.set(btc.id, btc);
+    refreshIndicatorPanel();
+    await btc.load();
+  } catch (e) {
+    console.error(e);
+    statusEl.textContent = "Boot failed: " + e.message;
+  }
+})();
+</script>
+
+</body>
+</html>
