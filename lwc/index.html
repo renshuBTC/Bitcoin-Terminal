@@ -2553,6 +2553,213 @@ class SOPDAgeHistoryUSDIndicator extends SOPDAgeHistoryIndicator {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// EPOCH cohort split — UTXOs grouped by which Bitcoin halving epoch they
+// were CREATED in. BRK's URPD endpoint doesn't expose epoch cohorts
+// directly, so we approximate by aggregating the 21 age cohorts: each
+// age band's midpoint creation date determines its epoch. Boundary age
+// bands (whose midpoint creation crosses a halving) get assigned to a
+// single epoch — small approximation error, but the cleanest mapping
+// available given the API surface.
+// ───────────────────────────────────────────────────────────────────────────
+const _HALVING_DATES = [
+  "2012-11-28", // Halving 1: 50 → 25 BTC reward
+  "2016-07-09", // Halving 2: 25 → 12.5
+  "2020-05-11", // Halving 3: 12.5 → 6.25
+  "2024-04-19", // Halving 4: 6.25 → 3.125
+];
+const _EPOCH_LABELS = [
+  "Epoch 1", "Epoch 2", "Epoch 3", "Epoch 4", "Epoch 5",
+];
+// Bloomberg-style cool→warm 5-color gradient (deep blue, oldest → orange,
+// newest). Picked from the same hue family as the existing _AGE_BAND_COLORS
+// palette so the EPOCH stack reads as a coarser version of AGE.
+const _EPOCH_COLORS = [
+  "#1c58a8", // Epoch 1 (pre-2012-halving, oldest): deep blue
+  "#287888", // Epoch 2: teal
+  "#5aaf54", // Epoch 3: green
+  "#ffd42e", // Epoch 4: yellow
+  "#ff8c00", // Epoch 5 (post-2024-halving, newest): Bloomberg orange
+];
+// Midpoint age in days for each entry of _AGE_BANDS (index-aligned).
+// Used to map an age band's mid-creation-date to a halving epoch.
+const _AGE_BAND_MID_DAYS = [
+  0.02,    // <1h
+  0.5,     // 1h-1d
+  4,       // 1d-1w
+  18.5,    // 1w-1m
+  45,      // 1m-2m
+  75,      // 2m-3m
+  105,     // 3m-4m
+  135,     // 4m-5m
+  165,     // 5m-6m
+  272.5,   // 6m-1y
+  547.5,   // 1y-2y
+  912.5,   // 2y-3y
+  1277.5,  // 3y-4y
+  1642.5,  // 4y-5y
+  2007.5,  // 5y-6y
+  2372.5,  // 6y-7y
+  2737.5,  // 7y-8y
+  3285,    // 8y-10y
+  4015,    // 10y-12y
+  4927.5,  // 12y-15y
+  6500,    // >15y (~17.8y estimate)
+];
+function _epochOfAgeBandIdx(ageBandIdx, dateStr) {
+  const midDays = _AGE_BAND_MID_DAYS[ageBandIdx];
+  const cD = new Date(dateStr + "T00:00:00");
+  cD.setDate(cD.getDate() - Math.round(midDays));
+  const cStr = cD.toISOString().slice(0, 10);
+  // Walk halvings oldest → newest. creationDate < halving[i] means the UTXO
+  // was created before that halving, so it belongs to that epoch.
+  for (let i = 0; i < _HALVING_DATES.length; i++) {
+    if (cStr < _HALVING_DATES[i]) return i; // 0..3 → Epoch 1..4
+  }
+  return 4; // post-halving 4 → Epoch 5 (newest)
+}
+
+// Aggregate per-age-band URPD responses into 5 epoch-cohort bucket arrays
+// for the given dateStr. Each bucket sums supply + realized_cap across all
+// age bands assigned to the same epoch.
+function _aggregateEpochBuckets(ageResps, dateStr) {
+  const epochBins = [{}, {}, {}, {}, {}];
+  for (let i = 0; i < ageResps.length; i++) {
+    const resp = ageResps[i];
+    if (!resp || !resp.buckets) continue;
+    const k = _epochOfAgeBandIdx(i, dateStr);
+    for (const b of resp.buckets) {
+      const slot = epochBins[k][b.price_floor] || { supply: 0, realized_cap: 0 };
+      slot.supply += b.supply || 0;
+      slot.realized_cap += b.realized_cap || 0;
+      epochBins[k][b.price_floor] = slot;
+    }
+  }
+  return epochBins.map(bins => {
+    const list = Object.entries(bins).map(([p, v]) => ({
+      price_floor: parseFloat(p),
+      supply: v.supply,
+      realized_cap: v.realized_cap,
+    }));
+    list.sort((a, b) => a.price_floor - b.price_floor);
+    return list;
+  });
+}
+
+// Stacking convention: oldest at the baseline, newest on top — same
+// "older atop x-axis" pattern as URPD - AGE.
+class URPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
+  static type = "urpd_epoch_history";
+  static displayName = "URPD - EPOCH (BTC) (STOCK) (Aggregated from Age Bands)";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+  cohortKeys()   { return ["epoch1","epoch2","epoch3","epoch4","epoch5"]; }
+  cohortLabels() { return _EPOCH_LABELS.slice(); }
+  cohortColors() { return _EPOCH_COLORS.slice(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
+  }
+  displayName() { return `URPD - EPOCH (${(this.config.weight || "btc").toUpperCase()}) (STOCK) (Aggregated from Age Bands)`; }
+
+  // Memoised per-date aggregator — first cohort fetch kicks off the 21-band
+  // download + epoch aggregation, the other four reuse the cached result.
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    if (!this._epochCache || this._epochCache.dateStr !== dateStr) {
+      this._epochCache = { dateStr, promise: this._buildEpochMap(dateStr) };
+    }
+    const map = await this._epochCache.promise;
+    return map[cohortKey] || null;
+  }
+
+  async _buildEpochMap(dateStr) {
+    const ageResps = await Promise.all(
+      _AGE_BANDS.map(b => getURPDCohort(dateStr, b.cohort).catch(() => null))
+    );
+    const epochBucketLists = _aggregateEpochBuckets(ageResps, dateStr);
+    const out = {};
+    for (let k = 0; k < 5; k++) {
+      out["epoch" + (k + 1)] = { buckets: epochBucketLists[k] };
+    }
+    return out;
+  }
+}
+
+// USD-weighted variant.
+class URPDEpochHistoryUSDIndicator extends URPDEpochHistoryIndicator {
+  static type = "urpd_epoch_history_usd";
+  static displayName = "URPD - EPOCH (USD) (STOCK) (Aggregated from Age Bands)";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+}
+
+// SOPD - EPOCH: same epoch aggregation pattern, but each per-epoch cohort
+// response is the day-over-day diff of yesterday's epoch buckets vs
+// today's (via diffAggRaw — bin-level cancellation avoided).
+class SOPDEpochHistoryIndicator extends StackedURPDHistoryIndicator {
+  static type = "sopd_epoch_history";
+  static displayName = "SOPD - EPOCH (BTC) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+  cohortKeys()   { return ["epoch1","epoch2","epoch3","epoch4","epoch5"]; }
+  cohortLabels() { return _EPOCH_LABELS.slice(); }
+  cohortColors() { return _EPOCH_COLORS.slice(); }
+  swatchColor() {
+    return `linear-gradient(90deg, ${_EPOCH_COLORS[0]}, ${_EPOCH_COLORS[2]}, ${_EPOCH_COLORS[4]})`;
+  }
+  displayName() { return `SOPD - EPOCH (${(this.config.weight || "btc").toUpperCase()}) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)`; }
+
+  async _fetchCohortResponse(dateStr, cohortKey) {
+    if (!this._epochCache || this._epochCache.dateStr !== dateStr) {
+      this._epochCache = { dateStr, promise: this._buildEpochMap(dateStr) };
+    }
+    const map = await this._epochCache.promise;
+    return map[cohortKey] || null;
+  }
+
+  async _buildEpochMap(dateStr) {
+    const prevDate = prevDateStrOf(dateStr);
+    // Fetch all 21 age bands for both today and yesterday in parallel.
+    // urpdCache dedupes any overlap with other indicators.
+    const [currResps, prevResps] = await Promise.all([
+      Promise.all(_AGE_BANDS.map(b => getURPDCohort(dateStr, b.cohort).catch(() => null))),
+      Promise.all(_AGE_BANDS.map(b => getURPDCohort(prevDate, b.cohort).catch(() => null))),
+    ]);
+    const currEpochBuckets = _aggregateEpochBuckets(currResps, dateStr);
+    const prevEpochBuckets = _aggregateEpochBuckets(prevResps, prevDate);
+    const out = {};
+    for (let k = 0; k < 5; k++) {
+      out["epoch" + (k + 1)] = {
+        buckets: diffAggRaw(prevEpochBuckets[k], currEpochBuckets[k]),
+      };
+    }
+    return out;
+  }
+}
+
+// USD-weighted variant.
+class SOPDEpochHistoryUSDIndicator extends SOPDEpochHistoryIndicator {
+  static type = "sopd_epoch_history_usd";
+  static displayName = "SOPD - EPOCH (USD) (FLOW) (Aggregated from Age Bands; Approximated from URPD Difference)";
+  static configSchema = [
+    { key: "weight", label: "Weight", type: "select",
+      options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "usd" },
+    { key: "bins", label: "Bins", type: "select",
+      options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
+  ];
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator registry — all addable types live here.
 // Add a new indicator: just register the class. UI auto-picks it up.
 // ───────────────────────────────────────────────────────────────────────────
@@ -2584,6 +2791,10 @@ const INDICATOR_TYPES = [
   URPDLTHSTHHistoryUSDIndicator,
   URPDAgeHistoryIndicator,
   URPDAgeHistoryUSDIndicator,
+  // EPOCH = halving-epoch aggregation of the 21 age bands; cohort assigned
+  // by each band's midpoint creation date relative to the halving dates.
+  URPDEpochHistoryIndicator,
+  URPDEpochHistoryUSDIndicator,
   // SOPD = day-over-day URPD diff (rp.js: diffAggRaw); approximates the
   // distribution of supply spent at each cost-basis bin during the day.
   SOPDProfitLossIndicator,
@@ -2592,6 +2803,8 @@ const INDICATOR_TYPES = [
   SOPDLTHSTHHistoryUSDIndicator,
   SOPDAgeHistoryIndicator,
   SOPDAgeHistoryUSDIndicator,
+  SOPDEpochHistoryIndicator,
+  SOPDEpochHistoryUSDIndicator,
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
