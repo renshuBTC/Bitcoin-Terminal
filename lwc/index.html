@@ -498,9 +498,9 @@ const topChart = LightweightCharts.createChart(topContainer, Object.assign(commo
 }));
 
 // Shared global time axis — minimal LWC chart that only renders date labels.
-// Lives below the chart-stack, above the bottom toolbar. Stays in sync with
-// the BTC top chart's visible time range so panning/zooming the price chart
-// updates the labels here.
+// It's a passive label strip: scroll/scale are DISABLED so the user can't
+// accidentally collapse it to a tiny range and sync that back into the main
+// chart. The sync is also one-way (top → axis) for the same reason.
 const timeAxisContainer = document.getElementById("chart-time-axis");
 const timeAxisChart = LightweightCharts.createChart(timeAxisContainer, {
   layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
@@ -513,8 +513,8 @@ const timeAxisChart = LightweightCharts.createChart(timeAxisContainer, {
     rightOffset: 12, barSpacing: 2, visible: true, fixLeftEdge: false, fixRightEdge: false },
   crosshair: { mode: LightweightCharts.CrosshairMode.Hidden,
     vertLine: { visible: false }, horzLine: { visible: false } },
-  handleScroll: { mouseWheel: true, pressedMouseMove: true, horzTouchDrag: true, vertTouchDrag: false },
-  handleScale:  { mouseWheel: true, pinch: true, axisPressedMouseMove: { time: true, price: false } },
+  handleScroll: false,
+  handleScale:  false,
 });
 
 const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign(commonChartOpts(), {
@@ -570,17 +570,12 @@ function setTimeAxisData(linePts) {
     else timeAxisChart.timeScale().fitContent();
   } catch (e) {}
 }
-// Bidirectional time-range sync between top and time-axis charts
+// One-way sync only: top chart → time-axis label strip. The reverse direction
+// is intentionally absent so the axis strip can never alter the main chart.
 topChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
   if (!range || _syncing) return;
   _syncing = true;
   try { timeAxisChart.timeScale().setVisibleRange(range); } catch (e) {}
-  _syncing = false;
-});
-timeAxisChart.timeScale().subscribeVisibleTimeRangeChange((range) => {
-  if (!range || _syncing) return;
-  _syncing = true;
-  try { topChart.timeScale().setVisibleRange(range); } catch (e) {}
   _syncing = false;
 });
 // Orientation change on mobile: fires after the visual viewport has settled
@@ -2219,6 +2214,7 @@ window.addEventListener("resize", updateTracerPosition);
 
 // Pan the chart so the tracer stays inside the visible window. Called after
 // every keyboard navigation step so navigation never leaves the dot offscreen.
+// Width-preserving: never shrinks/grows the zoom, just shifts the window.
 function ensureTracerInView() {
   if (!_navMode || !currentDateStr || !priceDateStrs) return;
   const targetIdx = priceDateStrs.indexOf(currentDateStr);
@@ -2227,17 +2223,27 @@ function ensureTracerInView() {
   try { logical = topChart.timeScale().getVisibleLogicalRange(); } catch (e) { return; }
   if (!logical) return;
   const width = logical.to - logical.from;
-  if (!(width > 0)) return;
-  // Margin so the tracer isn't right at the edge — re-pan when within
-  // ~12% of either side. Otherwise leave the chart alone.
+  // Skip if zoom is degenerate / chart not laid out yet
+  if (!(width > 5)) return;
+  // Tracer comfortably inside? Don't pan.
   const margin = width * 0.12;
-  const inView = targetIdx >= (logical.from + margin) && targetIdx <= (logical.to - margin);
-  if (inView) return;
-  // Re-center on the target while preserving the visible width.
-  const half = width / 2;
-  topChart.timeScale().setVisibleLogicalRange({
-    from: targetIdx - half, to: targetIdx + half,
-  });
+  if (targetIdx >= logical.from + margin && targetIdx <= logical.to - margin) return;
+  // Otherwise shift the window (preserving width) so the tracer sits at
+  // ~60% from the left — slightly right of center, leaving more room for
+  // history-context to the left of the dot.
+  const dataLen = priceDateStrs.length;
+  const desiredOffsetFromLeft = width * 0.60;
+  let newFrom = targetIdx - desiredOffsetFromLeft;
+  let newTo = newFrom + width;
+  // Clamp so we never blow past the data (and leave a small right padding).
+  if (newTo > dataLen + 12) {
+    const shift = newTo - (dataLen + 12);
+    newFrom -= shift; newTo -= shift;
+  }
+  if (newFrom < 0) {
+    newTo += -newFrom; newFrom = 0;
+  }
+  try { topChart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo }); } catch (e) {}
 }
 
 // Keyboard navigation: A / ← back, D / → forward (only when nav mode active)
