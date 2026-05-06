@@ -5169,6 +5169,13 @@ document.getElementById("btn-png")?.addEventListener("click", async () => {
     return;
   }
   status.textContent = "Rendering snapshot…";
+  // Clear the crosshair on every chart so the dotted hover lines don't
+  // appear in the captured PNG. Wait two animation frames so LWC has
+  // repainted before html2canvas reads the canvases.
+  try { topChart.clearCrosshairPosition(); } catch (e) {}
+  try { bottomChart.clearCrosshairPosition(); } catch (e) {}
+  try { timeAxisChart.clearCrosshairPosition(); } catch (e) {}
+  await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
   try {
     const target = document.getElementById("chart-stack");
     const canvas = await h2c(target, {
