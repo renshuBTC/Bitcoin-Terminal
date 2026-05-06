@@ -234,6 +234,23 @@ window.__loadMp4Muxer = function() {
     display: none; }
   #date-tracer.show { display: block; }
   #date-tracer .line { display: none; }
+  /* Custom inter-pane dividers — overlaid on top of LWC's built-in
+     separators (which we disabled via panes.enableResize:false because
+     LWC's drag redistributes ALL panes proportionally instead of just
+     the two adjacent). Drag math here only touches the panes either
+     side of the dragged gap. Visual style matches #chart-divider. */
+  .bottom-pane-divider { position: absolute; left: 0; right: 0; height: 5px;
+    cursor: row-resize; background: transparent; z-index: 11;
+    pointer-events: auto; touch-action: none;
+    transition: background 0.08s ease; }
+  .bottom-pane-divider::before { content: ""; position: absolute; left: 0; right: 0;
+    top: 50%; transform: translateY(-50%); height: 1px; background: #222;
+    pointer-events: none; transition: background 0.08s ease; }
+  .bottom-pane-divider:hover { background: #ff8c00; }
+  .bottom-pane-divider:hover::before { background: #ff8c00; }
+  .bottom-pane-divider.is-dragging { background: #ff8c00; }
+  .bottom-pane-divider.is-dragging::before { background: #ff8c00; }
+
   /* Keyboard-nav instruction — one copy per bottom-pane indicator,
      pinned just under each pane's label so users see the activation
      hint inside every URPD pane (not just the first). Absolute-
@@ -655,14 +672,17 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     priceFormatter: shortPriceFormat,
     timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
   },
-  // Pane separators between bottom-pane indicators — match the custom
-  // #chart-divider styling: thin grey line by default, Bloomberg orange
-  // on hover, draggable to resize. Same look across the top↔bottom
-  // divider and between-bottom-panes dividers.
+  // Pane separators between bottom-pane indicators. We DON'T use LWC's
+  // built-in resize: it redistributes proportionally across ALL panes
+  // when you drag a single separator (so dragging gap 1↔2 also moves
+  // pane 3), which isn't the local-only behaviour we want. Instead we
+  // overlay our own divider divs (.bottom-pane-divider) and drag math
+  // that only touches the two adjacent panes. The colour tokens are
+  // still set so LWC's underlying separator line matches our divider.
   panes: {
     separatorColor: "#222",
-    separatorHoverColor: "#ff8c00",
-    enableResize: true,
+    separatorHoverColor: "#222",
+    enableResize: false,
   },
 }));
 
@@ -674,8 +694,8 @@ try {
   bottomChart.applyOptions({
     panes: {
       separatorColor: "#222",
-      separatorHoverColor: "#ff8c00",
-      enableResize: true,
+      separatorHoverColor: "#222",
+      enableResize: false,
     },
   });
 } catch (e) {}
@@ -1991,6 +2011,117 @@ function _equaliseBottomPanes() {
 // time-axis area / inter-pane padding and doesn't match the visible
 // pane top. Walking the actual canvas rects gives us the true pixel
 // boundary every time.
+// Render N-1 custom inter-pane dividers (one per gap between bottom-pane
+// indicators). LWC's built-in resize is disabled — these handle dragging
+// and only adjust the two panes adjacent to the dragged gap, leaving
+// other panes untouched. Called from the same rAF block as
+// `_positionBottomLabels` so positions track LWC's actual canvas rects.
+function _renderBottomPaneDividers() {
+  const botHost = document.getElementById("ind-rows-bottom");
+  const wrap = document.getElementById("chart-bottom-wrap");
+  const chartBottom = document.getElementById("chart-bottom");
+  if (!botHost || !wrap || !chartBottom) return;
+  const wrapTop = wrap.getBoundingClientRect().top;
+
+  // Collect distinct pane top Y positions from each pane's canvases.
+  const yTops = new Set();
+  chartBottom.querySelectorAll("canvas").forEach(c => {
+    const r = c.getBoundingClientRect();
+    if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
+  });
+  const sortedY = [...yTops].sort((a, b) => a - b);
+
+  // Remove old dividers and rebuild — positions/count change when panes
+  // are added or removed, and after every drag we want fresh positions
+  // computed from the updated canvas rects.
+  botHost.querySelectorAll(".bottom-pane-divider").forEach(el => el.remove());
+
+  // One divider per gap (between pane i-1 and pane i, for i = 1..N-1).
+  for (let i = 1; i < sortedY.length; i++) {
+    const div = document.createElement("div");
+    div.className = "bottom-pane-divider";
+    div.dataset.aboveIdx = String(i - 1);
+    div.dataset.belowIdx = String(i);
+    // Hit zone is 5px tall, vertically centred on the boundary line.
+    div.style.top = `${sortedY[i] - 2}px`;
+    botHost.appendChild(div);
+    _wireBottomPaneDividerDrag(div);
+  }
+}
+
+function _wireBottomPaneDividerDrag(divider) {
+  divider.addEventListener("pointerdown", (e) => {
+    if (typeof bottomChart === "undefined" || !bottomChart.panes) return;
+    const panes = bottomChart.panes();
+    const aboveIdx = parseInt(divider.dataset.aboveIdx, 10);
+    const belowIdx = parseInt(divider.dataset.belowIdx, 10);
+    if (!panes[aboveIdx] || !panes[belowIdx]) return;
+    e.preventDefault();
+    try { divider.setPointerCapture(e.pointerId); } catch (err) {}
+    divider.classList.add("is-dragging");
+    document.body.classList.add("is-resizing-pane");
+
+    // Read current pixel heights of the two adjacent panes from the
+    // canvas rects — getHeight() in LWC v5 doesn't reliably return
+    // visible pixels, but rect-derived height does.
+    const wrap = document.getElementById("chart-bottom-wrap");
+    const chartBottom = document.getElementById("chart-bottom");
+    const wrapTop = wrap.getBoundingClientRect().top;
+    const totalH = wrap.clientHeight;
+    const yTops = new Set();
+    chartBottom.querySelectorAll("canvas").forEach(c => {
+      const r = c.getBoundingClientRect();
+      if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
+    });
+    const sortedY = [...yTops].sort((a, b) => a - b);
+    const aboveTop = sortedY[aboveIdx] || 0;
+    const belowTop = sortedY[belowIdx] || 0;
+    const belowBottom = sortedY[belowIdx + 1] != null ? sortedY[belowIdx + 1] : totalH;
+    const aboveH = belowTop - aboveTop;
+    const belowH = belowBottom - belowTop;
+    const startY = e.clientY;
+    const minH = 40;
+
+    const onMove = (ev) => {
+      const dy = ev.clientY - startY;
+      let newAbove = aboveH + dy;
+      let newBelow = belowH - dy;
+      if (newAbove < minH) { newAbove = minH; newBelow = aboveH + belowH - minH; }
+      if (newBelow < minH) { newBelow = minH; newAbove = aboveH + belowH - minH; }
+      try { panes[aboveIdx].setHeight(newAbove); } catch (err) {}
+      try { panes[belowIdx].setHeight(newBelow); } catch (err) {}
+      // Re-place labels + dividers next frame so they track the new
+      // canvas rects after LWC has re-laid out.
+      requestAnimationFrame(() => {
+        try { _positionBottomLabels(); } catch (err) {}
+        // Move just THIS divider (don't rebuild all of them mid-drag,
+        // because that would destroy the element we're listening on).
+        const ny = new Set();
+        chartBottom.querySelectorAll("canvas").forEach(c => {
+          const r = c.getBoundingClientRect();
+          if (r.height > 4) ny.add(Math.round(r.top - wrapTop));
+        });
+        const nsorted = [...ny].sort((a, b) => a - b);
+        if (nsorted[belowIdx] != null) divider.style.top = `${nsorted[belowIdx] - 2}px`;
+      });
+    };
+    const onUp = (ev) => {
+      divider.classList.remove("is-dragging");
+      document.body.classList.remove("is-resizing-pane");
+      try { divider.releasePointerCapture(ev.pointerId); } catch (err) {}
+      divider.removeEventListener("pointermove", onMove);
+      divider.removeEventListener("pointerup", onUp);
+      divider.removeEventListener("pointercancel", onUp);
+      // Re-build all dividers once on drag end so non-dragged dividers
+      // also track the post-drag canvas rects.
+      try { _renderBottomPaneDividers(); } catch (err) {}
+    };
+    divider.addEventListener("pointermove", onMove);
+    divider.addEventListener("pointerup", onUp);
+    divider.addEventListener("pointercancel", onUp);
+  });
+}
+
 function _positionBottomLabels() {
   const botHost = document.getElementById("ind-rows-bottom");
   if (!botHost) return;
@@ -2135,11 +2266,13 @@ function refreshPaneHeaders() {
     // changed if an indicator was added/removed). Cheap; no-op if widths
     // already match.
     try { alignRightScales(); } catch (e) {}
-    // Position labels NEXT frame — LWC's pane setHeight may not reflect
-    // in canvas rects within the same animation frame, so the rect-based
-    // measurement needs to wait one tick for the layout to commit.
+    // Position labels + (re)build inter-pane dividers NEXT frame — LWC's
+    // pane setHeight may not reflect in canvas rects within the same
+    // animation frame, so the rect-based measurement needs to wait one
+    // tick for the layout to commit.
     requestAnimationFrame(() => {
       try { _positionBottomLabels(); } catch (e) {}
+      try { _renderBottomPaneDividers(); } catch (e) {}
     });
   });
 
