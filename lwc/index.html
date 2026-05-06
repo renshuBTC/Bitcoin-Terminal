@@ -199,14 +199,16 @@ window.__loadMp4Muxer = function() {
   #chart-top [id*="tv-attr"],
   #chart-bottom [id*="tv-attr"] { display: none !important; }
 
-  /* Click-locked date tracer — vertical line overlay on the BTC chart.
-     Wider hit area than the visible 1px line so users can grab it easily. */
-  #date-tracer { position: absolute; top: 0; bottom: 0; width: 9px;
-    margin-left: -4px; z-index: 6; cursor: pointer; pointer-events: auto;
+  /* Click-locked date tracer — a small dot that sits on the BTC price line
+     at the locked date. Slides along the price line as you navigate. */
+  #date-tracer { position: absolute; width: 12px; height: 12px;
+    margin-left: -6px; margin-top: -6px; border-radius: 50%;
+    background: #ff8c00; border: 2px solid #fff; box-sizing: border-box;
+    box-shadow: 0 0 0 1px rgba(0,0,0,0.55), 0 0 6px rgba(255,140,0,0.45);
+    cursor: pointer; pointer-events: auto; z-index: 6;
     display: none; }
   #date-tracer.show { display: block; }
-  #date-tracer .line { position: absolute; left: 4px; top: 0; bottom: 0;
-    width: 1px; background: #ff8c00; pointer-events: none; }
+  #date-tracer .line { display: none; }
   /* Keyboard-nav instruction overlay — fades in on click, fades out idle. */
   #nav-instruction { position: absolute; top: 12px; left: 50%;
     transform: translateX(-50%); background: rgba(20,20,20,0.92);
@@ -2099,6 +2101,10 @@ topChart.subscribeCrosshairMove((param) => {
     }
   }
   updateHoverReadout(dateStr);
+  // Keep the click-locked tracer glued to the BTC price line as the chart
+  // re-renders in response to any cursor movement (the crosshair handler
+  // fires for almost every chart interaction).
+  if (typeof updateTracerPosition === "function") updateTracerPosition();
 });
 
 // ─── Click-to-lock + keyboard nav ─────────────────────────────────────────
@@ -2134,7 +2140,25 @@ function updateTracerPosition() {
   try {
     const x = topChart.timeScale().timeToCoordinate(currentDateStr);
     if (x == null) { dateTracerEl.classList.remove("show"); return; }
+    // Find the BTC price at the locked date and position the dot ON the
+    // price line so it slides along as the user navigates.
+    const idx = priceDateStrs ? priceDateStrs.indexOf(currentDateStr) : -1;
+    const price = (idx >= 0 && priceArray) ? priceArray[idx] : null;
+    let y = null;
+    if (price && price > 0) {
+      // Try to read the BTC price series from the BTC indicator.
+      let btcInd = null;
+      for (const ind of activeIndicators.values()) {
+        if (ind.constructor.type === "btc_price") { btcInd = ind; break; }
+      }
+      const series = btcInd && btcInd.getPriceSeries ? btcInd.getPriceSeries() : null;
+      if (series && typeof series.priceToCoordinate === "function") {
+        y = series.priceToCoordinate(price);
+      }
+    }
+    if (y == null) { dateTracerEl.classList.remove("show"); return; }
     dateTracerEl.style.left = x + "px";
+    dateTracerEl.style.top  = y + "px";
     dateTracerEl.classList.add("show");
   } catch (e) { dateTracerEl.classList.remove("show"); }
 }
