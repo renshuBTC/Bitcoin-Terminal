@@ -199,6 +199,25 @@ window.__loadMp4Muxer = function() {
   #chart-top [id*="tv-attr"],
   #chart-bottom [id*="tv-attr"] { display: none !important; }
 
+  /* Click-locked date tracer — vertical line overlay on the BTC chart.
+     Wider hit area than the visible 1px line so users can grab it easily. */
+  #date-tracer { position: absolute; top: 0; bottom: 0; width: 9px;
+    margin-left: -4px; z-index: 6; cursor: pointer; pointer-events: auto;
+    display: none; }
+  #date-tracer.show { display: block; }
+  #date-tracer .line { position: absolute; left: 4px; top: 0; bottom: 0;
+    width: 1px; background: #ff8c00; pointer-events: none; }
+  /* Keyboard-nav instruction overlay — fades in on click, fades out idle. */
+  #nav-instruction { position: absolute; top: 12px; left: 50%;
+    transform: translateX(-50%); background: rgba(20,20,20,0.92);
+    border: 1px solid #2a2a2a; padding: 5px 12px; font-size: 11px;
+    color: #d4d4d4; pointer-events: none; z-index: 7; border-radius: 3px;
+    white-space: nowrap; opacity: 0; transition: opacity 0.2s ease; }
+  #nav-instruction.show { opacity: 1; }
+  #nav-instruction kbd { background: #0a0a0a; border: 1px solid #444;
+    border-radius: 2px; padding: 1px 5px; font-family: inherit;
+    font-size: 10px; color: #d4d4d4; margin: 0 1px; }
+
   /* Pane label — floats INSIDE the chart at top-left, TradingView-style.
      Sits on top of the chart canvas via absolute positioning, not a header bar. */
   .pane-label { position: absolute; top: 8px; left: 12px; z-index: 4;
@@ -357,6 +376,8 @@ window.__loadMp4Muxer = function() {
   <div id="chart-stack">
     <div id="chart-top-wrap">
       <div id="chart-top"></div>
+      <div id="date-tracer" title="Click to clear"><div class="line"></div></div>
+      <div id="nav-instruction"></div>
       <div class="pane-label" id="header-top">
         <div class="pane-title-row">
           <span class="pane-title">
@@ -409,7 +430,6 @@ window.__loadMp4Muxer = function() {
       <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
     </select>
     <span class="spacer"></span>
-    <label class="bb-check" title="Update charts as you hover over them"><input type="checkbox" id="scrub-toggle" checked> Scrub</label>
     <span class="bb-sep"></span>
     <div id="tz-wrap">
       <button id="utc-clock" title="Timezone" type="button">--:--:-- UTC</button>
@@ -2031,12 +2051,10 @@ document.getElementById("modal-bg").addEventListener("click", (e) => {
 });
 
 // ───────────────────────────────────────────────────────────────────────────
-// Crosshair scrub: top chart hover → currentDateStr → notify all indicators
+// Click-locked date tracer: clicking the BTC chart locks a date; keyboard
+// A/← and D/→ step through dates respecting the active interval. Clicking
+// the tracer line itself clears the lock. Replaces the old hover-scrub.
 // ───────────────────────────────────────────────────────────────────────────
-let scrubTimer = null;
-let lastScrubDate = null;
-const SCRUB_DEBOUNCE_MS = 80;
-
 function setCurrentDate(dateStr) {
   currentDateStr = dateStr;
   document.getElementById("date-input").value = dateStr;
@@ -2045,7 +2063,6 @@ function setCurrentDate(dateStr) {
   }
 }
 
-const scrubToggle = document.getElementById("scrub-toggle");
 const hoverTopEl = document.getElementById("hover-top");
 
 function updateHoverReadout(dateStr) {
@@ -2073,7 +2090,7 @@ function updateHoverReadout(dateStr) {
 }
 
 topChart.subscribeCrosshairMove((param) => {
-  // Hover readout: always update (independent of scrub setting)
+  // Hover readout: always update (decoupled from any scrub behavior)
   let dateStr = null;
   if (param.time) {
     if (typeof param.time === "string") dateStr = param.time;
@@ -2082,15 +2099,121 @@ topChart.subscribeCrosshairMove((param) => {
     }
   }
   updateHoverReadout(dateStr);
+});
 
-  // Scrub: only update currentDateStr if scrub is enabled
-  if (!scrubToggle.checked) return;
-  if (!dateStr) return;
-  if (dateStr === lastScrubDate) return;
-  lastScrubDate = dateStr;
-  if (priceDateStrs.indexOf(dateStr) < 0) return;
-  if (scrubTimer) clearTimeout(scrubTimer);
-  scrubTimer = setTimeout(() => setCurrentDate(dateStr), SCRUB_DEBOUNCE_MS);
+// ─── Click-to-lock + keyboard nav ─────────────────────────────────────────
+const dateTracerEl     = document.getElementById("date-tracer");
+const navInstructionEl = document.getElementById("nav-instruction");
+let _navMode      = false;
+let _instructionTimer = null;
+
+function _paramTimeToDateStr(t) {
+  if (!t) return null;
+  if (typeof t === "string") return t;
+  if (typeof t === "object" && "year" in t) {
+    return `${t.year}-${String(t.month).padStart(2,"0")}-${String(t.day).padStart(2,"0")}`;
+  }
+  return null;
+}
+
+function intervalDays() {
+  // Interval-aware step size for keyboard nav
+  if (typeof currentInterval === "string") {
+    if (currentInterval === "1w") return 7;
+    if (currentInterval === "1m") return 30;
+  }
+  return 1;
+}
+
+function updateTracerPosition() {
+  if (!dateTracerEl) return;
+  if (!_navMode || !currentDateStr) {
+    dateTracerEl.classList.remove("show");
+    return;
+  }
+  try {
+    const x = topChart.timeScale().timeToCoordinate(currentDateStr);
+    if (x == null) { dateTracerEl.classList.remove("show"); return; }
+    dateTracerEl.style.left = x + "px";
+    dateTracerEl.classList.add("show");
+  } catch (e) { dateTracerEl.classList.remove("show"); }
+}
+
+function showInstruction(text) {
+  if (!navInstructionEl) return;
+  navInstructionEl.innerHTML = text;
+  navInstructionEl.classList.add("show");
+  if (_instructionTimer) clearTimeout(_instructionTimer);
+  _instructionTimer = setTimeout(() => {
+    navInstructionEl.classList.remove("show");
+  }, 4000);
+}
+function hideInstruction() {
+  if (!navInstructionEl) return;
+  navInstructionEl.classList.remove("show");
+  if (_instructionTimer) { clearTimeout(_instructionTimer); _instructionTimer = null; }
+}
+
+function enterNavMode(dateStr) {
+  if (!dateStr || !priceDateStrs || priceDateStrs.indexOf(dateStr) < 0) return;
+  _navMode = true;
+  setCurrentDate(dateStr);
+  updateTracerPosition();
+  showInstruction(
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · click tracer to clear`
+  );
+}
+function exitNavMode() {
+  _navMode = false;
+  dateTracerEl.classList.remove("show");
+  hideInstruction();
+  // Snap back to the most recent date so URPD/SOPD reflect "now"
+  if (priceDateStrs && priceDateStrs.length) {
+    setCurrentDate(priceDateStrs[priceDateStrs.length - 1]);
+  }
+}
+
+// Click on chart → lock to that date
+topChart.subscribeClick((param) => {
+  if (!param || !param.time) return;
+  const ds = _paramTimeToDateStr(param.time);
+  if (!ds) return;
+  enterNavMode(ds);
+});
+
+// Click on tracer (anywhere along the vertical line) → exit nav mode
+if (dateTracerEl) {
+  dateTracerEl.addEventListener("click", (e) => {
+    e.stopPropagation();
+    exitNavMode();
+  });
+}
+
+// Keep tracer aligned when chart pans/zooms or window resizes
+topChart.timeScale().subscribeVisibleTimeRangeChange(updateTracerPosition);
+window.addEventListener("resize", updateTracerPosition);
+
+// Keyboard navigation: A / ← back, D / → forward (only when nav mode active)
+document.addEventListener("keydown", (e) => {
+  if (!_navMode) return;
+  const tag = (e.target && e.target.tagName) || "";
+  if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+  if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+  let step = 0;
+  if (e.key === "ArrowLeft"  || e.key === "a" || e.key === "A") step = -1;
+  else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") step =  1;
+  else return;
+  e.preventDefault();
+  const stepDays = step * intervalDays();
+  let idx = priceDateStrs.indexOf(currentDateStr);
+  if (idx < 0) return;
+  idx = Math.max(0, Math.min(priceDateStrs.length - 1, idx + stepDays));
+  setCurrentDate(priceDateStrs[idx]);
+  updateTracerPosition();
+  // Refresh the instruction's auto-hide timer so it stays while navigating
+  showInstruction(
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · click tracer to clear`
+  );
 });
 
 // ───────────────────────────────────────────────────────────────────────────
