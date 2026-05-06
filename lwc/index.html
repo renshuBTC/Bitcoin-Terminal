@@ -3755,12 +3755,28 @@ applyPriceScale();
   }
 
   async function loadDefaults() {
-    const spot = new SpotPriceLineIndicator();
-    activeIndicators.set(spot.id, spot);
-    await spot.load();
-    const urpd = new URPDProfileIndicator();
-    activeIndicators.set(urpd.id, urpd);
-    await urpd.load();
+    // Default indicator set on a fresh page (no URL state to restore).
+    // - SpotPriceLineIndicator is the hidden helper that drives the
+    //   click-locked tracer's vertical line; it isn't user-visible in
+    //   the picker (HIDDEN_FROM_PICKER) but the tracer needs it.
+    // - The three Realised Price lines + URPD History give the user
+    //   the same first-paint view shown in the bitcointerminal.net
+    //   reference layout.
+    const inds = [
+      new SpotPriceLineIndicator(),
+      new RealisedPriceIndicator(),
+      new LTHRealisedPriceIndicator(),
+      new STHRealisedPriceIndicator(),
+      new URPDProfileIndicator(),
+    ];
+    for (const ind of inds) activeIndicators.set(ind.id, ind);
+    // Parallel load — each indicator hits a different BRK endpoint, so
+    // there's no benefit to awaiting them sequentially. Failures are
+    // isolated per-indicator (one slow / 404 endpoint doesn't block the
+    // others from rendering).
+    await Promise.all(inds.map(ind => ind.load().catch(err => {
+      console.warn(`default ${ind.constructor.type} load failed:`, err);
+    })));
   }
 })();
 </script>
