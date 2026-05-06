@@ -77,6 +77,12 @@ window.__loadMp4Muxer = function() {
     border-radius: 2px; font-size: 10px; line-height: 1.3; }
   .pane-label .ind-badge .dot { width: 7px; height: 7px; border-radius: 1px; flex-shrink: 0; }
   .pane-label .ind-badge .ind-label { color: #d4d4d4; }
+  /* Hover OHLC-style readout — price + change at the hovered date */
+  .pane-label .hover-readout { display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; padding-left: 4px; }
+  .pane-label .hover-readout .price { color: #d4d4d4; font-weight: 700; }
+  .pane-label .hover-readout .change-up { color: #2ecc71; }
+  .pane-label .hover-readout .change-down { color: #ff5c5c; }
 
   #status { position: absolute; bottom: 6px; left: 14px; color: #666; font-size: 11px; pointer-events: none; }
 
@@ -216,6 +222,7 @@ window.__loadMp4Muxer = function() {
           <span class="sep">·</span><span>1D</span>
           <span class="sep">·</span><span class="source">BRK</span>
         </span>
+        <span class="hover-readout" id="hover-top"></span>
       </div>
     </div>
     <div id="chart-bottom-wrap">
@@ -1245,17 +1252,49 @@ function setCurrentDate(dateStr) {
 }
 
 const scrubToggle = document.getElementById("scrub-toggle");
+const hoverTopEl = document.getElementById("hover-top");
+
+function updateHoverReadout(dateStr) {
+  if (!hoverTopEl || !priceArray || !priceDateStrs) return;
+  if (!dateStr) { hoverTopEl.innerHTML = ""; return; }
+  const idx = priceDateStrs.indexOf(dateStr);
+  if (idx < 0) { hoverTopEl.innerHTML = ""; return; }
+  const price = priceArray[idx];
+  if (typeof price !== "number" || price <= 0) { hoverTopEl.innerHTML = ""; return; }
+  // Change vs previous bar
+  let prev = null;
+  for (let i = idx - 1; i >= 0; i--) {
+    if (typeof priceArray[i] === "number" && priceArray[i] > 0) { prev = priceArray[i]; break; }
+  }
+  let changeHTML = "";
+  if (prev !== null) {
+    const abs = price - prev;
+    const pct = (abs / prev) * 100;
+    const cls = abs >= 0 ? "change-up" : "change-down";
+    const sign = abs >= 0 ? "+" : "";
+    changeHTML = `<span class="${cls}">${sign}${abs.toLocaleString("en-US",{maximumFractionDigits:2})} ` +
+      `(${sign}${pct.toFixed(2)}%)</span>`;
+  }
+  hoverTopEl.innerHTML = `<span class="price">${price.toLocaleString("en-US",{maximumFractionDigits:2})}</span>${changeHTML}`;
+}
+
 topChart.subscribeCrosshairMove((param) => {
+  // Hover readout: always update (independent of scrub setting)
+  let dateStr = null;
+  if (param.time) {
+    if (typeof param.time === "string") dateStr = param.time;
+    else if (typeof param.time === "object" && "year" in param.time) {
+      dateStr = `${param.time.year}-${String(param.time.month).padStart(2,"0")}-${String(param.time.day).padStart(2,"0")}`;
+    }
+  }
+  updateHoverReadout(dateStr);
+
+  // Scrub: only update currentDateStr if scrub is enabled
   if (!scrubToggle.checked) return;
-  if (!param.time) return;
-  let dateStr;
-  if (typeof param.time === "string") dateStr = param.time;
-  else if (param.time && typeof param.time === "object" && "year" in param.time) {
-    dateStr = `${param.time.year}-${String(param.time.month).padStart(2,"0")}-${String(param.time.day).padStart(2,"0")}`;
-  } else return;
+  if (!dateStr) return;
   if (dateStr === lastScrubDate) return;
   lastScrubDate = dateStr;
-  if (!priceDateStrs || priceDateStrs.indexOf(dateStr) < 0) return;
+  if (priceDateStrs.indexOf(dateStr) < 0) return;
   if (scrubTimer) clearTimeout(scrubTimer);
   scrubTimer = setTimeout(() => setCurrentDate(dateStr), SCRUB_DEBOUNCE_MS);
 });
