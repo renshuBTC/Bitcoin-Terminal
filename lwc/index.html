@@ -3627,9 +3627,15 @@ if (_chartBottomEl) {
 topChart.timeScale().subscribeVisibleTimeRangeChange(updateTracerPosition);
 window.addEventListener("resize", updateTracerPosition);
 
-// Pan the chart so the tracer stays inside the visible window. Called after
-// every keyboard navigation step so navigation never leaves the dot offscreen.
-// Width-preserving: never shrinks/grows the zoom, just shifts the window.
+// Pan the chart only when the tracer would go OFFSCREEN — not when it's
+// merely close to an edge. Earlier versions snapped the window to put the
+// tracer at 60% from left whenever it drifted into the outer 12%, which
+// caused the chart to "fly" on the very first nav step (because locking
+// near today's date already places the tracer in that outer band). The
+// user wants navigation to feel anchored to the tracer; the chart should
+// stay put until stepping actually pushes the dot past the visible edge.
+// Width-preserving: never shrinks/grows the zoom, just shifts the window
+// minimally so the tracer lands ~10% inside the leading edge.
 function ensureTracerInView() {
   if (!_navMode || !currentDateStr || !priceDateStrs) return;
   const targetIdx = priceDateStrs.indexOf(currentDateStr);
@@ -3640,16 +3646,22 @@ function ensureTracerInView() {
   const width = logical.to - logical.from;
   // Skip if zoom is degenerate / chart not laid out yet
   if (!(width > 5)) return;
-  // Tracer comfortably inside? Don't pan.
-  const margin = width * 0.12;
-  if (targetIdx >= logical.from + margin && targetIdx <= logical.to - margin) return;
-  // Otherwise shift the window (preserving width) so the tracer sits at
-  // ~60% from the left — slightly right of center, leaving more room for
-  // history-context to the left of the dot.
+  // Tracer still inside the visible range? Leave the chart alone.
+  if (targetIdx >= logical.from && targetIdx <= logical.to) return;
+  // Tracer left the window — shift minimally so it lands just inside the
+  // leading edge (not centred), preserving the user's zoom level.
   const dataLen = priceDateStrs.length;
-  const desiredOffsetFromLeft = width * 0.60;
-  let newFrom = targetIdx - desiredOffsetFromLeft;
-  let newTo = newFrom + width;
+  const insetFromEdge = width * 0.10;
+  let newFrom, newTo;
+  if (targetIdx > logical.to) {
+    // Stepped forward past the right edge — put tracer ~10% from right.
+    newTo = targetIdx + insetFromEdge;
+    newFrom = newTo - width;
+  } else {
+    // Stepped backward past the left edge — put tracer ~10% from left.
+    newFrom = targetIdx - insetFromEdge;
+    newTo = newFrom + width;
+  }
   // Clamp so we never blow past the data (and leave a small right padding).
   if (newTo > dataLen + 12) {
     const shift = newTo - (dataLen + 12);
