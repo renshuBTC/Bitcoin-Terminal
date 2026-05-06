@@ -985,7 +985,7 @@ class RealisedPriceIndicator extends TopPaneSeriesIndicator {
 
 class LTHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "lth_realised_price";
-  static displayName = "Realised Price — LTH";
+  static displayName = "LTH Realised Price";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.lth },
     { key: "lineWidth", label: "Width", type: "select",
@@ -997,7 +997,7 @@ class LTHRealisedPriceIndicator extends TopPaneSeriesIndicator {
 
 class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "sth_realised_price";
-  static displayName = "Realised Price — STH";
+  static displayName = "STH Realised Price";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.sth },
     { key: "lineWidth", label: "Width", type: "select",
@@ -1005,6 +1005,127 @@ class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   ];
   endpoint() { return "/api/series/sth_realized_price/day1"; }
   seriesTitle() { return "STH Realised Price"; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Realised-Price filtered by Profit/Loss — horizontal price line at the
+// supply-weighted mean of URPD (or LTH/STH URPD) bins whose price is below
+// (in Profit) or above (in Loss) the current spot. Updates as the user
+// scrubs the date. Mirrors the rp.js BOTH-mode means from the previous site.
+//
+// Implementation: not a time series (would require per-day URPD fetches).
+// Instead, draws a price line on the BTC chart at the filtered mean for the
+// currently selected date — same data path the URPD profile already uses.
+// ───────────────────────────────────────────────────────────────────────────
+class RealisedPriceFilteredIndicator extends Indicator {
+  static pane = "top";
+  cohort()   { return "all"; }   // "all" | "lth" | "sth"
+  isProfit() { return true; }    // overridden by Loss subclasses
+
+  async load() {
+    this._priceLine = null;
+    await this.onDateChange(currentDateStr);
+  }
+  swatchColor() { return this.config.color; }
+  seriesTitle() { return this.constructor.displayName; }
+
+  async onDateChange(dateStr) {
+    const spot = getSpotForDate(dateStr);
+    if (!spot) return;
+    let resp;
+    try { resp = await getURPDCohort(dateStr, this.cohort()); }
+    catch (e) { console.warn(`${this.constructor.displayName}: ${e.message}`); return; }
+    const buckets = (resp && resp.buckets) || [];
+    let num = 0, den = 0;
+    const profit = this.isProfit();
+    for (const b of buckets) {
+      const w = b.supply || 0;
+      if (w <= 0) continue;
+      const p = (b.price_floor !== undefined ? b.price_floor : b.price) || 0;
+      if (profit ? p <= spot : p > spot) { num += p * w; den += w; }
+    }
+    if (den === 0) return;
+    const mean = num / den;
+    const btcInd = activeIndicators.values().next().value;
+    if (!btcInd || !btcInd.getPriceSeries) return;
+    const series = btcInd.getPriceSeries();
+    if (this._priceLine) {
+      try { series.removePriceLine(this._priceLine); } catch (e) {}
+    }
+    this._priceLine = series.createPriceLine({
+      price: mean, color: this.config.color, lineWidth: this.config.lineWidth,
+      lineStyle: profit ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dashed,
+      axisLabelVisible: true, title: this.seriesTitle(),
+    });
+    if (this.visible === false) {
+      try { this._priceLine.applyOptions({ lineWidth: 0, axisLabelVisible: false }); } catch (e) {}
+    }
+  }
+
+  remove() {
+    if (this._priceLine) {
+      const btcInd = activeIndicators.values().next().value;
+      if (btcInd && btcInd.getPriceSeries) {
+        try { btcInd.getPriceSeries().removePriceLine(this._priceLine); } catch (e) {}
+      }
+    }
+    super.remove();
+  }
+
+  setVisible(v) {
+    this.visible = !!v;
+    if (!this._priceLine) return;
+    try {
+      if (this.visible) this._priceLine.applyOptions({ lineWidth: this.config.lineWidth, axisLabelVisible: true });
+      else this._priceLine.applyOptions({ lineWidth: 0, axisLabelVisible: false });
+    } catch (e) {}
+  }
+}
+
+// Helper to build configSchema with the right default color per cohort
+function _rpFilteredSchema(defaultColor) {
+  return [
+    { key: "color", label: "Color", type: "color", default: defaultColor },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 1 },
+  ];
+}
+
+class RPInProfitIndicator extends RealisedPriceFilteredIndicator {
+  static type = "rp_in_profit";
+  static displayName = "Realised Price in Profit";
+  static configSchema = _rpFilteredSchema(THEME.profit);
+  cohort() { return "all"; } isProfit() { return true; }
+}
+class RPInLossIndicator extends RealisedPriceFilteredIndicator {
+  static type = "rp_in_loss";
+  static displayName = "Realised Price in Loss";
+  static configSchema = _rpFilteredSchema(THEME.loss);
+  cohort() { return "all"; } isProfit() { return false; }
+}
+class LTHRPInProfitIndicator extends RealisedPriceFilteredIndicator {
+  static type = "lth_rp_in_profit";
+  static displayName = "LTH Realised Price in Profit";
+  static configSchema = _rpFilteredSchema(THEME.lth);
+  cohort() { return "lth"; } isProfit() { return true; }
+}
+class LTHRPInLossIndicator extends RealisedPriceFilteredIndicator {
+  static type = "lth_rp_in_loss";
+  static displayName = "LTH Realised Price in Loss";
+  static configSchema = _rpFilteredSchema(THEME.lth);
+  cohort() { return "lth"; } isProfit() { return false; }
+}
+class STHRPInProfitIndicator extends RealisedPriceFilteredIndicator {
+  static type = "sth_rp_in_profit";
+  static displayName = "STH Realised Price in Profit";
+  static configSchema = _rpFilteredSchema(THEME.sth);
+  cohort() { return "sth"; } isProfit() { return true; }
+}
+class STHRPInLossIndicator extends RealisedPriceFilteredIndicator {
+  static type = "sth_rp_in_loss";
+  static displayName = "STH Realised Price in Loss";
+  static configSchema = _rpFilteredSchema(THEME.sth);
+  cohort() { return "sth"; } isProfit() { return false; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1434,6 +1555,13 @@ const INDICATOR_TYPES = [
   RealisedPriceIndicator,
   LTHRealisedPriceIndicator,
   STHRealisedPriceIndicator,
+  // Top-pane profit/loss-filtered means (per-date horizontal price line)
+  RPInProfitIndicator,
+  RPInLossIndicator,
+  LTHRPInProfitIndicator,
+  LTHRPInLossIndicator,
+  STHRPInProfitIndicator,
+  STHRPInLossIndicator,
   SpotPriceLineIndicator,
   // Bottom-pane profile histograms (point-in-time, follow crosshair scrub)
   URPDProfileIndicator,
