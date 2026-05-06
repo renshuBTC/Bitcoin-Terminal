@@ -578,8 +578,8 @@ function commonChartOpts() {
     leftPriceScale: { visible: false },
     timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false },
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
-      vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
-      horzLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted } },
+      vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Solid },
+      horzLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Solid } },
     localization: { priceFormatter: shortPriceFormat },
   };
 }
@@ -646,9 +646,9 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
   // is over the chart, so the user can read off both axes by hovering.
   crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
     vertLine: { color: THEME.crosshair, width: 1,
-      style: LightweightCharts.LineStyle.Dotted, labelVisible: true },
+      style: LightweightCharts.LineStyle.Solid, labelVisible: true },
     horzLine: { color: THEME.crosshair, width: 1,
-      style: LightweightCharts.LineStyle.Dotted, labelVisible: true } },
+      style: LightweightCharts.LineStyle.Solid, labelVisible: true } },
   localization: {
     priceFormatter: shortPriceFormat,
     timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
@@ -1646,7 +1646,7 @@ class SpotPriceLineIndicator extends Indicator {
     }
     this._priceLine = series.createPriceLine({
       price: spot, color: this.config.color, lineWidth: 1,
-      lineStyle: LightweightCharts.LineStyle.Dashed,
+      lineStyle: LightweightCharts.LineStyle.Solid,
       axisLabelVisible: true, title: `Tracer BTC/USD ${dateStr}`,
       axisLabelTextColor: "#000",
     });
@@ -1739,10 +1739,8 @@ function _addRightLeader(points, color) {
   const leader = topChart.addSeries(LightweightCharts.LineSeries, {
     color,
     lineWidth: 2,
-    // LineStyle.Dotted at 1px width can be invisible at typical zoom
-    // levels — the dots are too sparse. Dashed at 2px reads clearly
-    // as a leader line without painting like a solid extension.
-    lineStyle: LightweightCharts.LineStyle.Dashed,
+    // Solid leader — user requested no dotted/dashed lines anywhere.
+    lineStyle: LightweightCharts.LineStyle.Solid,
     priceLineVisible: false,
     lastValueVisible: false,
     crosshairMarkerVisible: false,
@@ -1897,11 +1895,9 @@ class RealisedPriceFilteredIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      // Solid for in-Profit, Dashed for in-Loss — same convention used to
-      // visually distinguish profit/loss on the previous site without
-      // changing the per-cohort hue.
-      lineStyle: profit ? LightweightCharts.LineStyle.Solid
-                        : LightweightCharts.LineStyle.Dashed,
+      // All series solid — user requested no dotted/dashed lines.
+      // (Previously: Solid for in-Profit, Dashed for in-Loss.)
+      lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false,
       lastValueVisible: true,
       title: this.constructor.displayName,
@@ -2004,8 +2000,8 @@ class SpentPriceFilteredIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
-                                 : LightweightCharts.LineStyle.Solid,
+      // All series solid — user requested no dotted/dashed lines.
+      lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false,
       lastValueVisible: true,
       title: this.constructor.displayName,
@@ -2096,8 +2092,8 @@ class RealisedPriceFilteredCDVDIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
-                                 : LightweightCharts.LineStyle.Solid,
+      // All series solid — user requested no dotted/dashed lines.
+      lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false,
       lastValueVisible: true,
       title: this.constructor.displayName,
@@ -2124,8 +2120,8 @@ class SpentPriceFilteredCDVDIndicator extends RealisedPriceFilteredCDVDIndicator
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
-                                 : LightweightCharts.LineStyle.Solid,
+      // All series solid — user requested no dotted/dashed lines.
+      lineStyle: LightweightCharts.LineStyle.Solid,
       priceLineVisible: false,
       lastValueVisible: true,
       title: this.constructor.displayName,
