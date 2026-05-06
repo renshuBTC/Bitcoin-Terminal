@@ -910,11 +910,19 @@ class SpotPriceLineIndicator extends Indicator {
   }
   swatchColor() { return this.config.color; }
   onDateChange(dateStr) {
-    const spot = getSpotForDate(dateStr);
-    if (!spot) return;
+    // The spot line tracks the currently-locked tracer date. Outside nav
+    // mode the line is hidden — same gate as the URPD histogram.
     const btcInd = activeIndicators.values().next().value;
-    if (!btcInd || !btcInd.getPriceSeries) return;
-    const series = btcInd.getPriceSeries();
+    const series = btcInd && btcInd.getPriceSeries ? btcInd.getPriceSeries() : null;
+    if (typeof _navMode !== "undefined" && !_navMode) {
+      if (this._priceLine && series) {
+        try { series.removePriceLine(this._priceLine); } catch (e) {}
+      }
+      this._priceLine = null;
+      return;
+    }
+    const spot = getSpotForDate(dateStr);
+    if (!spot || !series) return;
     if (this._priceLine) {
       try { series.removePriceLine(this._priceLine); } catch (e) {}
     }
@@ -2286,14 +2294,12 @@ function exitNavMode() {
   _navMode = false;
   dateTracerEl.classList.remove("show");
   clearPathOverlay();                 // remove orange traversed-path segment
-  // Clear all bottom-pane (URPD/SOPD) indicator data so the histogram pane
-  // is empty when the tracer is unfixed. The indicators themselves stay
-  // loaded; their data refills the moment a new tracer date is chosen.
+  // Re-trigger each indicator's onDateChange so any indicator with a
+  // nav-mode gate (URPD/SOPD histograms, in-Profit/in-Loss filtered means,
+  // SpotPriceLineIndicator) takes its early-return branch — which
+  // clears bars, removes the spot line, etc.
   for (const ind of activeIndicators.values()) {
-    if (ind.pane() === "bottom" && ind._series) {
-      try { ind._series.setData([]); } catch (e) {}
-      ind._stats = null;
-    }
+    try { ind.onDateChange(currentDateStr); } catch (e) {}
   }
   // Instruction stays visible — it's not tied to nav mode anymore.
 }
@@ -2361,11 +2367,12 @@ function ensureTracerInView() {
   try { topChart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo }); } catch (e) {}
 }
 
-// Keyboard navigation: A / ← back, D / → forward.
-// Works regardless of nav-mode state — pressing a key on a fresh page just
-// steps the URPD date by ±1 (or ±interval) days. If the user has clicked to
-// lock a tracer, the dot tags along too.
+// Keyboard navigation: A / ← back, D / → forward — ONLY active while the
+// click-locked tracer is fixed (nav mode). Outside nav mode the keys do
+// nothing, so the spot line and other date-driven overlays don't drift
+// around when the user just happens to press a key.
 document.addEventListener("keydown", (e) => {
+  if (!_navMode) return;
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -2381,11 +2388,9 @@ document.addEventListener("keydown", (e) => {
   if (idx < 0) return;
   idx = Math.max(0, Math.min(priceDateStrs.length - 1, idx + stepDays));
   setCurrentDate(priceDateStrs[idx]);
-  if (_navMode) {
-    ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
-    updateTracerPosition();
-    updatePathOverlay();    // extend the orange traversed-path segment
-  }
+  ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
+  updateTracerPosition();
+  updatePathOverlay();    // extend the orange traversed-path segment
 });
 
 // ───────────────────────────────────────────────────────────────────────────
