@@ -2179,7 +2179,7 @@ function enterNavMode(dateStr) {
   setCurrentDate(dateStr);
   updateTracerPosition();
   showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · click tracer to clear`
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click tracer to clear`
   );
 }
 function exitNavMode() {
@@ -2200,10 +2200,13 @@ topChart.subscribeClick((param) => {
   enterNavMode(ds);
 });
 
-// Click on tracer (anywhere along the vertical line) → exit nav mode
+// Double-click on tracer → exit nav mode. Single clicks are swallowed so
+// they don't fall through to the chart's click handler and re-lock the date.
 if (dateTracerEl) {
-  dateTracerEl.addEventListener("click", (e) => {
+  dateTracerEl.addEventListener("click", (e) => { e.stopPropagation(); });
+  dateTracerEl.addEventListener("dblclick", (e) => {
     e.stopPropagation();
+    e.preventDefault();
     exitNavMode();
   });
 }
@@ -2266,7 +2269,7 @@ document.addEventListener("keydown", (e) => {
   updateTracerPosition();
   // Refresh the instruction's auto-hide timer so it stays while navigating
   showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · click tracer to clear`
+    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click tracer to clear`
   );
 });
 
