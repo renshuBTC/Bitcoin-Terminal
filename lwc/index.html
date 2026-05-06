@@ -1669,7 +1669,7 @@ function refreshPaneHeaders() {
   const navEl = document.getElementById("nav-instruction");
   if (navEl) {
     if (hasAnyBottom) {
-      navEl.innerHTML = `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`;
+      navEl.innerHTML = `Double-click the BTC chart to fix the tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click again to clear`;
       navEl.classList.add("show");
     } else {
       navEl.classList.remove("show");
@@ -2256,26 +2256,30 @@ function exitNavMode() {
   }
 }
 
-// Click on chart → lock to that date
-topChart.subscribeClick((param) => {
+// Double-click on the BTC chart toggles the tracer:
+//   • not locked → fix tracer at the clicked date
+//   • already locked → unfix tracer (exit nav mode)
+// Single click no longer locks anything; this matches the user's expectation
+// that the tracer is a deliberate, "double-click to set" affordance.
+topChart.subscribeDblClick((param) => {
+  if (_navMode) { exitNavMode(); return; }
   if (!param || !param.time) return;
   const ds = _paramTimeToDateStr(param.time);
   if (!ds) return;
   enterNavMode(ds);
 });
 
-// Double-click anywhere on either chart pane → exit nav mode.
-// Listeners attached at both chart container roots so they cover the whole pane.
-[document.getElementById("chart-top"), document.getElementById("chart-bottom")]
-  .forEach(el => {
-    if (!el) return;
-    el.addEventListener("dblclick", (e) => {
-      if (!_navMode) return;
-      e.stopPropagation();
-      e.preventDefault();
-      exitNavMode();
-    });
+// Double-click on the URPD/SOPD bottom pane only clears (it has no notion
+// of a date to lock to — its X-axis is price, not time).
+const _chartBottomEl = document.getElementById("chart-bottom");
+if (_chartBottomEl) {
+  _chartBottomEl.addEventListener("dblclick", (e) => {
+    if (!_navMode) return;
+    e.stopPropagation();
+    e.preventDefault();
+    exitNavMode();
   });
+}
 
 // Keep tracer aligned when chart pans/zooms or window resizes
 topChart.timeScale().subscribeVisibleTimeRangeChange(updateTracerPosition);
