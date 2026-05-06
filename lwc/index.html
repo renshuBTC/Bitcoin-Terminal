@@ -4116,8 +4116,8 @@ function _explainerEntryFor(ind) {
     }
     const description = `${cohortPrefix}${wtLabel}-weighted mean of UTXO cost-basis prices${isProfit ? " filtered to UTXOs in profit (P ≤ spot)" : isLoss ? " filtered to UTXOs in loss (P > spot)" : ""}.`;
     const credit = (wt === "cd" || wt === "vd")
-      ? "Cointime Economics framework — David Puell &amp; James Check (2023)"
-      : "Realised Price — Coinmetrics, David Puell &amp; Pierre Rochard (2018)";
+      ? "Cointime Economics framework — David Puell (ARK Invest) &amp; James Check (Glassnode), 2023"
+      : "Realised Cap / Realised Price — Antoine Le Calvez &amp; Nic Carter (Coin Metrics, 2018)";
     return { title: dn, description, formula, credit };
   }
   // ── Spent Price family (line indicators, FLOW) ─────────────────────
@@ -4132,7 +4132,9 @@ function _explainerEntryFor(ind) {
       formula = `μ<sub>SP</sub> ≡ Σ<sub>i</sub> P<sub>i</sub>·${numW}<sub>i</sub> / Σ<sub>i</sub> ${numW}<sub>i</sub>`;
     }
     const description = `${cohortPrefix}${wtLabel}-weighted mean of cost-basis prices for supply <em>spent</em> in the day. Approximated from the day-over-day URPD difference (Δ).`;
-    const credit = "SOPD / Spent Output Price — David Puell (Coinmetrics, 2019)";
+    const credit = (wt === "cd" || wt === "vd")
+      ? "Cointime Economics — David Puell (ARK Invest) &amp; James Check (Glassnode), 2023; SOPR/SOPD family — Renato Shirakashi (Glassnode)"
+      : "SOPR / SOPD family — Renato Shirakashi; popularised by Glassnode";
     return { title: dn, description, formula, credit };
   }
   // ── URPD histograms (bottom pane, Profit/Loss split) ───────────────
@@ -4141,8 +4143,8 @@ function _explainerEntryFor(ind) {
     const formula = `URPD(P) ≡ Σ ${wField}<sub>i</sub>  ∀ utxo with cost-basis P<sub>i</sub> ∈ [P, P+ΔP)`;
     const description = `Distribution of bitcoin's supply by the price at which each UTXO was last moved, weighted by ${wtLabel}. Bars left of the spot price are "in profit" (green), right are "in loss" (red).`;
     const credit = (wt === "cd" || wt === "vd")
-      ? "Cointime Economics framework — David Puell &amp; James Check (2023)"
-      : "URPD — Glassnode (2018)";
+      ? "Cointime Economics — David Puell (ARK Invest) &amp; James Check (Glassnode), 2023"
+      : "URPD — Renato Shirakashi; popularised by Glassnode (April 2020)";
     return { title: dn, description, formula, credit };
   }
   // ── URPD LTH/STH split histograms ──────────────────────────────────
@@ -4151,7 +4153,7 @@ function _explainerEntryFor(ind) {
     const formula = `URPD<sub>LTH/STH</sub>(P) ≡ Σ<sub>cohort∈{LTH,STH}</sub> ${wField}<sub>cohort,i</sub>(P)`;
     const description = `URPD split by holder cohort: long-term holders (UTXO age ≥ 155 days) vs. short-term holders. Stacked so LTH sits on the baseline, STH stacks above.`;
     return { title: dn, description, formula,
-      credit: "LTH/STH split — Glassnode 155-day threshold convention" };
+      credit: "URPD — Renato Shirakashi (Glassnode); LTH/STH 155-day threshold — Rafael Schultze-Kraft &amp; Killian Heeg (Glassnode, Nov 2020)" };
   }
   // ── URPD AGE histograms ────────────────────────────────────────────
   if (t.startsWith("urpd_age_history")) {
@@ -4159,7 +4161,7 @@ function _explainerEntryFor(ind) {
     const formula = `URPD<sub>AGE</sub>(P) ≡ Σ<sub>k=1..21</sub> ${wField}<sub>age<sub>k</sub>,i</sub>(P)`;
     const description = `URPD split into 21 UTXO age bands (under 1h … over 15y). Stacked oldest-on-baseline. Reveals which holding cohorts hold supply at each price level.`;
     return { title: dn, description, formula,
-      credit: "Age-band UTXO breakdown — Glassnode HODL-waves convention" };
+      credit: "URPD — Renato Shirakashi (Glassnode); HODL Waves age-band breakdown — Dhruv Bansal (Unchained Capital, April 2018)" };
   }
   // ── URPD EPOCH histograms ──────────────────────────────────────────
   if (t.startsWith("urpd_epoch_history")) {
@@ -4167,7 +4169,7 @@ function _explainerEntryFor(ind) {
     const formula = `URPD<sub>EPOCH</sub>(P) ≡ Σ<sub>e=1..5</sub> ${wField}<sub>epoch<sub>e</sub>,i</sub>(P)`;
     const description = `URPD split into 5 Bitcoin halving epochs. UTXOs assigned to the epoch their (current-age-derived) creation date falls into. Aggregated from the 21 age bands.`;
     return { title: dn, description, formula,
-      credit: "Halving epoch convention — Bitcoin protocol; aggregation by bitcointerminal.net" };
+      credit: "URPD — Renato Shirakashi (Glassnode); halving epochs are a protocol-level Bitcoin convention; per-epoch aggregation by bitcointerminal.net" };
   }
   // ── SOPD - Profit/Loss histogram ───────────────────────────────────
   if (t === "sopd_profit_loss" || t === "sopd_profit_loss_usd" || t === "sopd_profit_loss_cd" || t === "sopd_profit_loss_vd") {
@@ -4175,7 +4177,9 @@ function _explainerEntryFor(ind) {
     const formula = `SOPD(P) ≡ ${wField}<sub>i</sub>(P) = ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>prev</sub>(P) − ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>curr</sub>(P)  ∀ ${wField} > 0`;
     const description = `Spent Output Price Distribution — supply <em>spent</em> during the day, broken down by the cost basis it was spent at, weighted by ${wtLabel}. Approximated from the day-over-day URPD difference at the raw price-floor level.`;
     return { title: dn, description, formula,
-      credit: "SOPD — David Puell (Coinmetrics, 2019)" };
+      credit: (wt === "cd" || wt === "vd")
+        ? "Cointime Economics — David Puell (ARK Invest) &amp; James Check (Glassnode), 2023; SOPR/SOPD family — Renato Shirakashi (Glassnode)"
+        : "SOPR / SOPD family — Renato Shirakashi; popularised by Glassnode" };
   }
   // ── SOPD LTH/STH / AGE / EPOCH histograms ──────────────────────────
   if (t.startsWith("sopd_lth_sth_history") || t.startsWith("sopd_age_history") || t.startsWith("sopd_epoch_history")) {
@@ -4185,8 +4189,16 @@ function _explainerEntryFor(ind) {
     else if (t.startsWith("sopd_epoch_history")) { split = "epoch"; cohorts = "e=1..5 halving epochs"; }
     const formula = `SOPD<sub>${split}</sub>(P) ≡ Σ<sub>${cohorts}</sub> ${wField}<sub>${split},i</sub>(P)`;
     const description = `SOPD split by ${split} (${cohorts}). Same diff math as the unfiltered SOPD, applied per cohort then stacked.`;
+    let cohortCredit;
+    if (t.startsWith("sopd_lth_sth_history")) {
+      cohortCredit = "LTH/STH 155-day threshold — Rafael Schultze-Kraft &amp; Killian Heeg (Glassnode, Nov 2020)";
+    } else if (t.startsWith("sopd_age_history")) {
+      cohortCredit = "HODL Waves age-band breakdown — Dhruv Bansal (Unchained Capital, April 2018)";
+    } else {
+      cohortCredit = "Halving epochs are a protocol-level Bitcoin convention; per-epoch aggregation by bitcointerminal.net";
+    }
     return { title: dn, description, formula,
-      credit: "SOPD — David Puell (Coinmetrics, 2019); split by bitcointerminal.net" };
+      credit: `SOPR / SOPD family — Renato Shirakashi (Glassnode); ${cohortCredit}` };
   }
   // ── BTC Price ──────────────────────────────────────────────────────
   if (t === "btc_price") {
@@ -4194,7 +4206,7 @@ function _explainerEntryFor(ind) {
       title: "BTC / USD",
       description: "Daily closing price of bitcoin in U.S. dollars. The base series every other indicator references.",
       formula: "P<sub>t</sub> = close price on day t",
-      credit: "Bitcoin Research Kit (BRK) — Brk_query &amp; bitview.space",
+      credit: "Data: Bitcoin Research Kit (BRK) via bitview.space",
     };
   }
   // Fallback for anything we don't have a custom entry for
