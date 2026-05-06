@@ -3258,6 +3258,14 @@ async function restoreState(state) {
     if (!T) { console.warn("restore: unknown indicator type", i.t); continue; }
     const ind = new T(i.c || {});
     activeIndicators.set(ind.id, ind);
+    // Refresh the pane labels BEFORE awaiting load() — load() involves
+    // network fetches that can take seconds (RP filtered TS, AGE band
+    // history, etc.). Without this nudge, all the pane labels stay
+    // empty until every indicator's promise has resolved, which feels
+    // like the labels are taking forever to appear. Calling
+    // refreshIndicatorPanel here paints the label as soon as the
+    // indicator is registered.
+    refreshIndicatorPanel();
     try {
       await ind.load();
       if (i.h) ind.setVisible(false);
@@ -3267,8 +3275,11 @@ async function restoreState(state) {
       ind.remove();
       activeIndicators.delete(ind.id);
     }
+    // Re-paint after each load too so the pane stack and label
+    // positions track every newly-loaded indicator's actual canvas
+    // rect (via the rAF inside refreshPaneHeaders → _positionBottomLabels).
+    refreshIndicatorPanel();
   }
-  refreshIndicatorPanel();
   return restored > 0;
 }
 
