@@ -1275,46 +1275,17 @@ class ProfileHistogramIndicator extends Indicator {
   async load() {
     // No permanent stats box — stats are shown via hover tooltip only.
     this._stats = null;
-    // Create the histogram series upfront with the transparent axis
-    // anchor so the pane has labelled X (cost basis) and Y (weight)
-    // axes immediately, before the user ever activates nav mode.
-    if (!this._series) {
-      if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
-      const isVisibleScale = (_visibleScaleOwner === this.id);
-      const scaleId = isVisibleScale ? "right" : this.id;
-      this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
-        priceScaleId: scaleId,
-        priceFormat: { type: "volume" },
-        priceLineVisible: false, lastValueVisible: false,
-        title: "",
-      });
-      if (!isVisibleScale) {
-        bottomChart.priceScale(scaleId).applyOptions({
-          visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
-        });
-      }
-      this.series.push(this._series);
-      try {
-        const anchor = this._emptyAnchorData();
-        this._series.setData(anchor);
-        bottomChart.timeScale().setVisibleRange({ from: 0, to: anchor[1].time });
-      } catch (e) {}
-    }
     await this.onDateChange(currentDateStr);
   }
 
   async onDateChange(dateStr) {
     // Profile histograms only render while the click-locked tracer is
-    // active. Outside nav mode we set a transparent axis-anchor instead
-    // of clearing — this keeps the X (cost-basis) and Y (weight) axes
-    // labelled even though no bars are visible.
+    // active. Outside nav mode we fully clear the series so the pane has
+    // no bars AND no axis tick labels — completely empty until the user
+    // double-clicks the BTC chart to activate.
     if (typeof _navMode !== "undefined" && !_navMode) {
       if (this._series) {
-        try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
-        try {
-          const anchor = this._emptyAnchorData();
-          bottomChart.timeScale().setVisibleRange({ from: 0, to: anchor[1].time });
-        } catch (e) {}
+        try { this._series.setData([]); } catch (e) {}
       }
       this._stats = null;
       return;
