@@ -1948,42 +1948,49 @@ function _equaliseBottomPanes() {
   }
 }
 
-// Set each bottom-pane label's `top` to an absolute pixel position based
-// on the actual pane heights LWC reports. The `calc(% + 2px)` placeholder
-// set in `refreshPaneHeaders` gets overwritten here once LWC has finished
-// laying out (panes have real heights). Call from the same rAF block as
-// `_equaliseBottomPanes` so the post-equalise pane sizes are read.
+// Set each bottom-pane label's `top` to an absolute pixel position read
+// directly from the DOM rect of LWC's internal pane elements. Bypasses
+// `pane.getHeight()` which in v5.0.0 returns a value that includes the
+// time-axis area / inter-pane padding and doesn't match the visible
+// pane top. Walking the actual canvas rects gives us the true pixel
+// boundary every time.
 function _positionBottomLabels() {
   const botHost = document.getElementById("ind-rows-bottom");
   if (!botHost) return;
   const rows = botHost.querySelectorAll(".ind-row");
   if (rows.length === 0) return;
   const wrap = document.getElementById("chart-bottom-wrap");
-  if (!wrap) return;
+  const chartBottom = document.getElementById("chart-bottom");
+  if (!wrap || !chartBottom) return;
   const totalH = wrap.clientHeight;
   if (totalH < 20) return;
-  const sepPx = 1;
+  const wrapTop = wrap.getBoundingClientRect().top;
   const inset = 2; // 2px below each pane's top edge — tight but legible
-  // Prefer the LWC pane API if available (handles unequal pane heights).
-  // Fall back to equal share when panes() / getHeight() aren't accessible.
-  let cumTop = 0;
-  let useApi = false;
-  let panes = null;
-  if (bottomChart && typeof bottomChart.panes === "function") {
-    panes = bottomChart.panes();
-    useApi = panes && panes.length >= rows.length &&
-             typeof panes[0].getHeight === "function";
-  }
-  rows.forEach((row, i) => {
-    row.style.top = `${Math.round(cumTop + inset)}px`;
-    if (useApi) {
-      let h = 0;
-      try { h = panes[i].getHeight() || 0; } catch (e) {}
-      cumTop += h + sepPx;
-    } else {
-      cumTop += (totalH - (rows.length - 1) * sepPx) / rows.length + sepPx;
-    }
+
+  // LWC v5 renders each pane as a separate <tr> (or div with explicit
+  // height) inside #chart-bottom. We collect every direct descendant
+  // canvas, group by their .top rect to identify distinct pane Y
+  // positions, then use those as the actual pane top edges.
+  const yTops = new Set();
+  chartBottom.querySelectorAll("canvas").forEach(c => {
+    const r = c.getBoundingClientRect();
+    if (r.height > 4) yTops.add(Math.round(r.top - wrapTop));
   });
+  const sortedY = [...yTops].sort((a, b) => a - b);
+
+  if (sortedY.length >= rows.length) {
+    rows.forEach((row, i) => {
+      row.style.top = `${Math.max(0, sortedY[i] + inset)}px`;
+    });
+  } else {
+    // Fallback: equal-share math when canvas detection fails (e.g. before
+    // LWC has finished its first paint).
+    const sepPx = 1;
+    const eachH = (totalH - (rows.length - 1) * sepPx) / rows.length;
+    rows.forEach((row, i) => {
+      row.style.top = `${Math.round(i * (eachH + sepPx) + inset)}px`;
+    });
+  }
 }
 
 function refreshIndicatorPanel() {
@@ -2088,15 +2095,16 @@ function refreshPaneHeaders() {
     // and existing panes keep their previous size, which leaves the chart
     // visually lopsided (pane 0 taller than pane 1, etc.).
     try { _equaliseBottomPanes(); } catch (e) {}
-    // Position each bottom-pane label at its actual pane top + 2px (read
-    // from LWC's pane API after equalise). Overrides the `calc(% + 2px)`
-    // placeholder set during render so the label always lands inside the
-    // correct pane regardless of LWC's pane-height interpretation.
-    try { _positionBottomLabels(); } catch (e) {}
     // Re-apply right-scale minimumWidth to every pane (count may have just
     // changed if an indicator was added/removed). Cheap; no-op if widths
     // already match.
     try { alignRightScales(); } catch (e) {}
+    // Position labels NEXT frame — LWC's pane setHeight may not reflect
+    // in canvas rects within the same animation frame, so the rect-based
+    // measurement needs to wait one tick for the layout to commit.
+    requestAnimationFrame(() => {
+      try { _positionBottomLabels(); } catch (e) {}
+    });
   });
 
   // Keep the keyboard-navigation instruction always visible while a bottom-
