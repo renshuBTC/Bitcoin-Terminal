@@ -1658,6 +1658,20 @@ function refreshPaneHeaders() {
   const headerBot = document.getElementById("header-bottom");
   if (headerBot) headerBot.style.display = hasAnyBottom ? "" : "none";
 
+  // Keep the keyboard-navigation instruction always visible while a bottom-
+  // pane indicator (URPD/SOPD) is loaded, so users see how to interact
+  // before they ever click the chart.
+  const navEl = document.getElementById("nav-instruction");
+  if (navEl) {
+    if (hasAnyBottom) {
+      navEl.innerHTML = `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`;
+      navEl.classList.add("show");
+    } else {
+      navEl.classList.remove("show");
+      navEl.innerHTML = "";
+    }
+  }
+
   // Build per-indicator rows, one per pane. BTC/USD is shown in the pane title
   // itself, so we skip rendering a row for it. We also skip the Spot Price
   // Line — it's a passive helper marker that follows the crosshair date,
@@ -2172,14 +2186,13 @@ function enterNavMode(dateStr) {
   _navMode = true;
   setCurrentDate(dateStr);
   updateTracerPosition();
-  showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`
-  );
+  // Instruction is rendered persistently by refreshPaneHeaders whenever a
+  // URPD/SOPD profile is loaded, so we don't show it here.
 }
 function exitNavMode() {
   _navMode = false;
   dateTracerEl.classList.remove("show");
-  hideInstruction();
+  // Instruction stays visible — it's not tied to nav mode anymore.
   // Snap back to the most recent date so URPD/SOPD reflect "now"
   if (priceDateStrs && priceDateStrs.length) {
     setCurrentDate(priceDateStrs[priceDateStrs.length - 1]);
@@ -2194,17 +2207,18 @@ topChart.subscribeClick((param) => {
   enterNavMode(ds);
 });
 
-// Double-click anywhere on the BTC price chart → exit nav mode.
-// Listener attached at the chart-top container so it covers the whole pane.
-const _chartTopEl = document.getElementById("chart-top");
-if (_chartTopEl) {
-  _chartTopEl.addEventListener("dblclick", (e) => {
-    if (!_navMode) return;
-    e.stopPropagation();
-    e.preventDefault();
-    exitNavMode();
+// Double-click anywhere on either chart pane → exit nav mode.
+// Listeners attached at both chart container roots so they cover the whole pane.
+[document.getElementById("chart-top"), document.getElementById("chart-bottom")]
+  .forEach(el => {
+    if (!el) return;
+    el.addEventListener("dblclick", (e) => {
+      if (!_navMode) return;
+      e.stopPropagation();
+      e.preventDefault();
+      exitNavMode();
+    });
   });
-}
 
 // Keep tracer aligned when chart pans/zooms or window resizes
 topChart.timeScale().subscribeVisibleTimeRangeChange(updateTracerPosition);
@@ -2244,9 +2258,11 @@ function ensureTracerInView() {
   try { topChart.timeScale().setVisibleLogicalRange({ from: newFrom, to: newTo }); } catch (e) {}
 }
 
-// Keyboard navigation: A / ← back, D / → forward (only when nav mode active)
+// Keyboard navigation: A / ← back, D / → forward.
+// Works regardless of nav-mode state — pressing a key on a fresh page just
+// steps the URPD date by ±1 (or ±interval) days. If the user has clicked to
+// lock a tracer, the dot tags along too.
 document.addEventListener("keydown", (e) => {
-  if (!_navMode) return;
   const tag = (e.target && e.target.tagName) || "";
   if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
   if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -2254,18 +2270,18 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "ArrowLeft"  || e.key === "a" || e.key === "A") step = -1;
   else if (e.key === "ArrowRight" || e.key === "d" || e.key === "D") step =  1;
   else return;
+  // Only consume the key if we have data to navigate over.
+  if (!priceDateStrs || !currentDateStr) return;
   e.preventDefault();
   const stepDays = step * intervalDays();
   let idx = priceDateStrs.indexOf(currentDateStr);
   if (idx < 0) return;
   idx = Math.max(0, Math.min(priceDateStrs.length - 1, idx + stepDays));
   setCurrentDate(priceDateStrs[idx]);
-  ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
-  updateTracerPosition();
-  // Refresh the instruction's auto-hide timer so it stays while navigating
-  showInstruction(
-    `Press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click the chart to clear`
-  );
+  if (_navMode) {
+    ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
+    updateTracerPosition();
+  }
 });
 
 // ───────────────────────────────────────────────────────────────────────────
