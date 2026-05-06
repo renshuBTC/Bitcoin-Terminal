@@ -1243,20 +1243,70 @@ class ProfileHistogramIndicator extends Indicator {
   // Subclasses MUST override
   async fetchBuckets(dateStr) { throw new Error("fetchBuckets not implemented"); }
 
+  // Build a transparent "axis anchor" dataset that keeps the X-axis
+  // (cost-basis price) and Y-axis (weight) labelled even when the
+  // histogram has no real bars. Sized roughly to BTC's all-time
+  // price range and a representative weight magnitude so the ticks
+  // look like the populated state.
+  _emptyAnchorData() {
+    let maxBTC = 150000;
+    if (priceArray && priceArray.length) {
+      let m = -Infinity;
+      for (let i = 0; i < priceArray.length; i++) {
+        const v = priceArray[i];
+        if (typeof v === "number" && v > m) m = v;
+      }
+      if (isFinite(m) && m > 0) maxBTC = Math.max(m, 50000);
+    }
+    return [
+      { time: 0,                  value: 200000, color: "rgba(0,0,0,0)" },
+      { time: Math.round(maxBTC), value: 0,      color: "rgba(0,0,0,0)" },
+    ];
+  }
+
   async load() {
     // No permanent stats box — stats are shown via hover tooltip only.
     this._stats = null;
+    // Create the histogram series upfront with the transparent axis
+    // anchor so the pane has labelled X (cost basis) and Y (weight)
+    // axes immediately, before the user ever activates nav mode.
+    if (!this._series) {
+      if (!_visibleScaleOwner) _visibleScaleOwner = this.id;
+      const isVisibleScale = (_visibleScaleOwner === this.id);
+      const scaleId = isVisibleScale ? "right" : this.id;
+      this._series = bottomChart.addSeries(LightweightCharts.HistogramSeries, {
+        priceScaleId: scaleId,
+        priceFormat: { type: "volume" },
+        priceLineVisible: false, lastValueVisible: false,
+        title: "",
+      });
+      if (!isVisibleScale) {
+        bottomChart.priceScale(scaleId).applyOptions({
+          visible: false, scaleMargins: { top: 0.05, bottom: 0.05 },
+        });
+      }
+      this.series.push(this._series);
+      try {
+        const anchor = this._emptyAnchorData();
+        this._series.setData(anchor);
+        bottomChart.timeScale().setVisibleRange({ from: 0, to: anchor[1].time });
+      } catch (e) {}
+    }
     await this.onDateChange(currentDateStr);
   }
 
   async onDateChange(dateStr) {
     // Profile histograms only render while the click-locked tracer is
-    // active. Any other code path that triggers a date change (initial
-    // load, URL state restore, lookback button, etc.) leaves the pane
-    // empty and stats cleared until the user double-clicks the BTC chart.
+    // active. Outside nav mode we set a transparent axis-anchor instead
+    // of clearing — this keeps the X (cost-basis) and Y (weight) axes
+    // labelled even though no bars are visible.
     if (typeof _navMode !== "undefined" && !_navMode) {
       if (this._series) {
-        try { this._series.setData([]); } catch (e) {}
+        try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
+        try {
+          const anchor = this._emptyAnchorData();
+          bottomChart.timeScale().setVisibleRange({ from: 0, to: anchor[1].time });
+        } catch (e) {}
       }
       this._stats = null;
       return;
