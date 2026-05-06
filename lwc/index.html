@@ -2217,6 +2217,29 @@ if (dateTracerEl) {
 topChart.timeScale().subscribeVisibleTimeRangeChange(updateTracerPosition);
 window.addEventListener("resize", updateTracerPosition);
 
+// Pan the chart so the tracer stays inside the visible window. Called after
+// every keyboard navigation step so navigation never leaves the dot offscreen.
+function ensureTracerInView() {
+  if (!_navMode || !currentDateStr || !priceDateStrs) return;
+  const targetIdx = priceDateStrs.indexOf(currentDateStr);
+  if (targetIdx < 0) return;
+  let logical;
+  try { logical = topChart.timeScale().getVisibleLogicalRange(); } catch (e) { return; }
+  if (!logical) return;
+  const width = logical.to - logical.from;
+  if (!(width > 0)) return;
+  // Margin so the tracer isn't right at the edge — re-pan when within
+  // ~12% of either side. Otherwise leave the chart alone.
+  const margin = width * 0.12;
+  const inView = targetIdx >= (logical.from + margin) && targetIdx <= (logical.to - margin);
+  if (inView) return;
+  // Re-center on the target while preserving the visible width.
+  const half = width / 2;
+  topChart.timeScale().setVisibleLogicalRange({
+    from: targetIdx - half, to: targetIdx + half,
+  });
+}
+
 // Keyboard navigation: A / ← back, D / → forward (only when nav mode active)
 document.addEventListener("keydown", (e) => {
   if (!_navMode) return;
@@ -2233,6 +2256,7 @@ document.addEventListener("keydown", (e) => {
   if (idx < 0) return;
   idx = Math.max(0, Math.min(priceDateStrs.length - 1, idx + stepDays));
   setCurrentDate(priceDateStrs[idx]);
+  ensureTracerInView();   // pan chart so the dot doesn't sail off-screen
   updateTracerPosition();
   // Refresh the instruction's auto-hide timer so it stays while navigating
   showInstruction(
