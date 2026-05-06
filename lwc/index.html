@@ -120,6 +120,12 @@ window.__loadMp4Muxer = function() {
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 0; border-bottom: 1px solid #222; }
   #chart-bottom-wrap { flex: 1; position: relative; min-height: 0; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
+  /* Suppress the TradingView attribution logo even if the layout option leaves
+     it in the DOM. Targets all selector variants LWC has used across versions. */
+  #chart-top a[href*="tradingview"],
+  #chart-bottom a[href*="tradingview"],
+  #chart-top [id*="tv-attr"],
+  #chart-bottom [id*="tv-attr"] { display: none !important; }
 
   /* Pane label — floats INSIDE the chart at top-left, TradingView-style.
      Sits on top of the chart canvas via absolute positioning, not a header bar. */
@@ -383,7 +389,8 @@ const bottomContainer = document.getElementById("chart-bottom");
 function commonChartOpts() {
   return {
     layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
-      fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11 },
+      fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11,
+      attributionLogo: false },
     grid: { vertLines: { color: THEME.grid }, horzLines: { color: THEME.grid } },
     rightPriceScale: { borderColor: THEME.border },
     timeScale: { borderColor: THEME.border, timeVisible: false, secondsVisible: false },
