@@ -479,6 +479,35 @@ const THEME = {
 const topContainer = document.getElementById("chart-top");
 const bottomContainer = document.getElementById("chart-bottom");
 
+// Compact price formatter — 3 significant figures with K/M/B suffixes,
+// so the right-axis labels stay narrow and the charts get more horizontal
+// space for the data. Used by both the top and bottom chart's price scales.
+function shortPriceFormat(p) {
+  if (typeof p !== "number" || !isFinite(p)) return String(p);
+  if (p === 0) return "0";
+  const sign = p < 0 ? "-" : "";
+  const abs = Math.abs(p);
+  if (abs >= 1e9) {
+    if (abs >= 1e11) return sign + Math.round(abs / 1e9) + "B";
+    if (abs >= 1e10) return sign + (abs / 1e9).toFixed(1) + "B";
+    return sign + (abs / 1e9).toFixed(2) + "B";
+  }
+  if (abs >= 1e6) {
+    if (abs >= 1e8) return sign + Math.round(abs / 1e6) + "M";
+    if (abs >= 1e7) return sign + (abs / 1e6).toFixed(1) + "M";
+    return sign + (abs / 1e6).toFixed(2) + "M";
+  }
+  if (abs >= 1e3) {
+    if (abs >= 1e5) return sign + Math.round(abs / 1e3) + "K";
+    if (abs >= 1e4) return sign + (abs / 1e3).toFixed(1) + "K";
+    return sign + (abs / 1e3).toFixed(2) + "K";
+  }
+  if (abs >= 100) return sign + Math.round(abs).toString();
+  if (abs >= 10)  return sign + abs.toFixed(1);
+  if (abs >= 1)   return sign + abs.toFixed(2);
+  return sign + abs.toFixed(3);
+}
+
 function commonChartOpts() {
   return {
     layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
@@ -493,6 +522,7 @@ function commonChartOpts() {
     crosshair: { mode: LightweightCharts.CrosshairMode.Normal,
       vertLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted },
       horzLine: { color: THEME.crosshair, width: 1, style: LightweightCharts.LineStyle.Dotted } },
+    localization: { priceFormatter: shortPriceFormat },
   };
 }
 
@@ -543,7 +573,7 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     },
   },
   localization: {
-    priceFormatter: (price) => price >= 1e6 ? `${(price/1e6).toFixed(2)}M` : Math.round(price).toLocaleString(),
+    priceFormatter: shortPriceFormat,
     timeFormatter: (time) => `cost basis $${Math.round(time).toLocaleString()}`,
   },
 }));
