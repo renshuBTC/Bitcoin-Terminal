@@ -78,19 +78,35 @@ window.__loadMp4Muxer = function() {
     padding: 4px 0; min-width: 220px; max-height: 60vh; overflow-y: auto;
     z-index: 50; display: none; border-radius: 2px; }
   #bottom-toolbar #tz-menu.show { display: block; }
-  #bottom-toolbar #tz-menu .opt { padding: 6px 12px 6px 28px; cursor: pointer;
+  #bottom-toolbar #tz-menu .opt { padding: 7px 14px 7px 28px; cursor: pointer;
     color: #d4d4d4; font-size: 12px; position: relative; white-space: nowrap; }
-  #bottom-toolbar #tz-menu .opt:hover { background: #1a1a1a; }
+  #bottom-toolbar #tz-menu .opt:hover { background: #1a1a1a; color: #fff; }
   #bottom-toolbar #tz-menu .opt.active::before { content: "✓";
     position: absolute; left: 10px; color: #d4d4d4; }
   #bottom-toolbar #tz-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
-  /* Cycle dropdown — minimal styled select to match the bar */
-  #bottom-toolbar #cycle-select { background: transparent; color: #d4d4d4;
-    border: none; padding: 5px 9px; font-family: inherit; font-size: 12px;
-    cursor: pointer; border-radius: 3px;
-    -webkit-appearance: none; -moz-appearance: none; appearance: none;
-    transition: background-color 0.08s ease; }
-  #bottom-toolbar #cycle-select:hover { background: #1a1a1a; color: #fff; }
+  /* Cycle dropdown — custom button + popover, same Bloomberg-minimal
+     pattern as the interval / chart-type / timezone menus so all four
+     bottom-toolbar dropdowns feel uniform. Native <select> can't be
+     restyled cross-browser; this is a click-to-open menu instead. */
+  #bottom-toolbar #cycle-wrap { position: relative; }
+  #bottom-toolbar #btn-cycle { display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; color: #d4d4d4; border: none;
+    padding: 5px 9px; cursor: pointer; font-family: inherit; font-size: 12px;
+    border-radius: 3px; transition: background-color 0.08s ease, color 0.08s ease; }
+  #bottom-toolbar #btn-cycle:hover { background: #1a1a1a; color: #fff; }
+  #bottom-toolbar #btn-cycle .arrow { color: #666; font-size: 9px; font-weight: 400; }
+  #bottom-toolbar #cycle-menu { position: absolute; bottom: 100%; left: 0;
+    margin-bottom: 4px; background: #111; border: 1px solid #2a2a2a;
+    padding: 4px 0; min-width: 220px; max-height: 60vh; overflow-y: auto;
+    z-index: 50; display: none; border-radius: 2px; }
+  #bottom-toolbar #cycle-menu.show { display: block; }
+  #bottom-toolbar #cycle-menu .opt { padding: 7px 14px; cursor: pointer;
+    color: #d4d4d4; font-size: 12px; white-space: nowrap;
+    display: flex; align-items: center; gap: 10px; }
+  #bottom-toolbar #cycle-menu .opt:hover { background: #1a1a1a; color: #fff; }
+  #bottom-toolbar #cycle-menu .opt .cycle-date { color: #666; font-size: 11px;
+    font-variant-numeric: tabular-nums; margin-left: auto; }
+  #bottom-toolbar #cycle-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
   /* Hidden native date input — popped open by the calendar icon button */
   #bottom-toolbar #date-input { position: absolute; opacity: 0; pointer-events: none;
     width: 0; height: 0; }
@@ -122,11 +138,12 @@ window.__loadMp4Muxer = function() {
   #btn-add { display: inline-flex; align-items: center; gap: 6px; }
   #btn-add .ind-icon { display: inline-block; vertical-align: middle; color: inherit; }
   #interval-menu { position: absolute; top: 100%; left: 0; margin-top: 4px;
-    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 110px;
-    z-index: 50; display: none; }
+    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 140px;
+    z-index: 50; display: none; border-radius: 2px; }
   #interval-menu.show { display: block; }
-  #interval-menu .opt { padding: 6px 12px; cursor: pointer; color: #d4d4d4; font-size: 12px; }
-  #interval-menu .opt:hover { background: #1a1a1a; }
+  #interval-menu .opt { padding: 7px 14px; cursor: pointer; color: #d4d4d4; font-size: 12px;
+    white-space: nowrap; }
+  #interval-menu .opt:hover { background: #1a1a1a; color: #fff; }
   #interval-menu .opt.active { background: #ff8c00; color: #0a0a0a; font-weight: 700; }
 
   /* Chart type dropdown — same pattern as interval, wider menu, icon button */
@@ -138,12 +155,12 @@ window.__loadMp4Muxer = function() {
   #btn-chart-type:hover { background: #1a1a1a; color: #fff; }
   #btn-chart-type svg { display: block; }
   #chart-type-menu { position: absolute; top: 100%; left: 0; margin-top: 4px;
-    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 200px;
-    z-index: 50; display: none; max-height: 70vh; overflow-y: auto; }
+    background: #111; border: 1px solid #2a2a2a; padding: 4px 0; min-width: 220px;
+    z-index: 50; display: none; max-height: 70vh; overflow-y: auto; border-radius: 2px; }
   #chart-type-menu.show { display: block; }
   #chart-type-menu .opt { display: flex; align-items: center; gap: 10px;
-    padding: 6px 12px; cursor: pointer; color: #d4d4d4; font-size: 12px; }
-  #chart-type-menu .opt:hover { background: #1a1a1a; }
+    padding: 7px 14px; cursor: pointer; color: #d4d4d4; font-size: 12px; white-space: nowrap; }
+  #chart-type-menu .opt:hover { background: #1a1a1a; color: #fff; }
   #chart-type-menu .opt.active { background: #fff; color: #000; }
   #chart-type-menu .opt svg { flex-shrink: 0; }
   #chart-type-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
@@ -459,18 +476,20 @@ window.__loadMp4Muxer = function() {
       <button class="bb-btn active" data-lb="all" title="All">All</button>
     </div>
     <input type="date" id="date-input" value="2024-12-15" min="2009-01-09">
-    <select id="cycle-select" title="Jump to a cycle top or bottom">
-      <option value="">Cycle Top/Bottom ▾</option>
-      <option value="2011-06-08">Cycle 1 Top — 2011-06-08</option>
-      <option value="2011-11-18">Cycle 1 Bottom — 2011-11-18</option>
-      <option value="2013-11-29">Cycle 2 Top — 2013-11-29</option>
-      <option value="2015-01-14">Cycle 2 Bottom — 2015-01-14</option>
-      <option value="2017-12-17">Cycle 3 Top — 2017-12-17</option>
-      <option value="2018-12-15">Cycle 3 Bottom — 2018-12-15</option>
-      <option value="2021-11-10">Cycle 4 Top — 2021-11-10</option>
-      <option value="2022-11-21">Cycle 4 Bottom — 2022-11-21</option>
-      <option value="2025-10-06">Cycle 5 Top — 2025-10-06</option>
-    </select>
+    <div id="cycle-wrap" title="Jump to a cycle top or bottom">
+      <button id="btn-cycle" type="button"><span>Cycle Top/Bottom</span><span class="arrow">▾</span></button>
+      <div id="cycle-menu">
+        <div class="opt" data-date="2011-06-08"><span>Cycle 1 Top</span><span class="cycle-date">2011-06-08</span></div>
+        <div class="opt" data-date="2011-11-18"><span>Cycle 1 Bottom</span><span class="cycle-date">2011-11-18</span></div>
+        <div class="opt" data-date="2013-11-29"><span>Cycle 2 Top</span><span class="cycle-date">2013-11-29</span></div>
+        <div class="opt" data-date="2015-01-14"><span>Cycle 2 Bottom</span><span class="cycle-date">2015-01-14</span></div>
+        <div class="opt" data-date="2017-12-17"><span>Cycle 3 Top</span><span class="cycle-date">2017-12-17</span></div>
+        <div class="opt" data-date="2018-12-15"><span>Cycle 3 Bottom</span><span class="cycle-date">2018-12-15</span></div>
+        <div class="opt" data-date="2021-11-10"><span>Cycle 4 Top</span><span class="cycle-date">2021-11-10</span></div>
+        <div class="opt" data-date="2022-11-21"><span>Cycle 4 Bottom</span><span class="cycle-date">2022-11-21</span></div>
+        <div class="opt" data-date="2025-10-06"><span>Cycle 5 Top</span><span class="cycle-date">2025-10-06</span></div>
+      </div>
+    </div>
     <span class="spacer"></span>
     <span class="bb-sep"></span>
     <div id="tz-wrap">
@@ -3223,43 +3242,60 @@ function _renderHoverStats(stack, currentDateStr) {
 
 document.getElementById("date-input").addEventListener("change", (e) => setCurrentDate(e.target.value));
 
-// Cycle landmarks dropdown — jump to a known cycle top/bottom date and
-// centre the BTC chart's visible window on it. Mirrors version 1
-// (rp.js ~line 3709): pick a half-window of max(currentLookback, 365)
-// days on each side of the landmark so users see the run-up + drawdown.
-// Resets to placeholder after selection so it always reads "Cycle Top/Bottom".
-document.getElementById("cycle-select").addEventListener("change", (e) => {
-  const v = e.target.value;
-  if (!v) return;
-  setCurrentDate(v);
-  // Compute symmetric window around the landmark date.
-  const lbDaysRaw = (typeof currentLookback === "number") ? currentLookback : 0;
-  const halfWindow = lbDaysRaw && lbDaysRaw < 365 ? 365 : (lbDaysRaw || 365);
-  const dCenter = new Date(v + "T00:00:00");
-  const dFrom = new Date(dCenter); dFrom.setDate(dFrom.getDate() - halfWindow);
-  const dTo   = new Date(dCenter); dTo.setDate(dTo.getDate()   + halfWindow);
-  const fmt = (d) => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${dd}`;
-  };
-  let fromStr = fmt(dFrom), toStr = fmt(dTo);
-  // Clamp to available data range so LWC doesn't refuse the call.
-  if (priceDateStrs && priceDateStrs.length > 0) {
-    const earliest = priceDateStrs[0];
-    const latest   = priceDateStrs[priceDateStrs.length - 1];
-    if (fromStr < earliest) fromStr = earliest;
-    if (toStr   > latest)   toStr   = latest;
-  }
-  try {
-    topChart.timeScale().setVisibleRange({ from: fromStr, to: toStr });
-  } catch (err) {
-    console.warn("cycle landmark setVisibleRange:", err);
-  }
-  e.target.value = "";
-  saveStateToURL();
-});
+// Cycle landmarks dropdown — custom button + popover (replaces the
+// native <select> so it visually matches the interval / chart-type /
+// timezone menus). Picks a known cycle top/bottom date, centres the BTC
+// chart's visible window on it, and persists. Mirrors version 1
+// (rp.js ~line 3709): half-window of max(currentLookback, 365) days on
+// each side of the landmark so users see the run-up + drawdown.
+(function setupCycleMenu() {
+  const btn  = document.getElementById("btn-cycle");
+  const menu = document.getElementById("cycle-menu");
+  if (!btn || !menu) return;
+
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    menu.classList.toggle("show");
+  });
+  document.addEventListener("click", (e) => {
+    if (!menu.contains(e.target) && e.target !== btn) menu.classList.remove("show");
+  });
+
+  menu.querySelectorAll(".opt").forEach(el => {
+    el.addEventListener("click", () => {
+      const v = el.getAttribute("data-date");
+      if (!v) return;
+      setCurrentDate(v);
+      // Compute symmetric window around the landmark date.
+      const lbDaysRaw = (typeof currentLookback === "number") ? currentLookback : 0;
+      const halfWindow = lbDaysRaw && lbDaysRaw < 365 ? 365 : (lbDaysRaw || 365);
+      const dCenter = new Date(v + "T00:00:00");
+      const dFrom = new Date(dCenter); dFrom.setDate(dFrom.getDate() - halfWindow);
+      const dTo   = new Date(dCenter); dTo.setDate(dTo.getDate()   + halfWindow);
+      const fmt = (d) => {
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const dd = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${dd}`;
+      };
+      let fromStr = fmt(dFrom), toStr = fmt(dTo);
+      // Clamp to available data range so LWC doesn't refuse the call.
+      if (priceDateStrs && priceDateStrs.length > 0) {
+        const earliest = priceDateStrs[0];
+        const latest   = priceDateStrs[priceDateStrs.length - 1];
+        if (fromStr < earliest) fromStr = earliest;
+        if (toStr   > latest)   toStr   = latest;
+      }
+      try {
+        topChart.timeScale().setVisibleRange({ from: fromStr, to: toStr });
+      } catch (err) {
+        console.warn("cycle landmark setVisibleRange:", err);
+      }
+      menu.classList.remove("show");
+      saveStateToURL();
+    });
+  });
+})();
 
 // ───────────────────────────────────────────────────────────────────────────
 // Lookback: controls the top chart's visible time window
