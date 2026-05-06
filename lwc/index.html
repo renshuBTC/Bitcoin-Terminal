@@ -1183,7 +1183,16 @@ class TopPaneSeriesIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      priceLineVisible: false,
+      // Dotted horizontal connector at the last value — so when the
+      // realised-price line ends a few bars before the chart's right
+      // edge, the user can still trace the value across to the right-
+      // axis label. The portion that overlaps the data line is hidden
+      // beneath it; the visible part is the bit between the line tip
+      // and the label.
+      priceLineVisible: true,
+      priceLineStyle: LightweightCharts.LineStyle.Dotted,
+      priceLineWidth: 1,
+      priceLineColor: this.config.color,
       lastValueVisible: true,
       title: this.seriesTitle(),
     });
@@ -1255,7 +1264,14 @@ class RealisedPriceUSDBaseIndicator extends Indicator {
     const series = topChart.addSeries(LightweightCharts.LineSeries, {
       color: this.config.color,
       lineWidth: this.config.lineWidth,
-      priceLineVisible: false,
+      // Same dotted-leader-to-axis-label treatment as the BTC versions
+      // (TopPaneSeriesIndicator). Useful here because the URPD-derived
+      // sample dates can lag a few bars behind the chart's right edge,
+      // leaving a gap between the line tip and the right-axis label.
+      priceLineVisible: true,
+      priceLineStyle: LightweightCharts.LineStyle.Dotted,
+      priceLineWidth: 1,
+      priceLineColor: this.config.color,
       lastValueVisible: true,
       title: this.constructor.displayName,
     });
