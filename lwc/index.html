@@ -174,16 +174,18 @@ window.__loadMp4Muxer = function() {
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
   #chart-top, #chart-bottom { width: 100%; height: 100%; }
   /* Translucent BITCOINTERMINAL.NET watermark, centred behind every chart.
-     pointer-events:none lets mouse interactions pass through to the canvas.
-     z-index:1 keeps it above the chart background but below all overlays. */
+     White with low alpha for a subtle institutional feel — like the prior
+     site's watermark. pointer-events:none lets mouse interactions pass
+     through to the canvas. z-index:1 keeps it above the chart background
+     but below all overlays. */
   .chart-watermark { position: absolute; inset: 0; display: flex;
     align-items: center; justify-content: center; pointer-events: none;
     z-index: 1; font-family: 'Source Code Pro', Consolas, monospace;
     font-weight: 700; letter-spacing: 0.06em;
-    color: rgba(255, 140, 0, 0.05); white-space: nowrap;
+    color: rgba(255, 255, 255, 0.06); white-space: nowrap;
     user-select: none; overflow: hidden; }
-  #chart-top-wrap     .chart-watermark { font-size: clamp(28px, 7vw, 110px); }
-  #chart-bottom-wrap  .chart-watermark { font-size: clamp(20px, 5vw, 80px);  }
+  #chart-top-wrap     .chart-watermark { font-size: clamp(16px, 2.6vw, 38px); }
+  #chart-bottom-wrap  .chart-watermark { font-size: clamp(14px, 2.2vw, 32px); }
   /* Shared global time axis — sits below the chart stack, above bottom toolbar.
      A single thin border separates it from the histogram pane above so the
      two X-axes don't run into each other visually. The URPD/SOPD's own
