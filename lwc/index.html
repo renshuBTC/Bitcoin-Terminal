@@ -4140,7 +4140,14 @@ function _explainerEntryFor(ind) {
   // ── URPD histograms (bottom pane, Profit/Loss split) ───────────────
   if (t === "urpd_profile" || t === "urpd_profile_usd" || t === "urpd_profile_cd" || t === "urpd_profile_vd") {
     const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
-    const formula = `URPD(P) ≡ Σ ${wField}<sub>i</sub>  ∀ utxo with cost-basis P<sub>i</sub> ∈ [P, P+ΔP)`;
+    const wDef = wt === "usd"
+      ? "RC<sub>utxo</sub> = utxo.value · utxo.last-moved-price"
+      : wt === "cd"
+      ? "CD<sub>utxo</sub> = utxo.value · age<sub>days</sub>"
+      : wt === "vd"
+      ? "VD<sub>utxo</sub> = utxo.value · utxo.last-moved-price · age<sub>days</sub>"
+      : "S<sub>utxo</sub> = utxo.value";
+    const formula = `URPD(P) ≡ ${wField}(P) = Σ<sub>utxo</sub> ${wField}<sub>utxo</sub>  for last-moved-price ∈ [P, P+ΔP)<br>where ${wDef}`;
     const description = `Distribution of bitcoin's supply by the price at which each UTXO was last moved, weighted by ${wtLabel}. Bars left of the spot price are "in profit" (green), right are "in loss" (red).`;
     const credit = (wt === "cd" || wt === "vd")
       ? "Cointime Economics — David Puell (ARK Invest) &amp; James Check (Glassnode), 2023"
@@ -4150,7 +4157,9 @@ function _explainerEntryFor(ind) {
   // ── URPD LTH/STH split histograms ──────────────────────────────────
   if (t.startsWith("urpd_lth_sth_history")) {
     const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
-    const formula = `URPD<sub>LTH/STH</sub>(P) ≡ Σ<sub>cohort∈{LTH,STH}</sub> ${wField}<sub>cohort,i</sub>(P)`;
+    const formula =
+      `${wField}<sub>LTH</sub>(P) + ${wField}<sub>STH</sub>(P) = ${wField}(P)<br>` +
+      `<span style="opacity:0.7">LTH = UTXOs with age ≥ 155 d ; STH = age &lt; 155 d</span>`;
     const description = `URPD split by holder cohort: long-term holders (UTXO age ≥ 155 days) vs. short-term holders. Stacked so LTH sits on the baseline, STH stacks above.`;
     return { title: dn, description, formula,
       credit: "URPD — Renato Shirakashi (Glassnode); LTH/STH 155-day threshold — Rafael Schultze-Kraft &amp; Killian Heeg (Glassnode, Nov 2020)" };
@@ -4158,7 +4167,9 @@ function _explainerEntryFor(ind) {
   // ── URPD AGE histograms ────────────────────────────────────────────
   if (t.startsWith("urpd_age_history")) {
     const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
-    const formula = `URPD<sub>AGE</sub>(P) ≡ Σ<sub>k=1..21</sub> ${wField}<sub>age<sub>k</sub>,i</sub>(P)`;
+    const formula =
+      `${wField}(P) = Σ<sub>k=1..21</sub> ${wField}<sub>age<sub>k</sub></sub>(P)<br>` +
+      `<span style="opacity:0.7">age bands: &lt;1h, 1h–1d, 1d–1w, …, 12y–15y, &gt;15y</span>`;
     const description = `URPD split into 21 UTXO age bands (under 1h … over 15y). Stacked oldest-on-baseline. Reveals which holding cohorts hold supply at each price level.`;
     return { title: dn, description, formula,
       credit: "URPD — Renato Shirakashi (Glassnode); HODL Waves age-band breakdown — Dhruv Bansal (Unchained Capital, April 2018)" };
@@ -4166,15 +4177,18 @@ function _explainerEntryFor(ind) {
   // ── URPD EPOCH histograms ──────────────────────────────────────────
   if (t.startsWith("urpd_epoch_history")) {
     const wField = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
-    const formula = `URPD<sub>EPOCH</sub>(P) ≡ Σ<sub>e=1..5</sub> ${wField}<sub>epoch<sub>e</sub>,i</sub>(P)`;
+    const formula =
+      `${wField}(P) = Σ<sub>e=1..5</sub> ${wField}<sub>epoch<sub>e</sub></sub>(P)<br>` +
+      `<span style="opacity:0.7">halving boundaries: 2012-11-28, 2016-07-09, 2020-05-11, 2024-04-19</span>`;
     const description = `URPD split into 5 Bitcoin halving epochs. UTXOs assigned to the epoch their (current-age-derived) creation date falls into. Aggregated from the 21 age bands.`;
     return { title: dn, description, formula,
       credit: "URPD — Renato Shirakashi (Glassnode); halving epochs are a protocol-level Bitcoin convention; per-epoch aggregation by bitcointerminal.net" };
   }
   // ── SOPD - Profit/Loss histogram ───────────────────────────────────
   if (t === "sopd_profit_loss" || t === "sopd_profit_loss_usd" || t === "sopd_profit_loss_cd" || t === "sopd_profit_loss_vd") {
-    const wField = wt === "usd" ? "ΔRC" : wt === "cd" ? "ΔCD" : wt === "vd" ? "ΔVD" : "ΔS";
-    const formula = `SOPD(P) ≡ ${wField}<sub>i</sub>(P) = ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>prev</sub>(P) − ${wField === "ΔS" ? "S" : wField.slice(1)}<sub>curr</sub>(P)  ∀ ${wField} > 0`;
+    const wBase = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    const formula = `SOPD(P, t) ≡ max(0, ${wBase}(P, t−1) − ${wBase}(P, t))<br>` +
+      `<span style="opacity:0.7">i.e. ${wtLabel} that left price-bin P during day t</span>`;
     const description = `Spent Output Price Distribution — supply <em>spent</em> during the day, broken down by the cost basis it was spent at, weighted by ${wtLabel}. Approximated from the day-over-day URPD difference at the raw price-floor level.`;
     return { title: dn, description, formula,
       credit: (wt === "cd" || wt === "vd")
@@ -4183,12 +4197,14 @@ function _explainerEntryFor(ind) {
   }
   // ── SOPD LTH/STH / AGE / EPOCH histograms ──────────────────────────
   if (t.startsWith("sopd_lth_sth_history") || t.startsWith("sopd_age_history") || t.startsWith("sopd_epoch_history")) {
-    const wField = wt === "usd" ? "ΔRC" : wt === "cd" ? "ΔCD" : wt === "vd" ? "ΔVD" : "ΔS";
-    let split = "cohort", cohorts = "{LTH,STH}";
-    if (t.startsWith("sopd_age_history")) { split = "age"; cohorts = "k=1..21 age bands"; }
-    else if (t.startsWith("sopd_epoch_history")) { split = "epoch"; cohorts = "e=1..5 halving epochs"; }
-    const formula = `SOPD<sub>${split}</sub>(P) ≡ Σ<sub>${cohorts}</sub> ${wField}<sub>${split},i</sub>(P)`;
-    const description = `SOPD split by ${split} (${cohorts}). Same diff math as the unfiltered SOPD, applied per cohort then stacked.`;
+    const wBase = wt === "usd" ? "RC" : wt === "cd" ? "CD" : wt === "vd" ? "VD" : "S";
+    let split = "LTH,STH", cohortsLabel = "LTH (age ≥ 155 d), STH (age &lt; 155 d)";
+    if (t.startsWith("sopd_age_history")) { split = "age 1..21"; cohortsLabel = "21 age bands (&lt;1h … &gt;15y)"; }
+    else if (t.startsWith("sopd_epoch_history")) { split = "epoch 1..5"; cohortsLabel = "5 halving epochs"; }
+    const formula =
+      `SOPD<sub>cohort</sub>(P, t) ≡ max(0, ${wBase}<sub>cohort</sub>(P, t−1) − ${wBase}<sub>cohort</sub>(P, t))<br>` +
+      `<span style="opacity:0.7">cohort ∈ {${split}} — ${cohortsLabel}</span>`;
+    const description = `SOPD computed independently per cohort then stacked at each price bin. Same Δ math as the unfiltered SOPD, but the 21-age-band fetch lets every cohort carry its own age-based weighting.`;
     let cohortCredit;
     if (t.startsWith("sopd_lth_sth_history")) {
       cohortCredit = "LTH/STH 155-day threshold — Rafael Schultze-Kraft &amp; Killian Heeg (Glassnode, Nov 2020)";
