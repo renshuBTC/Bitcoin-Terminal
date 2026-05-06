@@ -37,7 +37,7 @@ window.__loadMp4Muxer = function() {
   html, body { height: 100%; background: #000; color: #d4d4d4;
     font-family: 'Source Code Pro', Consolas, monospace; font-size: 13px; }
   #app { display: flex; flex-direction: column; height: 100vh; }
-  #toolbar { display: flex; align-items: center; gap: 4px; padding: 6px 10px;
+  #toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
     background: #000; flex-wrap: wrap; }
   /* Bottom toolbar — secondary controls (date / lookback / export) */
   #bottom-toolbar { display: flex; align-items: center; gap: 12px; padding: 6px 14px;
@@ -54,9 +54,9 @@ window.__loadMp4Muxer = function() {
   #bottom-toolbar .spacer { flex: 1; }
   /* Interval dropdown (top toolbar) — same Bloomberg minimal pattern as siblings */
   #interval-wrap { position: relative; display: inline-block; }
-  #btn-interval { display: inline-flex; align-items: center; gap: 5px;
+  #btn-interval { display: inline-flex; align-items: center; gap: 6px;
     background: transparent; color: #d4d4d4; border: none;
-    padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; font-weight: 700;
+    padding: 7px 12px; cursor: pointer; font-family: inherit; font-size: 15px; font-weight: 700;
     border-radius: 3px; transition: background-color 0.08s ease; }
   #btn-interval:hover { background: #1a1a1a; color: #fff; }
   #btn-interval .arrow { color: #666; font-size: 9px; font-weight: 400; }
@@ -75,7 +75,8 @@ window.__loadMp4Muxer = function() {
   #chart-type-wrap { position: relative; display: inline-block; }
   #btn-chart-type { display: inline-flex; align-items: center; justify-content: center;
     background: transparent; color: #d4d4d4; border: none;
-    padding: 6px 8px; cursor: pointer; border-radius: 3px; transition: background-color 0.08s ease; }
+    padding: 7px 10px; cursor: pointer; border-radius: 3px; transition: background-color 0.08s ease; }
+  #btn-chart-type svg { width: 22px; height: 22px; }
   #btn-chart-type:hover { background: #1a1a1a; color: #fff; }
   #btn-chart-type svg { display: block; }
   #chart-type-menu { position: absolute; top: 100%; left: 0; margin-top: 4px;
@@ -88,7 +89,7 @@ window.__loadMp4Muxer = function() {
   #chart-type-menu .opt.active { background: #fff; color: #000; }
   #chart-type-menu .opt svg { flex-shrink: 0; }
   #chart-type-menu .divider { border-top: 1px solid #1f1f1f; margin: 4px 0; }
-  #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 14px; letter-spacing: 0.5px; margin-right: 12px; }
+  #toolbar .brand { color: #ff8c00; font-weight: 700; font-size: 17px; letter-spacing: 0.5px; margin-right: 14px; }
   #toolbar .spacer { flex: 1; }
   #toolbar input[type="date"] { background: #1a1a1a; color: #d4d4d4;
     border: 1px solid #2a2a2a; padding: 4px 8px; font-family: inherit; font-size: 12px; }
@@ -96,7 +97,7 @@ window.__loadMp4Muxer = function() {
   #toolbar input[type="checkbox"] { vertical-align: middle; }
   /* Top toolbar buttons — Bloomberg-style: transparent until hover */
   #toolbar button { background: transparent; color: #d4d4d4; border: none;
-    padding: 6px 10px; cursor: pointer; font-family: inherit; font-size: 12px; border-radius: 3px;
+    padding: 7px 12px; cursor: pointer; font-family: inherit; font-size: 15px; border-radius: 3px;
     transition: background-color 0.08s ease; }
   #toolbar button:hover { background: #1a1a1a; color: #fff; }
   /* No "primary" treatment in this minimal toolbar */
@@ -265,7 +266,7 @@ window.__loadMp4Muxer = function() {
       <button id="btn-chart-type"><span id="chart-type-icon-slot"></span></button>
       <div id="chart-type-menu"></div>
     </div>
-    <button id="btn-add" class="primary"><svg class="ind-icon" width="14" height="14" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
+    <button id="btn-add" class="primary"><svg class="ind-icon" width="17" height="17" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M2 13 L5 8 L8 10 L11 4 L14 7" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" fill="none"/><circle cx="2" cy="13" r="1.2" fill="currentColor"/><circle cx="5" cy="8" r="1.2" fill="currentColor"/><circle cx="8" cy="10" r="1.2" fill="currentColor"/><circle cx="11" cy="4" r="1.2" fill="currentColor"/><circle cx="14" cy="7" r="1.2" fill="currentColor"/></svg>&nbsp;Indicators</button>
     <span class="spacer"></span>
   </div>
 
