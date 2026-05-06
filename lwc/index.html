@@ -807,6 +807,65 @@ function computeMeansFromBuckets(buckets, spot) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// SOPD means — verbatim port of `computeSOPDMeanFromPair` in rp.js (line
+// 1031). For each price bin p, dS = supply_prev − supply_curr (BTC that
+// left the bin) and dR = realized_cap_prev − realized_cap_curr (USD that
+// left the bin). Only bins where the corresponding diff is positive
+// contribute. Optional spot price splits the means into in-Profit
+// (p ≤ spot) and in-Loss (p > spot).
+//   SOPD μ_BTC ≡ Σ p · dS / Σ dS
+//   SOPD μ_USD ≡ Σ p · dR / Σ dR
+// Returns {btc, usd, btcProfit, btcLoss, usdProfit, usdLoss} — same shape
+// as `computeMeansFromBuckets` so the spent-price builder can mirror the
+// realised-price builder.
+// ───────────────────────────────────────────────────────────────────────────
+function computeSOPDMeansFromPair(prevBuckets, currBuckets, spot) {
+  const prevMapS = {}, prevMapR = {}, currMapS = {}, currMapR = {};
+  for (const b of prevBuckets) {
+    prevMapS[b.price_floor] = b.supply || 0;
+    prevMapR[b.price_floor] = b.realized_cap || 0;
+  }
+  for (const b of currBuckets) {
+    currMapS[b.price_floor] = b.supply || 0;
+    currMapR[b.price_floor] = b.realized_cap || 0;
+  }
+  const allPrices = new Set();
+  prevBuckets.forEach(b => allPrices.add(b.price_floor));
+  currBuckets.forEach(b => allPrices.add(b.price_floor));
+
+  let nBTC = 0, dBTC = 0, nUSD = 0, dUSD = 0;
+  let nBP = 0, dBP = 0, nUP = 0, dUP = 0;
+  let nBL = 0, dBL = 0, nUL = 0, dUL = 0;
+  const useSpot = (typeof spot === "number" && spot > 0);
+  allPrices.forEach(p => {
+    const dS = (prevMapS[p] || 0) - (currMapS[p] || 0);
+    const dR = (prevMapR[p] || 0) - (currMapR[p] || 0);
+    if (dS > 0) {
+      nBTC += p * dS; dBTC += dS;
+      if (useSpot) {
+        if (p <= spot) { nBP += p * dS; dBP += dS; }
+        else           { nBL += p * dS; dBL += dS; }
+      }
+    }
+    if (dR > 0) {
+      nUSD += p * dR; dUSD += dR;
+      if (useSpot) {
+        if (p <= spot) { nUP += p * dR; dUP += dR; }
+        else           { nUL += p * dR; dUL += dR; }
+      }
+    }
+  });
+  return {
+    btc: dBTC > 0 ? nBTC / dBTC : null,
+    usd: dUSD > 0 ? nUSD / dUSD : null,
+    btcProfit: dBP > 0 ? nBP / dBP : null,
+    btcLoss:   dBL > 0 ? nBL / dBL : null,
+    usdProfit: dUP > 0 ? nUP / dUP : null,
+    usdLoss:   dUL > 0 ? nUL / dUL : null,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Sampling strategy for realised-price filtered time series — last 30 days
 // at 1-day step (matches the URPD histogram precisely), older history at
 // 14-day step (smoother visual, dramatically less API load — running a 1-day
@@ -941,6 +1000,68 @@ async function buildRPFilteredTS(cohort) {
     return out;
   })();
   _rpFilteredTSPromise.set(cohort, p);
+  return p;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Spent-price filtered TS builder — FLOW counterpart to buildRPFilteredTS.
+// For each sample date, fetches URPD(today) and URPD(yesterday) for the
+// cohort and runs computeSOPDMeansFromPair to get supply- and USD-weighted
+// means (and the in-Profit / in-Loss filtered variants). Returns the same
+// {dates, btc, usd, btcProfit, btcLoss, usdProfit, usdLoss} shape, so the
+// SpentPriceFilteredIndicator can index into it identically. The URPD
+// fetches dedupe through urpdCache, so when the user has the realised-
+// price (STOCK) variants loaded, only yesterday's URPDs are new fetches.
+// ───────────────────────────────────────────────────────────────────────────
+const _spFilteredTSPromise = new Map();
+async function buildSPFilteredTS(cohort) {
+  if (_spFilteredTSPromise.has(cohort)) return _spFilteredTSPromise.get(cohort);
+  const p = (async () => {
+    const sampleDates = _rpFilteredSampleDates();
+    const out = {
+      dates: [],
+      btc: [], usd: [],
+      btcProfit: [], btcLoss: [], usdProfit: [], usdLoss: [],
+    };
+    const BATCH = 8;
+    const status = document.getElementById("status");
+    let done = 0;
+    for (let bi = 0; bi < sampleDates.length; bi += BATCH) {
+      const batch = sampleDates.slice(bi, bi + BATCH);
+      // Fetch today + yesterday in parallel for each sample date in the
+      // batch. urpdCache means today's URPD is shared with the realised-
+      // price builder if it's already been loaded.
+      const pairs = await Promise.all(batch.map(async (d) => {
+        const prevD = prevDateStrOf(d);
+        const [curr, prev] = await Promise.all([
+          getURPDCohort(d, cohort).catch(() => null),
+          getURPDCohort(prevD, cohort).catch(() => null),
+        ]);
+        return { date: d, curr, prev };
+      }));
+      for (const { date, curr, prev } of pairs) {
+        const spot = getSpotForDate(date);
+        if (!curr || !curr.buckets || !prev || !prev.buckets || !spot) {
+          out.dates.push(date);
+          out.btc.push(null); out.usd.push(null);
+          out.btcProfit.push(null); out.btcLoss.push(null);
+          out.usdProfit.push(null); out.usdLoss.push(null);
+          continue;
+        }
+        const m = computeSOPDMeansFromPair(prev.buckets, curr.buckets, spot);
+        out.dates.push(date);
+        out.btc.push(m.btc); out.usd.push(m.usd);
+        out.btcProfit.push(m.btcProfit); out.btcLoss.push(m.btcLoss);
+        out.usdProfit.push(m.usdProfit); out.usdLoss.push(m.usdLoss);
+      }
+      done += batch.length;
+      if (status) status.textContent =
+        `Building ${cohort.toUpperCase()} spent-price filtered TS… ${done}/${sampleDates.length}`;
+    }
+    if (status) status.textContent = `${cohort.toUpperCase()} spent-price filtered TS ready (${sampleDates.length} pts)`;
+    return out;
+  })();
+  _spFilteredTSPromise.set(cohort, p);
   return p;
 }
 
@@ -1590,6 +1711,104 @@ for (const c of _RP_COHORTS) {
       // Give each anonymous class a debugger-friendly name
       Object.defineProperty(Cls, "name", { value: typeName });
       _RP_FILTERED_VARIANTS.push(Cls);
+    }
+  }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Spent-price line indicators — FLOW counterparts of the realised-price
+// lines. Same render path (single LineSeries on the top pane), but the
+// per-date value comes from the day-over-day URPD diff (SOPD μ) instead
+// of today's URPD (URPD μ). Verbatim port of rp.js's BOTH-mode lines:
+//   "Spent Price (BTC)" / "Spent Price (USD)" — unfiltered SOPD μ
+//   "Spent Price in Profit/Loss (BTC|USD)" — filtered by spot
+//   Same trio for "LTH Spent Price" and "STH Spent Price".
+// ───────────────────────────────────────────────────────────────────────────
+class SpentPriceFilteredIndicator extends Indicator {
+  static pane = "top";
+  cohort()      { return "all"; }     // "all" | "lth" | "sth"
+  // Subclasses pick which field to pull from the SP TS payload. Unfiltered
+  // siblings return "btc" / "usd"; filtered siblings return "btcProfit",
+  // "btcLoss", "usdProfit", "usdLoss".
+  fieldName()   { throw new Error("fieldName not implemented"); }
+  // Solid for unfiltered + in-Profit, Dashed for in-Loss — matches the
+  // realised-price filtered convention so the visual language stays
+  // consistent across STOCK and FLOW lines.
+  isDashed()    { return false; }
+
+  async load() {
+    const ts = await buildSPFilteredTS(this.cohort());
+    const arr = ts[this.fieldName()];
+    const points = [];
+    for (let i = 0; i < ts.dates.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        points.push({ time: ts.dates[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      lineStyle: this.isDashed() ? LightweightCharts.LineStyle.Dashed
+                                 : LightweightCharts.LineStyle.Solid,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.constructor.displayName,
+    });
+    series.setData(points);
+    this.series.push(series);
+  }
+  swatchColor() { return this.config.color; }
+  seriesTitle() { return this.constructor.displayName; }
+}
+
+function _spFilteredSchema(defaultColor) {
+  return [
+    { key: "color", label: "Color", type: "color", default: defaultColor },
+    { key: "lineWidth", label: "Width", type: "select",
+      options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 1 },
+  ];
+}
+
+// Generate the 18 spent-price line variants in one pass — 6 unfiltered
+// (3 cohorts × 2 weights) + 12 filtered (3 cohorts × 2 P/L × 2 weights).
+const _SP_VARIANTS = [];
+for (const c of _RP_COHORTS) {
+  const colorKey = c.color === "mean" ? THEME.mean
+                 : c.color === "lth"  ? THEME.lth
+                 : THEME.sth;
+  // Unfiltered: "Spent Price (BTC|USD) (FLOW)"
+  for (const w of _RP_WEIGHTS) {
+    const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}_${w.short}`;
+    const display = `${c.prefix}Spent Price (${w.label}) (FLOW)`;
+    const fieldName = w.short; // "btc" or "usd"
+    const Cls = class extends SpentPriceFilteredIndicator {
+      static type = typeName;
+      static displayName = display;
+      static configSchema = _spFilteredSchema(colorKey);
+      cohort()    { return c.key; }
+      fieldName() { return fieldName; }
+      isDashed()  { return false; }
+    };
+    Object.defineProperty(Cls, "name", { value: typeName });
+    _SP_VARIANTS.push(Cls);
+  }
+  // Filtered: "Spent Price in Profit/Loss (BTC|USD) (FLOW)"
+  for (const pl of _RP_PL) {
+    for (const w of _RP_WEIGHTS) {
+      const typeName = `${c.key === "all" ? "sp" : c.key + "_sp"}${pl.suffix}_${w.short}`;
+      const display = `${c.prefix}Spent Price ${pl.label} (${w.label}) (FLOW)`;
+      const fieldName = w.short + (pl.profit ? "Profit" : "Loss"); // e.g. "btcProfit"
+      const Cls = class extends SpentPriceFilteredIndicator {
+        static type = typeName;
+        static displayName = display;
+        static configSchema = _spFilteredSchema(colorKey);
+        cohort()    { return c.key; }
+        fieldName() { return fieldName; }
+        isDashed()  { return !pl.profit; }
+      };
+      Object.defineProperty(Cls, "name", { value: typeName });
+      _SP_VARIANTS.push(Cls);
     }
   }
 }
@@ -2351,6 +2570,9 @@ const INDICATOR_TYPES = [
   // Top-pane profit/loss-filtered means (per-date horizontal price line)
   // 12 variants: 3 cohorts × 2 P/L × 2 weights (BTC, USD).
   ..._RP_FILTERED_VARIANTS,
+  // FLOW counterparts: 18 spent-price lines (6 unfiltered + 12 filtered)
+  // built from day-over-day SOPD means via computeSOPDMeansFromPair.
+  ..._SP_VARIANTS,
   SpotPriceLineIndicator,
   // Bottom-pane profile histograms (point-in-time, follow tracer in nav mode).
   // Each split gets a BTC and a USD entry: BTC weights bars by supply, USD
