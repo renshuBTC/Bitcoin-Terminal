@@ -266,26 +266,21 @@ window.__loadMp4Muxer = function() {
 
   /* Per-indicator rows below the pane title — TradingView-style with hover actions. */
   .ind-rows { display: flex; flex-direction: column; gap: 2px; }
-  /* Bottom-pane label container is special: it spans the full height of
-     `#chart-bottom-wrap` so each indicator row can be absolutely positioned
-     at the top of its corresponding LWC pane (panes split the bottom chart
-     into N equal vertical strips). Override the .pane-label defaults
-     (top: 8px / left: 12px / max-width) — we use padding for the inset
-     and need full container width to position rows by percentage. */
-  #header-bottom { top: 0; left: 0; right: 0; bottom: 0; padding: 8px 12px;
+  /* Bottom-pane label container spans the full height of #chart-bottom-wrap
+     so per-pane labels can be absolutely positioned at the top of their
+     corresponding LWC pane (panes split the bottom chart into N equal
+     vertical strips). Override the .pane-label defaults — no padding here,
+     because padding would shrink the rows' coordinate frame and push
+     `top: i/N * 100%` slightly above the actual pane boundaries. Inset is
+     applied per-row (left: 12px, top offset baked into the % value). */
+  #header-bottom { top: 0; left: 0; right: 0; bottom: 0; padding: 0;
     display: block; pointer-events: none; max-width: none; }
-  #ind-rows-bottom { position: relative; width: 100%; height: 100%; display: block; }
-  #ind-rows-bottom .ind-row { position: absolute; left: 0; right: 0; }
-  /* Translucent dark backdrop so the label stays legible when an LWC
-     pane's bars rise behind it. Tight padding keeps the box hugging the
-     text — no big block. Only the label content gets the backdrop, not
-     the row's full width (which is `right: 0` so it could be wide). */
-  #ind-rows-bottom .ind-row .swatch,
-  #ind-rows-bottom .ind-row .name {
-    background: rgba(0, 0, 0, 0.55);
-  }
-  #ind-rows-bottom .ind-row .swatch { padding: 4px; box-sizing: content-box; }
-  #ind-rows-bottom .ind-row .name { padding: 1px 5px; border-radius: 2px; }
+  /* Absolute fill so #ind-rows-bottom's height equals the chart wrap's
+     full height — same coordinate frame LWC uses for pane layout. Now
+     `top: i/N * 100%` lines up exactly with the pane boundaries. */
+  #ind-rows-bottom { position: absolute; top: 0; left: 0; right: 0; bottom: 0; display: block; }
+  #ind-rows-bottom .ind-row { position: absolute; left: 12px; right: 12px;
+    margin-top: 8px; }
   .ind-row { display: inline-flex; align-items: center; gap: 6px; pointer-events: auto;
     font-size: 13px; line-height: 1.4; padding: 0; }
   .ind-row .swatch { width: 8px; height: 8px; border-radius: 1px; flex-shrink: 0; }
