@@ -757,6 +757,111 @@ function diffAggRaw(prevBuckets, currBuckets) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Realised-price filtered means — supply- and USD-weighted means of URPD
+// bins, split by spot price (in-Profit: p ≤ spot, in-Loss: p > spot).
+// Mirrors `computeMeanFromBuckets` in rp.js (line 995). Returns one object
+// per call so all four BTC/USD × profit/loss variants share the same pass
+// over the buckets.
+// ───────────────────────────────────────────────────────────────────────────
+function computeMeansFromBuckets(buckets, spot) {
+  let nBTC = 0, dBTC = 0, nUSD = 0, dUSD = 0;
+  let nBP = 0, dBP = 0, nUP = 0, dUP = 0;
+  let nBL = 0, dBL = 0, nUL = 0, dUL = 0;
+  const useSpot = (typeof spot === "number" && spot > 0);
+  for (let i = 0; i < buckets.length; i++) {
+    const b = buckets[i];
+    const p = b.price_floor;
+    const s = b.supply || 0;
+    const r = b.realized_cap || 0;
+    nBTC += p * s; dBTC += s;
+    nUSD += p * r; dUSD += r;
+    if (useSpot) {
+      if (p <= spot) {
+        nBP += p * s; dBP += s;
+        nUP += p * r; dUP += r;
+      } else {
+        nBL += p * s; dBL += s;
+        nUL += p * r; dUL += r;
+      }
+    }
+  }
+  return {
+    btc: dBTC > 0 ? nBTC / dBTC : null,
+    usd: dUSD > 0 ? nUSD / dUSD : null,
+    btcProfit: dBP > 0 ? nBP / dBP : null,
+    btcLoss:   dBL > 0 ? nBL / dBL : null,
+    usdProfit: dUP > 0 ? nUP / dUP : null,
+    usdLoss:   dUL > 0 ? nUL / dUL : null,
+  };
+}
+
+// ───────────────────────────────────────────────────────────────────────────
+// Sampling strategy for realised-price filtered time series — last 30 days
+// at 1-day step (matches the URPD histogram precisely), older history at
+// 14-day step (smoother visual, dramatically less API load — running a 1-day
+// step on full history hammers bitview.space and triggers QUIC errors that
+// corrupt the recent endpoint values, mirroring rp.js's experience).
+// Re-uses priceDateStrs as the date universe.
+// ───────────────────────────────────────────────────────────────────────────
+function _rpFilteredSampleDates() {
+  if (!priceDateStrs || priceDateStrs.length === 0) return [];
+  const RECENT_STEP = 1;
+  const HISTORY_STEP = 14;
+  const RECENT_DAYS = 30;
+  const N = priceDateStrs.length;
+  const recentStart = Math.max(0, N - RECENT_DAYS);
+  const samples = [];
+  for (let i = 0; i < recentStart; i += HISTORY_STEP) samples.push(priceDateStrs[i]);
+  for (let i = recentStart; i < N; i += RECENT_STEP)  samples.push(priceDateStrs[i]);
+  if (samples[samples.length - 1] !== priceDateStrs[N - 1]) samples.push(priceDateStrs[N - 1]);
+  return samples;
+}
+
+// One Promise per cohort — all four BTC/USD × profit/loss indicator variants
+// of a cohort share the same fetch+compute pass. The first variant added
+// kicks off the heavy work (~400 URPDs, batched 8 at a time); siblings
+// `await` the same Promise and use the cached result instantly.
+const _rpFilteredTSPromise = new Map();
+async function buildRPFilteredTS(cohort) {
+  if (_rpFilteredTSPromise.has(cohort)) return _rpFilteredTSPromise.get(cohort);
+  const p = (async () => {
+    const sampleDates = _rpFilteredSampleDates();
+    const out = { dates: [], btcProfit: [], btcLoss: [], usdProfit: [], usdLoss: [] };
+    const BATCH = 8;
+    const status = document.getElementById("status");
+    let done = 0;
+    for (let bi = 0; bi < sampleDates.length; bi += BATCH) {
+      const batch = sampleDates.slice(bi, bi + BATCH);
+      const resps = await Promise.all(
+        batch.map(d => getURPDCohort(d, cohort).catch(() => null))
+      );
+      for (let i = 0; i < resps.length; i++) {
+        const resp = resps[i];
+        const date = batch[i];
+        const spot = getSpotForDate(date);
+        if (!resp || !resp.buckets || resp.buckets.length === 0 || !spot) {
+          out.dates.push(date);
+          out.btcProfit.push(null); out.btcLoss.push(null);
+          out.usdProfit.push(null); out.usdLoss.push(null);
+          continue;
+        }
+        const m = computeMeansFromBuckets(resp.buckets, spot);
+        out.dates.push(date);
+        out.btcProfit.push(m.btcProfit); out.btcLoss.push(m.btcLoss);
+        out.usdProfit.push(m.usdProfit); out.usdLoss.push(m.usdLoss);
+      }
+      done += batch.length;
+      if (status) status.textContent =
+        `Building ${cohort.toUpperCase()} realised-price filtered TS… ${done}/${sampleDates.length}`;
+    }
+    if (status) status.textContent = `${cohort.toUpperCase()} realised-price filtered TS ready (${sampleDates.length} pts)`;
+    return out;
+  })();
+  _rpFilteredTSPromise.set(cohort, p);
+  return p;
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator base class — every indicator owns LWC series and a config
 // ───────────────────────────────────────────────────────────────────────────
 class Indicator {
@@ -1137,15 +1242,16 @@ class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// Realised-Price filtered by Profit/Loss — horizontal price line at the
-// supply-weighted mean of URPD (or LTH/STH URPD) bins whose price is below
-// (in Profit) or above (in Loss) the current spot. Updates as the user
-// scrubs the date. Mirrors the rp.js BOTH-mode means from the previous site.
+// Realised-Price filtered TIME SERIES — one LineSeries per indicator, each
+// point is the supply- or USD-weighted mean of URPD bins (filtered to bins
+// at or below spot for "in Profit", above spot for "in Loss") at that date.
+// Mirrors the BOTH-mode lines from the previous Plotly site (rp.js: lines
+// 3276-3281) which fetched URPD per sample date and built `meanTSUrpdBTCProfit`,
+// `meanTSLthBTCProfit`, etc.
 //
-// Implementation: not a time series (would require per-day URPD fetches).
-// Instead, draws a price line on the BTC chart at the filtered mean for the
-// currently selected date — same data path the URPD profile already uses.
-// ───────────────────────────────────────────────────────────────────────────
+// All four BTC/USD × profit/loss variants of a cohort share one heavy fetch
+// pass via `buildRPFilteredTS(cohort)` — the first variant added pays the
+// cost (~400 URPDs over batched 8-wide promises), siblings reuse the result.
 class RealisedPriceFilteredIndicator extends Indicator {
   static pane = "top";
   cohort()      { return "all"; }     // "all" | "lth" | "sth"
@@ -1153,71 +1259,36 @@ class RealisedPriceFilteredIndicator extends Indicator {
   weightField() { return "supply"; }  // "supply" (BTC) | "realized_cap" (USD)
 
   async load() {
-    this._priceLine = null;
-    await this.onDateChange(currentDateStr);
+    const ts = await buildRPFilteredTS(this.cohort());
+    const profit = this.isProfit();
+    const usd = (this.weightField() === "realized_cap");
+    const arr = profit
+      ? (usd ? ts.usdProfit : ts.btcProfit)
+      : (usd ? ts.usdLoss   : ts.btcLoss);
+    const points = [];
+    for (let i = 0; i < ts.dates.length; i++) {
+      const v = arr[i];
+      if (typeof v === "number" && isFinite(v) && v > 0) {
+        points.push({ time: ts.dates[i], value: v });
+      }
+    }
+    const series = topChart.addSeries(LightweightCharts.LineSeries, {
+      color: this.config.color,
+      lineWidth: this.config.lineWidth,
+      // Solid for in-Profit, Dashed for in-Loss — same convention used to
+      // visually distinguish profit/loss on the previous site without
+      // changing the per-cohort hue.
+      lineStyle: profit ? LightweightCharts.LineStyle.Solid
+                        : LightweightCharts.LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: true,
+      title: this.constructor.displayName,
+    });
+    series.setData(points);
+    this.series.push(series);
   }
   swatchColor() { return this.config.color; }
   seriesTitle() { return this.constructor.displayName; }
-
-  async onDateChange(dateStr) {
-    // These horizontal price lines are reference markers — they should be
-    // visible the moment the indicator is added, anchored at the currently
-    // selected date (= today by default). They also update when the tracer
-    // navigates in nav mode, which works through the same setCurrentDate
-    // path. URPD fetches are deduped per (cohort, date) by inflight+cache
-    // in getURPDCohort, so 12 simultaneous filtered indicators add up to
-    // just 3 actual network requests (one per cohort: all/lth/sth).
-    const spot = getSpotForDate(dateStr);
-    if (!spot) return;
-    let resp;
-    try { resp = await getURPDCohort(dateStr, this.cohort()); }
-    catch (e) { console.warn(`${this.constructor.displayName}: ${e.message}`); return; }
-    const buckets = (resp && resp.buckets) || [];
-    let num = 0, den = 0;
-    const profit = this.isProfit();
-    const wf = this.weightField();
-    for (const b of buckets) {
-      const w = (b[wf] != null ? b[wf] : 0);
-      if (w <= 0) continue;
-      const p = (b.price_floor !== undefined ? b.price_floor : b.price) || 0;
-      if (profit ? p <= spot : p > spot) { num += p * w; den += w; }
-    }
-    if (den === 0) return;
-    const mean = num / den;
-    const btcInd = activeIndicators.values().next().value;
-    if (!btcInd || !btcInd.getPriceSeries) return;
-    const series = btcInd.getPriceSeries();
-    if (this._priceLine) {
-      try { series.removePriceLine(this._priceLine); } catch (e) {}
-    }
-    this._priceLine = series.createPriceLine({
-      price: mean, color: this.config.color, lineWidth: this.config.lineWidth,
-      lineStyle: profit ? LightweightCharts.LineStyle.Solid : LightweightCharts.LineStyle.Dashed,
-      axisLabelVisible: true, title: this.seriesTitle(),
-    });
-    if (this.visible === false) {
-      try { this._priceLine.applyOptions({ lineWidth: 0, axisLabelVisible: false }); } catch (e) {}
-    }
-  }
-
-  remove() {
-    if (this._priceLine) {
-      const btcInd = activeIndicators.values().next().value;
-      if (btcInd && btcInd.getPriceSeries) {
-        try { btcInd.getPriceSeries().removePriceLine(this._priceLine); } catch (e) {}
-      }
-    }
-    super.remove();
-  }
-
-  setVisible(v) {
-    this.visible = !!v;
-    if (!this._priceLine) return;
-    try {
-      if (this.visible) this._priceLine.applyOptions({ lineWidth: this.config.lineWidth, axisLabelVisible: true });
-      else this._priceLine.applyOptions({ lineWidth: 0, axisLabelVisible: false });
-    } catch (e) {}
-  }
 }
 
 // Helper to build configSchema with the right default color per cohort
