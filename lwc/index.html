@@ -1322,38 +1322,38 @@ function _addRightLeader(points, color) {
 
 class RealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "realised_price";
-  static displayName = "Realised Price (BTC)";
+  static displayName = "Realised Price (BTC) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.mean },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/realized_price/day1"; }
-  seriesTitle() { return "Realised Price (BTC)"; }
+  seriesTitle() { return "Realised Price (BTC) (STOCK)"; }
 }
 
 class LTHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "lth_realised_price";
-  static displayName = "LTH Realised Price (BTC)";
+  static displayName = "LTH Realised Price (BTC) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.lth },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/lth_realized_price/day1"; }
-  seriesTitle() { return "LTH Realised Price (BTC)"; }
+  seriesTitle() { return "LTH Realised Price (BTC) (STOCK)"; }
 }
 
 class STHRealisedPriceIndicator extends TopPaneSeriesIndicator {
   static type = "sth_realised_price";
-  static displayName = "STH Realised Price (BTC)";
+  static displayName = "STH Realised Price (BTC) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.sth },
     { key: "lineWidth", label: "Width", type: "select",
       options: [{v:1,l:"Thin"},{v:2,l:"Medium"},{v:3,l:"Thick"}], default: 2 },
   ];
   endpoint() { return "/api/series/sth_realized_price/day1"; }
-  seriesTitle() { return "STH Realised Price (BTC)"; }
+  seriesTitle() { return "STH Realised Price (BTC) (STOCK)"; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -1398,7 +1398,7 @@ class RealisedPriceUSDBaseIndicator extends Indicator {
 
 class RealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
   static type = "realised_price_usd";
-  static displayName = "Realised Price (USD)";
+  static displayName = "Realised Price (USD) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.mean },
     { key: "lineWidth", label: "Width", type: "select",
@@ -1409,7 +1409,7 @@ class RealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
 
 class LTHRealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
   static type = "lth_realised_price_usd";
-  static displayName = "LTH Realised Price (USD)";
+  static displayName = "LTH Realised Price (USD) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.lth },
     { key: "lineWidth", label: "Width", type: "select",
@@ -1420,7 +1420,7 @@ class LTHRealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
 
 class STHRealisedPriceUSDIndicator extends RealisedPriceUSDBaseIndicator {
   static type = "sth_realised_price_usd";
-  static displayName = "STH Realised Price (USD)";
+  static displayName = "STH Realised Price (USD) (STOCK)";
   static configSchema = [
     { key: "color", label: "Color", type: "color", default: THEME.sth },
     { key: "lineWidth", label: "Width", type: "select",
@@ -1520,7 +1520,7 @@ for (const c of _RP_COHORTS) {
                      : c.color === "lth"  ? THEME.lth
                      : THEME.sth;
       const typeName = `${c.key === "all" ? "rp" : c.key + "_rp"}${pl.suffix}_${w.short}`;
-      const display = `${c.prefix}Realised Price ${pl.label} (${w.label})`;
+      const display = `${c.prefix}Realised Price ${pl.label} (${w.label}) (STOCK)`;
       const Cls = class extends RealisedPriceFilteredIndicator {
         static type = typeName;
         static displayName = display;
@@ -1777,7 +1777,7 @@ let _visibleScaleOwner = null;
 // ───────────────────────────────────────────────────────────────────────────
 class URPDProfileIndicator extends ProfileHistogramIndicator {
   static type = "urpd_profile";
-  static displayName = "URPD - Profit/Loss (BTC)";
+  static displayName = "URPD - Profit/Loss (BTC) (STOCK)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -1789,7 +1789,7 @@ class URPDProfileIndicator extends ProfileHistogramIndicator {
     return resp.buckets;
   }
   swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
-  displayName() { return `URPD - Profit/Loss (${this.config.weight.toUpperCase()})`; }
+  displayName() { return `URPD - Profit/Loss (${this.config.weight.toUpperCase()}) (STOCK)`; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -2062,7 +2062,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 // gold) on top — older cohorts sit on the baseline, younger stack above.
 class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_lth_sth_history";
-  static displayName = "URPD - LTH/STH (BTC)";
+  static displayName = "URPD - LTH/STH (BTC) (STOCK)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2071,7 +2071,7 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   cohortLabels() { return ["LTH", "STH"]; }
   cohortColors() { return [THEME.lth, THEME.sth]; }
   swatchColor() { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
-  displayName() { return "URPD - LTH/STH (BTC)"; }
+  displayName() { return "URPD - LTH/STH (BTC) (STOCK)"; }
 }
 
 // AGE-band split: 21 cohorts stacked OLDEST-FIRST. Oldest (>15y, violet)
@@ -2080,7 +2080,7 @@ class URPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
 // younger as you climb the bar".
 class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "urpd_age_history";
-  static displayName = "URPD - AGE (BTC)";
+  static displayName = "URPD - AGE (BTC) (STOCK)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2092,7 +2092,7 @@ class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
     // Read swatch left→right as bottom→top of the stack: oldest first.
     return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
   }
-  displayName() { return "URPD - AGE (BTC)"; }
+  displayName() { return "URPD - AGE (BTC) (STOCK)"; }
 }
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -2113,7 +2113,7 @@ class URPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
 // (in-Profit bins green, in-Loss bins red), single histogram pane.
 class SOPDProfitLossIndicator extends ProfileHistogramIndicator {
   static type = "sopd_profit_loss";
-  static displayName = "SOPD - Profit/Loss (BTC) (Approximated from URPD Difference)";
+  static displayName = "SOPD - Profit/Loss (BTC) (FLOW) (Approximated from URPD Difference)";
   static configSchema = [
     { key: "weight", label: "Weight", type: "select",
       options: [{v:"btc",l:"BTC (supply)"},{v:"usd",l:"USD (realised cap)"}], default: "btc" },
@@ -2130,13 +2130,13 @@ class SOPDProfitLossIndicator extends ProfileHistogramIndicator {
     return diffAggRaw(prev.buckets, curr.buckets);
   }
   swatchColor() { return this.config.weight === "usd" ? THEME.magenta : THEME.profit; }
-  displayName() { return `SOPD - Profit/Loss (${this.config.weight.toUpperCase()})`; }
+  displayName() { return `SOPD - Profit/Loss (${this.config.weight.toUpperCase()}) (FLOW)`; }
 }
 
 // LTH/STH split — diff each cohort's URPD against yesterday and stack.
 class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "sopd_lth_sth_history";
-  static displayName = "SOPD - LTH/STH (BTC) (Approximated from URPD Difference)";
+  static displayName = "SOPD - LTH/STH (BTC) (FLOW) (Approximated from URPD Difference)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2145,7 +2145,7 @@ class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
   cohortLabels() { return ["LTH", "STH"]; }
   cohortColors() { return [THEME.lth, THEME.sth]; }
   swatchColor() { return `linear-gradient(90deg, ${THEME.lth}, ${THEME.sth})`; }
-  displayName() { return "SOPD - LTH/STH (BTC)"; }
+  displayName() { return "SOPD - LTH/STH (BTC) (FLOW)"; }
 
   async _fetchCohortResponse(dateStr, cohortKey) {
     const prevDate = prevDateStrOf(dateStr);
@@ -2161,7 +2161,7 @@ class SOPDLTHSTHHistoryIndicator extends StackedURPDHistoryIndicator {
 // 21 age-cohort split — diff each cohort vs yesterday and stack.
 class SOPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   static type = "sopd_age_history";
-  static displayName = "SOPD - AGE (BTC) (Approximated from URPD Difference)";
+  static displayName = "SOPD - AGE (BTC) (FLOW) (Approximated from URPD Difference)";
   static configSchema = [
     { key: "bins", label: "Bins", type: "select",
       options: [{v:200,l:"200"},{v:500,l:"500"},{v:600,l:"600"},{v:750,l:"750"},{v:1000,l:"1000"}], default: 600 },
@@ -2172,7 +2172,7 @@ class SOPDAgeHistoryIndicator extends StackedURPDHistoryIndicator {
   swatchColor() {
     return `linear-gradient(90deg, ${_AGE_BAND_COLORS[20]}, ${_AGE_BAND_COLORS[10]}, ${_AGE_BAND_COLORS[0]})`;
   }
-  displayName() { return "SOPD - AGE (BTC)"; }
+  displayName() { return "SOPD - AGE (BTC) (FLOW)"; }
 
   async _fetchCohortResponse(dateStr, cohortKey) {
     const prevDate = prevDateStrOf(dateStr);
