@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://bitview.space" crossorigin>
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&family=Roboto+Condensed:wght@700&display=swap">
-<script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<script src="https://unpkg.com/lightweight-charts@5.0.7/dist/lightweight-charts.standalone.production.js"></script>
 <!-- html2canvas for PNG export. Loaded on first click via dynamic import to avoid up-front cost. -->
 <script>
 window.__loadHtml2canvas = function() {
@@ -662,6 +662,20 @@ const bottomChart = LightweightCharts.createChart(bottomContainer, Object.assign
     enableResize: true,
   },
 }));
+
+// Re-apply the pane separator options post-construction. LWC 5.0.0 didn't
+// honour `panes` at construction time; later 5.0.x versions do. Calling
+// `applyOptions` after the chart is built makes the styling stick on
+// either branch — silently no-ops on builds that don't recognise the key.
+try {
+  bottomChart.applyOptions({
+    panes: {
+      separatorColor: "#222",
+      separatorHoverColor: "#ff8c00",
+      enableResize: true,
+    },
+  });
+} catch (e) {}
 
 function syncSizes() {
   topChart.applyOptions({ width: topContainer.clientWidth, height: topContainer.clientHeight });
