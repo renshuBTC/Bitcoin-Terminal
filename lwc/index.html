@@ -7078,6 +7078,18 @@ applyPriceScale();
     //   the requested default first-paint pair: a single top-pane line
     //   alongside the P/L histogram, leaving plenty of headroom for
     //   the user to add what they want.
+    // - Cycle top/bottom landmark markers are forced ON for the default
+    //   view (overrides any prior localStorage off-state); the toggle
+    //   is then re-synced + re-rendered so the chart shows them on
+    //   first paint.
+    ANNO_VIS.cycles = true;
+    try { _saveAnnoVis(); } catch (e) {}
+    const cycBtn = document.getElementById("btn-cycles");
+    if (cycBtn) cycBtn.classList.add("active");
+    // Markers were attached during BTCPriceIndicator.load() above, BEFORE
+    // we forced cycles on — rebuild them now so the cycle arrows actually
+    // appear on first paint.
+    try { _refreshAnchoredMarkers(); } catch (e) {}
     const inds = [
       new SpotPriceLineIndicator(),
       new STHRealisedPriceIndicator(),
