@@ -4847,6 +4847,9 @@ const DrawingsManager = (() => {
       pluginMgr = new PLUGIN.DrawingManager();
       pluginMgr.attach(topChart, series, wrap);
       console.log("[drawings] DrawingManager attached");
+      _logRegistry();
+      // Stash a debug handle so we can inspect from devtools.
+      try { window.__pluginMgr = pluginMgr; } catch (e) {}
       // Subscribe to selection events so the keyboard handler knows
       // which drawing to delete on Backspace/Delete. The exact event
       // names + payload shapes aren't documented; we try the common
@@ -5057,28 +5060,89 @@ const DrawingsManager = (() => {
   // setActiveTool exists (verified via console probe) but not what it
   // accepts. We try class-name string → class itself → instance →
   // object literal, in that order, and log which attempt succeeded.
+  // One-shot diagnostic: inspect the plugin's tool registry / definitions
+  // so we know what `setActiveTool` actually expects. Logs once at boot
+  // when the plugin first attaches; the output reveals the canonical
+  // tool id format (string id, class reference, or {id, class} object).
+  function _logRegistry() {
+    if (!HAS_PLUGIN) return;
+    try {
+      const reg = (typeof PLUGIN.getToolRegistry === "function")
+        ? PLUGIN.getToolRegistry() : null;
+      const all = reg && typeof reg.getAllTools === "function" ? reg.getAllTools() : null;
+      console.log("[drawings] tool registry sample (first 3):",
+        all && all.slice ? all.slice(0, 3) : all);
+      console.log("[drawings] TOOL_DEFINITIONS sample (first 3 keys):",
+        PLUGIN.TOOL_DEFINITIONS ? Object.keys(PLUGIN.TOOL_DEFINITIONS).slice(0, 3) : "(undefined)");
+      console.log("[drawings] TrendLine.name (minified) =", PLUGIN.TrendLine && PLUGIN.TrendLine.name);
+    } catch (e) { console.warn("[drawings] registry probe failed:", e); }
+  }
+  // Resolve a TOOL_GROUPS class → the canonical tool identifier the
+  // plugin's setActiveTool expects. The plugin is minified so cls.name
+  // gives a mangled string ("Ot" instead of "TrendLine"); we try
+  // alternate sources in priority order:
+  //   1. Look up by class reference in TOOL_DEFINITIONS map
+  //   2. Look up by class reference in tool registry
+  //   3. Fall back to passing the class itself
+  function _resolveToolId(cls) {
+    if (!cls) return null;
+    try {
+      const td = PLUGIN.TOOL_DEFINITIONS;
+      if (td && typeof td === "object") {
+        for (const [id, def] of Object.entries(td)) {
+          if (def === cls) return id;
+          if (def && (def.class === cls || def.constructor === cls || def.ctor === cls)) return id;
+        }
+      }
+    } catch (e) {}
+    try {
+      const reg = (typeof PLUGIN.getToolRegistry === "function") ? PLUGIN.getToolRegistry() : null;
+      const all = reg && typeof reg.getAllTools === "function" ? reg.getAllTools() : [];
+      for (const def of all || []) {
+        if (def === cls) return def.id || def.name || null;
+        if (def && (def.class === cls || def.constructor === cls)) return def.id || def.name || null;
+      }
+    } catch (e) {}
+    return null;
+  }
   function _activatePluginTool(cls) {
     if (!pluginMgr || !cls) return false;
-    const tries = [
-      ["name",     () => pluginMgr.setActiveTool(cls.name)],
-      ["class",    () => pluginMgr.setActiveTool(cls)],
-      ["instance", () => pluginMgr.setActiveTool(new cls())],
-      ["{class}",  () => pluginMgr.setActiveTool({ class: cls })],
-      ["{tool}",   () => pluginMgr.setActiveTool({ tool: cls.name })],
-    ];
+    const canonicalId = _resolveToolId(cls);
+    // Try in order of likelihood: canonical id (if found), the class
+    // itself, an instance, the minified name. Each call is verified by
+    // re-reading getActiveTool() — "didn't throw" alone is misleading
+    // because the plugin's setActiveTool quietly accepts any string
+    // and falls back to its first registered tool, which created the
+    // earlier `→ Ot` symptom.
+    const tries = [];
+    if (canonicalId)         tries.push(["canonical", () => pluginMgr.setActiveTool(canonicalId)]);
+    /* class itself */       tries.push(["class",     () => pluginMgr.setActiveTool(cls)]);
+    /* instance */           tries.push(["instance",  () => pluginMgr.setActiveTool(new cls())]);
+    /* {class:...} */        tries.push(["{class}",   () => pluginMgr.setActiveTool({ class: cls })]);
+    /* minified .name */     tries.push(["name",      () => pluginMgr.setActiveTool(cls.name)]);
     for (const [label, fn] of tries) {
       try {
         fn();
-        // Verify the call actually took effect by re-reading the
-        // active tool — "didn't throw" is not sufficient since
-        // some plugin builds silently no-op on invalid args.
-        const active = (typeof pluginMgr.getActiveTool === "function")
-          ? pluginMgr.getActiveTool() : "(unknown)";
-        if (active != null && active !== false) {
-          console.log("[drawings] setActiveTool OK via", label, "→", active);
+        const active = (typeof pluginMgr.getActiveTool === "function") ? pluginMgr.getActiveTool() : null;
+        // For success, the active value should be the class we passed,
+        // an instance of it, or an object whose .class/.constructor
+        // matches. A bare string that's NOT one we passed (e.g. "Ot"
+        // when we passed a class) means the plugin fell through to
+        // its default — not a real success.
+        const matches = (
+          active === cls ||
+          (active && active.constructor === cls) ||
+          (active && (active.class === cls || active.tool === cls)) ||
+          (canonicalId && active === canonicalId)
+        );
+        if (matches) {
+          console.log("[drawings] setActiveTool OK via", label, "for", cls.name, "(canonical:", canonicalId, ")");
           return true;
         }
-      } catch (e) { /* try next */ }
+        console.log("[drawings] setActiveTool", label, "→ active:", active, "(no match)");
+      } catch (e) {
+        console.log("[drawings] setActiveTool", label, "threw:", e && e.message);
+      }
     }
     console.warn("[drawings] setActiveTool failed for", cls && cls.name);
     return false;
