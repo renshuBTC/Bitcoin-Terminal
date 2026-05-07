@@ -4863,7 +4863,19 @@ const DrawingsManager = (() => {
       const _clearSelected = () => { _selectedId = null; };
       try { pluginMgr.on && pluginMgr.on("drawing:selected",   _trackSelected); } catch (e) {}
       try { pluginMgr.on && pluginMgr.on("drawing:deselected", _clearSelected); } catch (e) {}
-      try { pluginMgr.on && pluginMgr.on("drawing:created",    _trackSelected); } catch (e) {}
+      // After the plugin finalizes a drawing it has captured clicks
+      // for, return the toolbar to cursor mode + persist + record an
+      // undo step.
+      const _onCreated = (ev) => {
+        _trackSelected(ev);
+        _editGuardUntil = Date.now() + 100;
+        _save();
+        _recordIfAvailable();
+        // Defer to next tick so the plugin finishes its own
+        // post-creation cleanup before we toggle off the active tool.
+        queueMicrotask(() => setActiveTool("cursor"));
+      };
+      try { pluginMgr.on && pluginMgr.on("drawing:created", _onCreated); } catch (e) {}
       // After a drag-edit completes, persist the new endpoints and
       // record an undo step so the move is reversible. The plugin's
       // exact event name isn't documented, so we subscribe to all
@@ -5040,10 +5052,41 @@ const DrawingsManager = (() => {
   }
 
   // ── Public API ─────────────────────────────────────────────────────
+  // Try several setActiveTool argument shapes since the plugin's
+  // exact API isn't documented. The DrawingManager prototype confirms
+  // setActiveTool exists (verified via console probe) but not what it
+  // accepts. We try class-name string → class itself → instance →
+  // object literal, in that order, and log which attempt succeeded.
+  function _activatePluginTool(cls) {
+    if (!pluginMgr || !cls) return false;
+    const tries = [
+      ["name",     () => pluginMgr.setActiveTool(cls.name)],
+      ["class",    () => pluginMgr.setActiveTool(cls)],
+      ["instance", () => pluginMgr.setActiveTool(new cls())],
+      ["{class}",  () => pluginMgr.setActiveTool({ class: cls })],
+      ["{tool}",   () => pluginMgr.setActiveTool({ tool: cls.name })],
+    ];
+    for (const [label, fn] of tries) {
+      try {
+        fn();
+        // Verify the call actually took effect by re-reading the
+        // active tool — "didn't throw" is not sufficient since
+        // some plugin builds silently no-op on invalid args.
+        const active = (typeof pluginMgr.getActiveTool === "function")
+          ? pluginMgr.getActiveTool() : "(unknown)";
+        if (active != null && active !== false) {
+          console.log("[drawings] setActiveTool OK via", label, "→", active);
+          return true;
+        }
+      } catch (e) { /* try next */ }
+    }
+    console.warn("[drawings] setActiveTool failed for", cls && cls.name);
+    return false;
+  }
   function setActiveTool(tool) {
     _activeTool = (tool === "cursor" || !tool) ? null : tool;
     _pending = null;
-    if (overlay) overlay.classList.toggle("is-drawing", !!_activeTool);
+    if (overlay) overlay.classList.remove("is-drawing");
     // Single-tool buttons (cursor / clear) — toggle .active.
     document.querySelectorAll("#left-toolbar .lt-tool").forEach(b => {
       const t = b.getAttribute("data-tool");
@@ -5052,7 +5095,17 @@ const DrawingsManager = (() => {
     });
     // Category buttons — highlight whichever group owns the current tool.
     if (typeof _refreshCategoryIcons === "function") _refreshCategoryIcons();
-    _renderPending();
+    // Hand off to the plugin's own draw-mode. Plugin captures clicks,
+    // collects points, places the drawing, and emits drawing:created.
+    // Setting the active tool to null returns to cursor mode (no draw).
+    if (_initPlugin()) {
+      if (!_activeTool) {
+        try { pluginMgr.setActiveTool(null); } catch (e) {}
+      } else {
+        const cls = TOOL_CLASS[_activeTool];
+        if (cls) _activatePluginTool(cls);
+      }
+    }
   }
   function clearAll() {
     if (!pluginMgr) return;
@@ -5116,37 +5169,15 @@ const DrawingsManager = (() => {
   }
   function render() { _renderPending(); }
 
-  // ── Click handler on the SVG overlay ───────────────────────────────
-  if (overlay) {
-    overlay.addEventListener("click", (ev) => {
-      if (!_activeTool) return;
-      if (!_initPlugin()) {
-        console.warn("[drawings] click ignored — plugin not yet ready");
-        return;
-      }
-      const rect = overlay.getBoundingClientRect();
-      const px = ev.clientX - rect.left;
-      const py = ev.clientY - rect.top;
-      const time  = _xToTime(px);
-      const price = _yToPrice(py);
-      if (time == null || price == null) return;
-      const tool = _activeTool;
-      const need = TOOL_POINTS[tool] || 2;
-      if (!_pending) _pending = { tool, points: [] };
-      _pending.points.push({ time, price });
-      if (_pending.points.length >= need) {
-        const points = _pending.points.slice(0, need);
-        _pending = null;
-        _addDrawing(tool, points);
-        setActiveTool("cursor");
-      } else {
-        _renderPending();
-      }
-    });
-    overlay.addEventListener("contextmenu", (ev) => {
-      if (_pending) { ev.preventDefault(); _pending = null; setActiveTool("cursor"); }
-    });
-  }
+  // (SVG overlay click handler removed — the plugin's own
+  // setActiveTool + handleMouseDown/Move/Up flow now owns click
+  // capture, point collection, drawing finalization, AND drag-edit.
+  // Right-click cancellation is delegated to the plugin too.)
+  // After the plugin finalizes a drawing (drawing:created), drop back
+  // to cursor mode so the user doesn't accidentally place another.
+  // This is wired in the plugin event subscription block below — once
+  // a creation event fires, we call our setActiveTool("cursor"), which
+  // calls pluginMgr.setActiveTool(null).
 
   // ── Backspace / Delete to remove the selected drawing ──────────────
   // Listens at the document level so the user can have focus on the
