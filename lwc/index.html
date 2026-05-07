@@ -4792,6 +4792,7 @@ const I18N = {
     action_hide: "Hide", action_show: "Show", action_remove_btn: "Remove",
     // Hover-stats popup labels for histogram bars
     hs_spot: "Spot", hs_total: "Total", hs_bins: "Bins",
+    hs_price: "Price", hs_value: "Value",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "no data for",
     // Bottom-pane keyboard navigation help (HTML — keys stay verbatim)
     nav_help_full: "To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable",
@@ -4854,6 +4855,7 @@ const I18N = {
     nav_keys_help: "A/← で戻る、D/→ で進む。ダブルクリックで解除。",
     action_hide: "非表示", action_show: "表示", action_remove_btn: "削除",
     hs_spot: "スポット", hs_total: "合計", hs_bins: "ビン",
+    hs_price: "価格", hs_value: "値",
     hs_ycap: "Y上限", hs_err: "エラー", hs_no_data: "データなし:",
     nav_help_full: "BTC価格チャートをダブルクリックでトレーサー固定 · <kbd>A</kbd>/<kbd>←</kbd> または <kbd>D</kbd>/<kbd>→</kbd> でナビゲート · ダブルクリックで解除",
     modal_edit: "編集", modal_configure: "設定",
@@ -4912,6 +4914,7 @@ const I18N = {
     nav_keys_help: "A/← arrière, D/→ avant. Double-cliquer pour déverrouiller.",
     action_hide: "Masquer", action_show: "Afficher", action_remove_btn: "Retirer",
     hs_spot: "Cours", hs_total: "Total", hs_bins: "Bins",
+    hs_price: "Prix", hs_value: "Valeur",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "aucune donnée pour",
     nav_help_full: "Double-cliquez sur le graphique BTC pour fixer le traceur · <kbd>A</kbd>/<kbd>←</kbd> ou <kbd>D</kbd>/<kbd>→</kbd> pour naviguer · double-clic pour désactiver",
     modal_edit: "Modifier", modal_configure: "Configurer",
@@ -4970,6 +4973,7 @@ const I18N = {
     nav_keys_help: "A/← عقب، D/→ جلو. برای آزاد کردن دو بار کلیک کنید.",
     action_hide: "پنهان کردن", action_show: "نمایش", action_remove_btn: "حذف",
     hs_spot: "اسپات", hs_total: "کل", hs_bins: "بازه‌ها",
+    hs_price: "قیمت", hs_value: "مقدار",
     hs_ycap: "حد Y", hs_err: "خطا", hs_no_data: "بدون داده برای",
     nav_help_full: "برای فعال‌سازی، روی نمودار قیمت BTC دو بار کلیک کنید تا تریسر ثابت شود · <kbd>A</kbd>/<kbd>←</kbd> یا <kbd>D</kbd>/<kbd>→</kbd> برای حرکت · دو بار کلیک برای غیرفعال",
     modal_edit: "ویرایش", modal_configure: "پیکربندی",
@@ -5028,6 +5032,7 @@ const I18N = {
     nav_keys_help: "A/← 返回，D/→ 前进。双击解除锁定。",
     action_hide: "隐藏", action_show: "显示", action_remove_btn: "移除",
     hs_spot: "现价", hs_total: "总计", hs_bins: "区间",
+    hs_price: "价格", hs_value: "数值",
     hs_ycap: "Y 上限", hs_err: "错误", hs_no_data: "无数据:",
     nav_help_full: "双击 BTC 价格图固定追踪器 · 按 <kbd>A</kbd>/<kbd>←</kbd> 或 <kbd>D</kbd>/<kbd>→</kbd> 导航 · 双击解除",
     modal_edit: "编辑", modal_configure: "配置",
@@ -5807,69 +5812,115 @@ document.addEventListener("keydown", (e) => {
 // In Profit, In Loss) only while hovering a histogram bar. Replaces the
 // always-visible side panel that lived in #stats-stack.
 // ───────────────────────────────────────────────────────────────────────────
-function _renderHoverStats(stack, currentDateStr) {
-  // Build one stat-box per visible profile indicator with stats data.
-  // Every label visible to the user is pulled through _t() so the popup
-  // matches the active language (Spot, Total, Bins, Y-cap, In Profit,
-  // In Loss, error/empty messages). Indicator displayNames go through
-  // _translateIndicatorName which preserves acronyms.
+function _renderHoverStats(stack, param, currentDateStr) {
+  // Per-bar hover stats matching version 1's URPD/SOPD tooltip — show
+  // the price under the cursor, the bar's value, and (for stacked
+  // indicators) the per-cohort breakdown at that price. Reads
+  // `param.seriesData` for each indicator's series; the bar value
+  // already aligns to the cursor x because LWC snaps to the nearest
+  // data point.
+  if (!param || !param.point || !param.seriesData || param.seriesData.size === 0) {
+    return false;
+  }
   const _trans = (typeof _translateIndicatorName === "function")
     ? _translateIndicatorName : (s => s);
   const _tt = (k, fallback) => (typeof _t === "function") ? (_t(k) || fallback) : fallback;
+  const fmtPrice = (p) =>
+    "$" + Math.round(p).toLocaleString("en-US");
+  // The histogram uses time = price, so param.time IS the hovered price.
+  const hoveredPrice = (typeof param.time === "number") ? param.time : 0;
   let html = "";
+  let renderedAny = false;
   for (const ind of activeIndicators.values()) {
     if (!(ind instanceof ProfileHistogramIndicator)) continue;
     if (ind.visible === false) continue;
     const s = ind._stats;
     if (!s) continue;
     const dispName = _trans(ind.displayName());
+    const dateStr = s.dateStr || currentDateStr || "";
     if (s.error) {
       html += `<div class="stat-box"><div class="title-row">` +
         `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
         `<span class="name">${dispName}</span></div>` +
         `<div style="color:#ff5c5c">${_tt("hs_err","err")}: ${s.error}</div></div>`;
+      renderedAny = true;
       continue;
     }
     if (s.empty) {
       html += `<div class="stat-box"><div class="title-row">` +
         `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
         `<span class="name">${dispName}</span></div>` +
-        `<div style="color:#666">${_tt("hs_no_data","no data for")} ${s.dateStr}</div></div>`;
+        `<div style="color:#666">${_tt("hs_no_data","no data for")} ${dateStr}</div></div>`;
+      renderedAny = true;
       continue;
     }
-    const capLine = (s.yCapPct && s.yCapValue != null)
-      ? `<div><span class="label">${_tt("hs_ycap","Y-cap")}</span> <span class="value">p${s.yCapPct} = ${s.fmtCount(s.yCapValue)}</span></div>`
-      : "";
-    // Defensive coalescing — stacked indicators don't carry binCount,
-    // pctProfit, profit, loss; missing-field crashes here would break
-    // LWC's render loop and silently kill all primitives. `spot` is now
-    // always present, but other fields may not be.
-    const spotStr = (typeof s.spot === "number")
-      ? s.spot.toLocaleString("en-US", { maximumFractionDigits: 0 })
-      : "—";
-    const binsStr = (typeof s.binCount === "number") ? s.binCount : "—";
-    const pctP = (typeof s.pctProfit === "number") ? s.pctProfit : null;
-    const pctL = (pctP != null) ? (100 - pctP) : null;
-    const profitLine = (pctP != null && typeof s.profit === "number")
-      ? `<div><span class="profit">${_tt("in_profit","In Profit")} ${pctP.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>`
-      : "";
-    const lossLine = (pctL != null && typeof s.loss === "number")
-      ? `<div><span class="loss">${_tt("in_loss","In Loss")} ${pctL.toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>`
-      : "";
-    html += `<div class="stat-box"><div class="title-row">` +
-      `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
-      `<span class="name">${dispName}</span>` +
-      `<span class="date">${s.dateStr}</span></div>` +
-      `<div><span class="label">${_tt("hs_spot","Spot")}</span> <span class="value">$${spotStr}</span></div>` +
-      `<div><span class="label">${_tt("hs_total","Total")}</span> <span class="value">${s.fmtCount(s.total)}</span> &nbsp;` +
-        `<span class="label">${_tt("hs_bins","Bins")}</span> <span class="value">${binsStr}</span></div>` +
-      capLine +
-      profitLine +
-      lossLine +
-      `</div>`;
+    const fmtCount = (typeof s.fmtCount === "function")
+      ? s.fmtCount : ((n) => String(n));
+    // Stacked: cohort-decomposed bar at the hovered price.
+    if (s.stacked && Array.isArray(ind.series) && ind.series.length > 0) {
+      const N = ind.series.length;
+      const vals = ind.series.map(srs => {
+        const d = param.seriesData.get(srs);
+        return (d && typeof d.value === "number") ? d.value : 0;
+      });
+      // Reconstruct per-cohort solo weight from cumulative tops:
+      //   this.series[i] holds cum[N-1-i] (i=0 → full stack, i=N-1 →
+      //   cohort 0 alone). solo[k] = cum[k] - cum[k-1] (cum[-1]=0).
+      const solo = new Array(N);
+      for (let k = 0; k < N; k++) {
+        solo[k] = vals[N-1-k] - (k > 0 ? vals[N-k] : 0);
+      }
+      const total = vals[0] || 0;
+      if (total <= 0) continue;  // no bars at this price
+      const labels = s.cohortLabels || [];
+      const colors = s.cohortColors || [];
+      let cohortLines = "";
+      for (let k = 0; k < N; k++) {
+        if (!(solo[k] > 0)) continue;
+        const c = colors[k] || "#888";
+        const lbl = labels[k] || `cohort ${k}`;
+        cohortLines += `<div><span class="swatch" style="background:${c}"></span> ` +
+          `<span class="label">${lbl}</span> ` +
+          `<span class="value">${fmtCount(solo[k])}</span></div>`;
+      }
+      html += `<div class="stat-box"><div class="title-row">` +
+        `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
+        `<span class="name">${dispName}</span>` +
+        `<span class="date">${dateStr}</span></div>` +
+        `<div><span class="label">${_tt("hs_price","Price")}</span> ` +
+        `<span class="value">${fmtPrice(hoveredPrice)}</span></div>` +
+        `<div><span class="label">${_tt("hs_total","Total")}</span> ` +
+        `<span class="value">${fmtCount(total)}</span></div>` +
+        cohortLines +
+        `</div>`;
+      renderedAny = true;
+      continue;
+    }
+    // Non-stacked profile: single series, per-bar value + profit/loss tag.
+    if (ind._series) {
+      const d = param.seriesData.get(ind._series);
+      const v = (d && typeof d.value === "number") ? d.value : 0;
+      if (!(v > 0)) continue;  // hovering a gap
+      const spot = (typeof s.spot === "number") ? s.spot : 0;
+      const isProfit = spot > 0 && hoveredPrice <= spot;
+      const tag = isProfit
+        ? `<span class="profit">${_tt("in_profit","In Profit")}</span>`
+        : `<span class="loss">${_tt("in_loss","In Loss")}</span>`;
+      html += `<div class="stat-box"><div class="title-row">` +
+        `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
+        `<span class="name">${dispName}</span>` +
+        `<span class="date">${dateStr}</span></div>` +
+        `<div><span class="label">${_tt("hs_price","Price")}</span> ` +
+        `<span class="value">${fmtPrice(hoveredPrice)}</span></div>` +
+        `<div><span class="label">${_tt("hs_value","Value")}</span> ` +
+        `<span class="value">${fmtCount(v)}</span></div>` +
+        `<div>${tag}</div>` +
+        `</div>`;
+      renderedAny = true;
+    }
   }
   stack.innerHTML = html;
-  return html.length > 0;
+  return renderedAny;
 }
 
 (function wireHistogramHover() {
@@ -5883,7 +5934,7 @@ function _renderHoverStats(stack, currentDateStr) {
     const hasSeriesData = param && param.seriesData && param.seriesData.size > 0;
     const inside = !!(param && param.point && hasSeriesData);
     if (!inside) { stack.classList.remove("show"); return; }
-    if (!_renderHoverStats(stack, currentDateStr)) {
+    if (!_renderHoverStats(stack, param, currentDateStr)) {
       stack.classList.remove("show");
       return;
     }
