@@ -4972,7 +4972,7 @@ const I18N = {
     // Hover-stats popup labels for histogram bars
     hs_spot: "Spot", hs_total: "Total", hs_bins: "Bins",
     hs_price: "Price", hs_value: "Value",
-    loss_at_price: "would be in Loss at this price",
+    at_this_price: "At this price", would_be_in_loss: "would be in Loss",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "no data for",
     // Bottom-pane keyboard navigation help (HTML — keys stay verbatim)
     nav_help_full: "To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable",
@@ -5035,7 +5035,7 @@ const I18N = {
     action_hide: "非表示", action_show: "表示", action_remove_btn: "削除",
     hs_spot: "スポット", hs_total: "合計", hs_bins: "ビン",
     hs_price: "価格", hs_value: "値",
-    loss_at_price: "がこの価格で含み損になります",
+    at_this_price: "この価格では", would_be_in_loss: "が含み損になります",
     hs_ycap: "Y上限", hs_err: "エラー", hs_no_data: "データなし:",
     nav_help_full: "BTC価格チャートをダブルクリックでトレーサー固定 · <kbd>A</kbd>/<kbd>←</kbd> または <kbd>D</kbd>/<kbd>→</kbd> でナビゲート · ダブルクリックで解除",
     modal_edit: "編集", modal_configure: "設定",
@@ -5094,7 +5094,7 @@ const I18N = {
     action_hide: "Masquer", action_show: "Afficher", action_remove_btn: "Retirer",
     hs_spot: "Cours", hs_total: "Total", hs_bins: "Bins",
     hs_price: "Prix", hs_value: "Valeur",
-    loss_at_price: "serait en perte à ce prix",
+    at_this_price: "À ce prix", would_be_in_loss: "serait en perte",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "aucune donnée pour",
     nav_help_full: "Double-cliquez sur le graphique BTC pour fixer le traceur · <kbd>A</kbd>/<kbd>←</kbd> ou <kbd>D</kbd>/<kbd>→</kbd> pour naviguer · double-clic pour désactiver",
     modal_edit: "Modifier", modal_configure: "Configurer",
@@ -5153,7 +5153,7 @@ const I18N = {
     action_hide: "پنهان کردن", action_show: "نمایش", action_remove_btn: "حذف",
     hs_spot: "اسپات", hs_total: "کل", hs_bins: "بازه‌ها",
     hs_price: "قیمت", hs_value: "مقدار",
-    loss_at_price: "در این قیمت در ضرر خواهد بود",
+    at_this_price: "در این قیمت", would_be_in_loss: "در ضرر خواهد بود",
     hs_ycap: "حد Y", hs_err: "خطا", hs_no_data: "بدون داده برای",
     nav_help_full: "برای فعال‌سازی، روی نمودار قیمت BTC دو بار کلیک کنید تا تریسر ثابت شود · <kbd>A</kbd>/<kbd>←</kbd> یا <kbd>D</kbd>/<kbd>→</kbd> برای حرکت · دو بار کلیک برای غیرفعال",
     modal_edit: "ویرایش", modal_configure: "پیکربندی",
@@ -5212,7 +5212,7 @@ const I18N = {
     action_hide: "隐藏", action_show: "显示", action_remove_btn: "移除",
     hs_spot: "现价", hs_total: "总计", hs_bins: "区间",
     hs_price: "价格", hs_value: "数值",
-    loss_at_price: "在此价格处于亏损",
+    at_this_price: "在此价格", would_be_in_loss: "处于亏损",
     hs_ycap: "Y 上限", hs_err: "错误", hs_no_data: "无数据:",
     nav_help_full: "双击 BTC 价格图固定追踪器 · 按 <kbd>A</kbd>/<kbd>←</kbd> 或 <kbd>D</kbd>/<kbd>→</kbd> 导航 · 双击解除",
     modal_edit: "编辑", modal_configure: "配置",
@@ -6086,13 +6086,15 @@ function _renderHoverStats(stack, param, currentDateStr) {
       }
       // Hover-projected loss — when the cursor is away from spot, show
       // the TOTAL % of supply that would be underwater if BTC sat at
-      // the hovered price (cost basis > hovered price). Strictly
-      // greater interpretation matches the at-spot loss line.
+      // the hovered price. Format: "At this price $X, Y.Y% (Z BTC)
+      // would be in Loss" — leads with the hover price so the reader
+      // can see at a glance which level the projection refers to.
       if (agg.hasHover) {
         const pct = (agg.total > 0) ? (100 * agg.lossAtHover / agg.total) : 0;
         out += `<div><span class="loss">` +
+          `${_tt("at_this_price", "At this price")} ${fmtPrice(hoveredPrice)}, ` +
           `${pct.toFixed(1)}% (${fmtCount(agg.lossAtHover)}) ` +
-          `${_tt("loss_at_price", "would be in Loss at this price")}` +
+          `${_tt("would_be_in_loss", "would be in Loss")}` +
           `</span></div>`;
       }
       return out;
