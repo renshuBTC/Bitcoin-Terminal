@@ -2411,6 +2411,107 @@ for (const c of _RP_COHORTS) {
 }
 
 // ───────────────────────────────────────────────────────────────────────────
+// Bottom-pane spot-price tracer — a short vertical dashed line drawn at the
+// histogram x-coordinate that maps to the current BTC price. The histogram
+// uses `time = price`, so x = timeScale.timeToCoordinate(spot). Renders in
+// the top portion of the pane only ("short" line) with a "BTC Price $..."
+// label so it reads at a glance while the user navigates dates. Hidden
+// while !_navMode or when no spot is available.
+//
+// Implements LWC v5's ISeriesPrimitive interface directly (rather than
+// extending PluginBase, which lives inside the drawings IIFE). Lifecycle
+// callbacks store the chart handle so the pane view can read pixel ratios
+// and the timeScale on every redraw.
+// ───────────────────────────────────────────────────────────────────────────
+class _BottomSpotPaneView {
+  constructor(source) { this._source = source; this._x = null; }
+  update() {
+    const src = this._source;
+    if (!src._chart || src._spot == null || src._spot <= 0) {
+      this._x = null;
+      return;
+    }
+    try { this._x = src._chart.timeScale().timeToCoordinate(src._spot); }
+    catch (e) { this._x = null; }
+  }
+  renderer() {
+    return new _BottomSpotRenderer(this._x, this._source._spot,
+      this._source._label);
+  }
+}
+class _BottomSpotRenderer {
+  constructor(x, spot, label) { this._x = x; this._spot = spot; this._label = label; }
+  draw(target) {
+    target.useBitmapCoordinateSpace(scope => {
+      if (this._x == null) return;
+      const ctx = scope.context;
+      const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+      const x = this._x * hpr;
+      const h = scope.bitmapSize.height;
+      // "Short" — line spans only the top 30% of the pane so it doesn't
+      // visually compete with the cohort stack underneath. Same colour
+      // as cycle / halving markers (rgba 255 255 255 0.85) for a unified
+      // chart-overlay look.
+      const y0 = 4 * vpr;
+      const y1 = h * 0.3;
+      ctx.strokeStyle = "rgba(255,255,255,0.85)";
+      ctx.lineWidth = Math.max(1, vpr | 0);
+      ctx.setLineDash([3 * vpr, 3 * vpr]);
+      ctx.beginPath();
+      ctx.moveTo(x, y0);
+      ctx.lineTo(x, y1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      // Label — "BTC Price $X". Positioned to the right of the line near
+      // the top, with a translucent black background so it reads against
+      // any cohort colour underneath.
+      const fontSize = 11 * vpr;
+      ctx.font = fontSize + "px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "top";
+      const text = this._label + " $" +
+        Math.round(this._spot).toLocaleString("en-US");
+      const padX = 4 * hpr, padY = 2 * vpr;
+      const w = ctx.measureText(text).width;
+      const labelX = x + 4 * hpr;
+      const labelY = y0;
+      ctx.fillStyle = "rgba(0,0,0,0.7)";
+      ctx.fillRect(labelX, labelY, w + padX * 2, fontSize + padY * 2 + 2 * vpr);
+      ctx.fillStyle = "rgba(255,255,255,0.95)";
+      ctx.fillText(text, labelX + padX, labelY + padY);
+    });
+  }
+}
+class BottomSpotPrimitive {
+  constructor(label) {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = null;
+    this._spot = null;
+    this._label = label || "BTC Price";
+    this._paneViews = [new _BottomSpotPaneView(this)];
+  }
+  attached({ chart, series, requestUpdate }) {
+    this._chart = chart;
+    this._series = series;
+    this._requestUpdate = requestUpdate;
+    if (this._requestUpdate) this._requestUpdate();
+  }
+  detached() {
+    this._chart = null;
+    this._series = null;
+    this._requestUpdate = null;
+  }
+  setSpot(spot) {
+    this._spot = (typeof spot === "number" && spot > 0) ? spot : null;
+    if (this._requestUpdate) this._requestUpdate();
+  }
+  setLabel(label) { this._label = label || "BTC Price"; }
+  updateAllViews() { this._paneViews.forEach(v => v.update()); }
+  paneViews() { return this._paneViews; }
+}
+
+// ───────────────────────────────────────────────────────────────────────────
 // Indicator: URPD Profile (point-in-time histogram, bottom pane)
 // ───────────────────────────────────────────────────────────────────────────
 // ───────────────────────────────────────────────────────────────────────────
@@ -2474,6 +2575,8 @@ class ProfileHistogramIndicator extends Indicator {
       if (this._series) {
         try { this._series.setData(this._emptyAnchorData()); } catch (e) {}
       }
+      // Hide the spot tracer too — no nav, no tracer.
+      if (this._spotPrim) this._spotPrim.setSpot(null);
       this._stats = null;
       return;
     }
@@ -2614,6 +2717,14 @@ class ProfileHistogramIndicator extends Indicator {
     } catch (e) {
       bottomChart.timeScale().fitContent();
     }
+    // Spot tracer — short vertical dashed line at the BTC price's
+    // x-coordinate on the histogram, with a "BTC Price $X" label. The
+    // primitive lives across date changes; we just re-attach to the
+    // newly-created series and update the spot value. Hidden when no
+    // spot is available.
+    if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
+    try { this._series.attachPrimitive(this._spotPrim); } catch (e) {}
+    this._spotPrim.setSpot(spot || null);
 
     // Stash per-indicator stats. The hover handler shows these in a small
     // tooltip near the cursor when the user mouses over a histogram bar
@@ -2795,6 +2906,8 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
       this._disposeStack();
       const anchor = this._addStackSeries("rgba(0,0,0,0)");
       try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+      // Hide spot tracer when nav mode is off.
+      if (this._spotPrim) this._spotPrim.setSpot(null);
       this._stats = null;
       return;
     }
@@ -2815,6 +2928,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
       this._disposeStack();
       const anchor = this._addStackSeries("rgba(0,0,0,0)");
       try { anchor.setData(this._emptyAnchorData()); } catch (e) {}
+      if (this._spotPrim) this._spotPrim.setSpot(null);
       this._stats = { empty: true, dateStr };
       return;
     }
@@ -2935,6 +3049,17 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
       bottomChart.timeScale().setVisibleRange({ from: 0, to: maxPrice });
     } catch (e) {
       bottomChart.timeScale().fitContent();
+    }
+
+    // Spot tracer — short vertical dashed line at the BTC price's
+    // x-coordinate on this stacked histogram, with a "BTC Price $X"
+    // label. Attaches to the first series we just rebuilt; survives
+    // date changes by re-attaching each pass.
+    const spot = getSpotForDate(dateStr) || 0;
+    if (this.series.length > 0) {
+      if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
+      try { this.series[0].attachPrimitive(this._spotPrim); } catch (e) {}
+      this._spotPrim.setSpot(spot || null);
     }
 
     // Stats — reused by the hover tooltip (same shape as the base class).
