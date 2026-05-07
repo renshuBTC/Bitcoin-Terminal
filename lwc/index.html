@@ -260,11 +260,13 @@ window.__loadMp4Muxer = function() {
   body.is-resizing-pane { user-select: none; cursor: row-resize !important; }
   body.is-resizing-pane * { cursor: row-resize !important; pointer-events: none; }
   body.is-resizing-pane #chart-divider { pointer-events: auto; }
-  /* Suppress the TradingView attribution logo even if the layout option leaves
-     it in the DOM. Targets all selector variants LWC has used across versions. */
-  #chart-top a[href*="tradingview"],
+  /* Suppress the TradingView attribution logo on the bottom URPD/SOPD
+     pane only — the top BTC price chart keeps it visible to satisfy the
+     Lightweight Charts NOTICE/Apache-2.0 attribution requirement for
+     the whole page. Targets all selector variants LWC has used across
+     versions in case the layout's `attributionLogo: false` option ever
+     leaves the link in the DOM. */
   #chart-bottom a[href*="tradingview"],
-  #chart-top [id*="tv-attr"],
   #chart-bottom [id*="tv-attr"] { display: none !important; }
 
   /* Click-locked date tracer — a small dot that sits on the BTC price line
