@@ -7074,13 +7074,12 @@ applyPriceScale();
     // - SpotPriceLineIndicator is the hidden helper that drives the
     //   click-locked tracer's vertical line; it isn't user-visible in
     //   the picker (HIDDEN_FROM_PICKER) but the tracer needs it.
-    // - The three Realised Price lines + URPD History give the user
-    //   the same first-paint view shown in the bitcointerminal.net
-    //   reference layout.
+    // - STH Realised Price (top pane) + URPD P/L BTC (bottom pane) is
+    //   the requested default first-paint pair: a single top-pane line
+    //   alongside the P/L histogram, leaving plenty of headroom for
+    //   the user to add what they want.
     const inds = [
       new SpotPriceLineIndicator(),
-      new RealisedPriceIndicator(),
-      new LTHRealisedPriceIndicator(),
       new STHRealisedPriceIndicator(),
       new URPDProfileIndicator(),
     ];
