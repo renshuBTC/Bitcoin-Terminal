@@ -4791,6 +4791,10 @@ const DrawingsManager = (() => {
   let _activeTool = null;  // null = cursor mode; otherwise tool id
   let _pending    = null;  // { tool, points: [{time, price}] } during multi-click drawing
   let _idSeq      = 1;
+  // Currently-selected drawing id (set when the plugin fires
+  // "drawing:selected"). Backspace/Delete removes whichever drawing
+  // is in this slot.
+  let _selectedId = null;
 
   // ── Coordinate helpers ─────────────────────────────────────────────
   // Used to translate viewport pixel coords into (time, price) pairs
@@ -4837,6 +4841,23 @@ const DrawingsManager = (() => {
       pluginMgr = new PLUGIN.DrawingManager();
       pluginMgr.attach(topChart, series, wrap);
       console.log("[drawings] DrawingManager attached");
+      // Subscribe to selection events so the keyboard handler knows
+      // which drawing to delete on Backspace/Delete. The exact event
+      // names + payload shapes aren't documented; we try the common
+      // ones and dig out the id defensively.
+      const _trackSelected = (ev) => {
+        // Payload can be the id directly, an object with .id, or an
+        // object with .drawing.id. Cover all three.
+        if (!ev) { _selectedId = null; return; }
+        if (typeof ev === "string" || typeof ev === "number") { _selectedId = ev; return; }
+        if (ev.id != null) { _selectedId = ev.id; return; }
+        if (ev.drawing && ev.drawing.id != null) { _selectedId = ev.drawing.id; return; }
+        _selectedId = null;
+      };
+      const _clearSelected = () => { _selectedId = null; };
+      try { pluginMgr.on && pluginMgr.on("drawing:selected",   _trackSelected); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:deselected", _clearSelected); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:created",    _trackSelected); } catch (e) {}
       _loadFromLS();
       return true;
     } catch (e) {
@@ -5098,6 +5119,27 @@ const DrawingsManager = (() => {
       if (_pending) { ev.preventDefault(); _pending = null; setActiveTool("cursor"); }
     });
   }
+
+  // ── Backspace / Delete to remove the selected drawing ──────────────
+  // Listens at the document level so the user can have focus on the
+  // chart canvas, the SVG overlay, or the body. Skipped when the user
+  // is typing in an input/textarea, when a modifier key is held, or
+  // when the user is mid-draw (placing points). After deletion we
+  // also clear `_selectedId` so a second Backspace press doesn't try
+  // to remove an already-gone drawing.
+  document.addEventListener("keydown", (ev) => {
+    if (ev.key !== "Backspace" && ev.key !== "Delete") return;
+    if (_pending) return;  // mid-draw — let other handlers deal with the key
+    const tag = (ev.target && ev.target.tagName) || "";
+    if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+    if (ev.target && ev.target.isContentEditable) return;
+    if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+    if (!_selectedId) return;
+    ev.preventDefault();
+    const id = _selectedId;
+    _selectedId = null;
+    remove(id);
+  });
 
   // ── Reflow on chart pan/zoom/resize ────────────────────────────────
   // The plugin handles canvas-level repaints itself; we only need to
@@ -5646,19 +5688,12 @@ const _I18N_TARGETS = [
   { sel: '#credit-line span[data-i18n="credit_inspired_by"]', key: "credit_inspired_by", mode: "text" },
   { sel: '#credit-line span[data-i18n="credit_follow_me"]', key: "credit_follow_me", mode: "text" },
   // Left drawing toolbar — title attributes on each tool button.
+  // Single-tool buttons (cursor + clear). Per-tool tooltips now live
+  // on the popover rows (rendered dynamically by DrawingsManager) and
+  // category-button tooltips are set inline in the HTML — no need to
+  // bind those here.
   { sel: '#left-toolbar .lt-tool[data-tool="cursor"]', key: "dt_cursor", mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="trend"]',  key: "dt_trend",  mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="hline"]',  key: "dt_hline",  mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="vline"]',  key: "dt_vline",  mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="rect"]',   key: "dt_rect",   mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="fib"]',    key: "dt_fib",    mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="text"]',     key: "dt_text",     mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="ray"]',      key: "dt_ray",      mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="parallel"]', key: "dt_parallel", mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="pitchfork"]',key: "dt_pitchfork",mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="gann"]',     key: "dt_gann",     mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="fibext"]',   key: "dt_fibext",   mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="clear"]',    key: "dt_clear",    mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="clear"]',  key: "dt_clear",  mode: "title" },
 ];
 
 // Translate the cycle dropdown items (text changes Cycle 1 Top → サイクル 1 天井, etc.)
