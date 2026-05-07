@@ -8,6 +8,40 @@
 <link rel="preconnect" href="https://unpkg.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Source+Code+Pro:wght@400;700&family=Roboto+Condensed:wght@700&display=swap">
 <script src="https://unpkg.com/lightweight-charts@5.0.0/dist/lightweight-charts.standalone.production.js"></script>
+<!-- deepentropy/lightweight-charts-drawing v0.1.1 — UMD bundle.
+     This is a probe-stage integration: the plugin loads but is not yet
+     wired to the toolbar. After the page boots, the snippet below
+     scans `window` for the plugin's global namespace and logs what it
+     finds to the console so we can write the real wiring.
+     If this script 404s or fails to expose anything useful, the
+     in-house DrawingsManager continues to work unchanged. -->
+<script src="https://unpkg.com/lightweight-charts-drawing@0.1.1/dist/lightweight-charts-drawing.umd.js"
+        onerror="console.warn('[lwc-drawing] UMD failed to load from unpkg');"></script>
+<script>
+  // Probe: log every plausible global name once the page is interactive.
+  // The user can run `window.__lwcDrawingProbe()` in the console at any
+  // time to re-run the probe (helpful if loading is slow).
+  window.__lwcDrawingProbe = function () {
+    const candidates = [
+      "LightweightChartsDrawing","lightweightChartsDrawing","lwcDrawing",
+      "LWCDrawing","LCD","LightweightCharts","lightweightCharts",
+    ];
+    const found = {};
+    for (const k of candidates) {
+      const v = window[k];
+      if (!v) continue;
+      const keys = (typeof v === "object" || typeof v === "function")
+        ? Object.keys(v) : [];
+      found[k] = { type: typeof v, keys };
+    }
+    // Also list any window keys that smell like the plugin
+    const sniff = Object.keys(window).filter(k =>
+      /^(Drawing|TrendLine|FibRetracement|getToolRegistry)/i.test(k));
+    console.log("[lwc-drawing] global probe:", found, "loose matches:", sniff);
+    return found;
+  };
+  window.addEventListener("load", () => setTimeout(window.__lwcDrawingProbe, 100));
+</script>
 <!-- html2canvas for PNG export. Loaded on first click via dynamic import to avoid up-front cost. -->
 <script>
 window.__loadHtml2canvas = function() {
