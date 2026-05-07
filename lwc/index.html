@@ -5067,14 +5067,43 @@ const DrawingsManager = (() => {
   function _logRegistry() {
     if (!HAS_PLUGIN) return;
     try {
-      const reg = (typeof PLUGIN.getToolRegistry === "function")
-        ? PLUGIN.getToolRegistry() : null;
-      const all = reg && typeof reg.getAllTools === "function" ? reg.getAllTools() : null;
-      console.log("[drawings] tool registry sample (first 3):",
-        all && all.slice ? all.slice(0, 3) : all);
-      console.log("[drawings] TOOL_DEFINITIONS sample (first 3 keys):",
-        PLUGIN.TOOL_DEFINITIONS ? Object.keys(PLUGIN.TOOL_DEFINITIONS).slice(0, 3) : "(undefined)");
-      console.log("[drawings] TrendLine.name (minified) =", PLUGIN.TrendLine && PLUGIN.TrendLine.name);
+      const td = PLUGIN.TOOL_DEFINITIONS;
+      console.log("[drawings] TOOL_DEFINITIONS type:", typeof td,
+        "isArray:", Array.isArray(td),
+        "value:", td);
+      if (td) {
+        const keys = Array.isArray(td)
+          ? td.map((_, i) => i)
+          : Object.keys(td);
+        console.log("[drawings] TOOL_DEFINITIONS has", keys.length, "entries; first key/index:", keys[0]);
+        // Dump the full FIRST entry so we see its shape (id? name? class?).
+        const firstEntry = td[keys[0]];
+        console.log("[drawings] first entry:", firstEntry,
+          "→ keys:", firstEntry && typeof firstEntry === "object" ? Object.keys(firstEntry) : "(primitive)");
+        // Try to locate the TrendLine entry, however the plugin keys it.
+        let trendKey = null, trendDef = null;
+        for (const k of keys) {
+          const v = td[k];
+          if (!v) continue;
+          if (v === PLUGIN.TrendLine) { trendKey = k; trendDef = v; break; }
+          if (v.class === PLUGIN.TrendLine) { trendKey = k; trendDef = v; break; }
+          if (v.constructor === PLUGIN.TrendLine) { trendKey = k; trendDef = v; break; }
+          if (v.tool === PLUGIN.TrendLine) { trendKey = k; trendDef = v; break; }
+          if (v.name === "TrendLine") { trendKey = k; trendDef = v; break; }
+          if (v.id === "TrendLine" || v.id === "trendLine" || v.id === "trend-line") { trendKey = k; trendDef = v; break; }
+        }
+        console.log("[drawings] TrendLine entry — key:", trendKey, "def:", trendDef);
+      }
+      // Also try the registry one more time, post-attach.
+      try {
+        const reg = (typeof PLUGIN.getToolRegistry === "function") ? PLUGIN.getToolRegistry() : null;
+        console.log("[drawings] getToolRegistry() →", reg);
+        if (reg && typeof reg.getAllTools === "function") {
+          const all = reg.getAllTools();
+          console.log("[drawings] registry has", all && all.length, "tools; first:", all && all[0]);
+        }
+      } catch (e) { console.warn("[drawings] getToolRegistry threw:", e); }
+      console.log("[drawings] TrendLine class:", PLUGIN.TrendLine, "minified name:", PLUGIN.TrendLine && PLUGIN.TrendLine.name);
     } catch (e) { console.warn("[drawings] registry probe failed:", e); }
   }
   // Resolve a TOOL_GROUPS class → the canonical tool identifier the
