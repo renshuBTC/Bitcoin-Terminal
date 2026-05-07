@@ -7236,6 +7236,12 @@ applyPriceScale();
     // the BTC price chart to "lock" a tracer date. Picks the saved-state
     // date if one's present and valid, otherwise the latest available
     // data date (which is today for fresh data).
+    //
+    // After entering nav mode we ALSO await the indicator fetches via
+    // setCurrentDateAwait — the synchronous setCurrentDate that
+    // enterNavMode triggers returns immediately, so without the await
+    // the user could see an empty histogram for a frame before the
+    // URPD response lands.
     if (priceDateStrs && priceDateStrs.length > 0) {
       const latestDate = priceDateStrs[priceDateStrs.length - 1];
       const navDate = (savedState && savedState.d &&
@@ -7243,6 +7249,8 @@ applyPriceScale();
         ? savedState.d : latestDate;
       try { enterNavMode(navDate); }
       catch (e) { console.warn("auto enterNavMode:", e); }
+      try { await setCurrentDateAwait(navDate); }
+      catch (e) { console.warn("await histogram render:", e); }
     }
     refreshIndicatorPanel();
   } catch (e) {
