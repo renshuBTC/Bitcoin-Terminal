@@ -4299,23 +4299,20 @@ function openAddModal() {
       return;
     }
 
-    // Cap: only one bottom-pane indicator allowed at a time. The chart
-    // architecture supports just two visible panes (BTC top + URPD-style
-    // bottom); adding a 2nd bottom-pane indicator would require a 3rd
-    // pane, which we don't render. Refuse with a status hint so the
-    // user knows to remove the current one before swapping.
+    // Only one bottom-pane indicator at a time — the chart has just two
+    // visible panes (BTC top + URPD-style bottom). Picking a new bottom
+    // indicator AUTO-REPLACES the current one rather than refusing,
+    // since manually removing then re-adding is a tedious 2-step.
     if (T.pane === "bottom") {
-      let bottomCount = 0;
+      const toRemove = [];
       for (const ind of activeIndicators.values()) {
-        if (ind.pane() === "bottom") bottomCount++;
+        if (ind.pane() === "bottom") toRemove.push(ind);
       }
-      if (bottomCount >= 1) {
-        // Picker stays open — user explicitly asked to keep it open until
-        // they hit X — so we just surface the cap as a status hint.
-        const cap2Msg = (typeof _t === "function") ? _t("only_2_panels") : "Only 2 panels allowed at a time";
-        document.getElementById("status").textContent = cap2Msg;
-        return;
+      for (const ind of toRemove) {
+        try { ind.remove(); } catch (e) { console.warn("auto-replace remove:", e); }
+        activeIndicators.delete(ind.id);
       }
+      if (toRemove.length > 0) refreshIndicatorPanel();
     }
 
     // Otherwise: add a fresh instance. Picker stays open so users can add
