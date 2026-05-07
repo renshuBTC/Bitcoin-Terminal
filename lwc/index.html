@@ -2433,7 +2433,6 @@ class _BottomSpotPaneView {
     const src = this._source;
     if (!src._chart || src._spot == null || src._spot <= 0) {
       this._x = null;
-      console.log("[btspot] update: no chart/spot", { hasChart: !!src._chart, spot: src._spot });
       return;
     }
     try {
@@ -2444,24 +2443,11 @@ class _BottomSpotPaneView {
       const ts = src._chart.timeScale();
       const range = ts.getVisibleRange();
       const w = ts.width();
-      if (!range || !w || range.to === range.from) {
-        this._x = null;
-        console.log("[btspot] update: no visible range / width", { range, w });
-        return;
-      }
+      if (!range || !w || range.to === range.from) { this._x = null; return; }
       const prop = (src._spot - range.from) / (range.to - range.from);
-      if (prop < 0 || prop > 1) {
-        // Spot is panned outside the visible window; line correctly hidden.
-        this._x = null;
-        console.log("[btspot] update: spot out of visible range", { spot: src._spot, range });
-        return;
-      }
+      if (prop < 0 || prop > 1) { this._x = null; return; }
       this._x = prop * w;
-      console.log("[btspot] update: spot=" + src._spot + " range=" + range.from + "→" + range.to + " w=" + w + " -> x=" + this._x);
-    } catch (e) {
-      this._x = null;
-      console.log("[btspot] update: getVisibleRange threw", e);
-    }
+    } catch (e) { this._x = null; }
   }
   renderer() {
     return new _BottomSpotRenderer(this._x, this._source._spot,
@@ -2471,19 +2457,21 @@ class _BottomSpotPaneView {
 class _BottomSpotRenderer {
   constructor(x, spot, label) { this._x = x; this._spot = spot; this._label = label; }
   draw(target) {
-    console.log("[btspot] draw called, x=" + this._x + " spot=" + this._spot);
     target.useBitmapCoordinateSpace(scope => {
       if (this._x == null) return;
       const ctx = scope.context;
       const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
       const x = this._x * hpr;
       const h = scope.bitmapSize.height;
-      // "Short" — line spans only the top 30% of the pane so it doesn't
-      // visually compete with the cohort stack underneath. Same colour
-      // as cycle / halving markers (rgba 255 255 255 0.85) for a unified
-      // chart-overlay look.
-      const y0 = 4 * vpr;
-      const y1 = h * 0.32;
+      // Short line anchored at the BOTTOM (x-axis), extending up ~22%
+      // of the pane. The label sits just above the top of the line so
+      // it tracks the line's height and stays out of the cohort bars.
+      const fontSize = 11 * vpr;
+      const padX = 4 * hpr, padY = 2 * vpr;
+      const labelBoxH = fontSize + padY * 2 + 2 * vpr;
+      const lineHeight = h * 0.22;
+      const y1 = h;                     // bottom of pane (= x-axis)
+      const y0 = y1 - lineHeight;       // top of dashed line
       ctx.strokeStyle = "#ffffff";
       ctx.lineWidth = Math.max(1.5, 1.5 * vpr);
       ctx.setLineDash([4 * vpr, 3 * vpr]);
@@ -2492,21 +2480,18 @@ class _BottomSpotRenderer {
       ctx.lineTo(x, y1);
       ctx.stroke();
       ctx.setLineDash([]);
-      // Label — "BTC Price $X". Positioned to the right of the line near
-      // the top, with a translucent black background so it reads against
-      // any cohort colour underneath.
-      const fontSize = 11 * vpr;
+      // Label — "BTC Price $X". Sits just above the top of the line so
+      // it tracks the line and doesn't bleed into the cohort bars.
       ctx.font = fontSize + "px sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
       const text = this._label + " $" +
         Math.round(this._spot).toLocaleString("en-US");
-      const padX = 4 * hpr, padY = 2 * vpr;
       const w = ctx.measureText(text).width;
       const labelX = x + 4 * hpr;
-      const labelY = y0;
+      const labelY = y0 - labelBoxH - 2 * vpr;
       ctx.fillStyle = "rgba(0,0,0,0.7)";
-      ctx.fillRect(labelX, labelY, w + padX * 2, fontSize + padY * 2 + 2 * vpr);
+      ctx.fillRect(labelX, labelY, w + padX * 2, labelBoxH);
       ctx.fillStyle = "rgba(255,255,255,0.95)";
       ctx.fillText(text, labelX + padX, labelY + padY);
     });
@@ -2752,14 +2737,8 @@ class ProfileHistogramIndicator extends Indicator {
     // primitive lives across date changes; we just re-attach to the
     // newly-created series and update the spot value. Hidden when no
     // spot is available.
-    console.log("[btspot] profile attach: spot=" + spot + " dateStr=" + dateStr);
     if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
-    try {
-      this._series.attachPrimitive(this._spotPrim);
-      console.log("[btspot] profile attach OK");
-    } catch (e) {
-      console.warn("[btspot] profile attach FAILED:", e);
-    }
+    try { this._series.attachPrimitive(this._spotPrim); } catch (e) {}
     this._spotPrim.setSpot(spot || null);
 
     // Stash per-indicator stats. The hover handler shows these in a small
@@ -3095,16 +3074,10 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     // even that series. Attaching to series[0] would draw the line
     // under the later-drawn cohort series and stay hidden.
     const spot = getSpotForDate(dateStr) || 0;
-    console.log("[btspot] stacked attach: series.length=" + this.series.length + " spot=" + spot + " dateStr=" + dateStr);
     if (this.series.length > 0) {
       if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
       const hostSeries = this.series[this.series.length - 1];
-      try {
-        hostSeries.attachPrimitive(this._spotPrim);
-        console.log("[btspot] stacked attach OK on last series");
-      } catch (e) {
-        console.warn("[btspot] stacked attach FAILED:", e);
-      }
+      try { hostSeries.attachPrimitive(this._spotPrim); } catch (e) {}
       this._spotPrim.setSpot(spot || null);
     }
 
