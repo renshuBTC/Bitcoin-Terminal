@@ -5826,6 +5826,16 @@ let _suppressHistory = false;
 let _lastRecordedState = null;
 
 function snapshotState() {
+  // Drawings live in the global undo/redo stack alongside the rest of
+  // the chart state. The drawings IIFE exposes window.__drawings.snapshot()
+  // as the serialization hook; if it's not yet attached (early init), we
+  // skip drawings so the snapshot is still useful for indicator state.
+  let dr = [];
+  try {
+    if (window.__drawings && typeof window.__drawings.snapshot === "function") {
+      dr = window.__drawings.snapshot();
+    }
+  } catch (e) {}
   return {
     v: 2,
     d: currentDateStr,
@@ -5835,6 +5845,7 @@ function snapshotState() {
     ind: [...activeIndicators.values()]
       .filter(ind => ind.constructor.type !== "btc_price")
       .map(ind => ({ t: ind.constructor.type, c: ind.config, h: ind.visible === false ? 1 : 0 })),
+    dr: dr,
   };
 }
 
@@ -5906,6 +5917,15 @@ async function applyState(state) {
       }
     }
     _origRefreshPanel();
+    // Restore drawings to whatever the snapshot recorded. The
+    // drawings IIFE's restore() handles clear-then-rebuild from the
+    // serialized array. Wrapped in try/catch so undo never blows up
+    // if the IIFE isn't attached yet.
+    try {
+      if (window.__drawings && typeof window.__drawings.restore === "function") {
+        window.__drawings.restore(state.dr || []);
+      }
+    } catch (e) { console.warn("apply: drawings restore", e); }
   } finally {
     _suppressHistory = false;
   }
@@ -6712,15 +6732,26 @@ applyPriceScale();
 })();
 
 // ───────────────────────────────────────────────────────────────────────────
-// Drawing tools — Stage 1 of the staged plan: rebuild the creation
-// foundation. Built directly on TradingView's official
-// rectangle-drawing-tool pattern (plugin-examples/src/plugins/
-// rectangle-drawing-tool/) — uses LWC's own subscribeClick + primitive
-// API, no DOM event-routing fights.
+// Drawing tools — Stages 1 + 2 of the staged plan.
 //
-// Stage 1 ships creation only (4 base tools). Stage 2 will add
-// selection/drag/delete/undo. Stage 3 adds Tier 1 tools (ray, fib, text).
-// Stage 4 adds Tier 2 plugins (anchored text, delta tooltip, shading).
+// Stage 1: Creation pipeline (toolbar + 4 base tools — trend, hline,
+//   vline, rect). Built on TradingView's official rectangle-drawing-tool
+//   pattern: chart.subscribeClick + chart.subscribeCrosshairMove for
+//   click capture, series.attachPrimitive for canvas rendering.
+//
+// Stage 2: Editing layer.
+//   - Hit-test: each drawing exposes hitTest(x, y) returning true if
+//     the pixel position is on/near the drawing.
+//   - Selection: click in cursor mode → topmost hit becomes _selected,
+//     renders with white anchor handles + brighter color.
+//   - Drag: mousedown on selected drawing (capture phase, before LWC's
+//     pan listener) → disable chart scroll → track delta on document
+//     mousemove → mouseup re-enables scroll + records undo step.
+//   - Backspace/Delete: removes _selected (when not mid-draw).
+//   - Esc: cancels in-progress drawing.
+//   - Undo/Redo: window.__drawings.snapshot()/.restore() are wired into
+//     the existing snapshotState/applyState so Ctrl+Z reverses creates,
+//     drags, and deletes alongside indicator changes.
 // ───────────────────────────────────────────────────────────────────────────
 (function setupDrawings() {
   // ── Helpers (ported from plugin-examples/src/helpers) ───────────────
@@ -6738,11 +6769,15 @@ applyPriceScale();
   }
 
   // ── PluginBase (port of plugin-examples/src/plugins/plugin-base.ts) ──
+  // Extended with `_selected` state used by Stage-2 drag/edit. All
+  // drawings inherit it; their renderers paint anchor handles when
+  // `_selected === true`.
   class PluginBase {
     constructor() {
       this._chart = null;
       this._series = null;
       this._requestUpdate = null;
+      this._selected = false;
     }
     attached(param) {
       this._chart = param.chart;
@@ -6756,15 +6791,50 @@ applyPriceScale();
       this._requestUpdate = null;
     }
     requestUpdate() { if (this._requestUpdate) this._requestUpdate(); }
+    setSelected(sel) {
+      this._selected = !!sel;
+      this.requestUpdate();
+    }
     get chart() { return this._chart; }
     get series() { return this._series; }
   }
 
-  // ── Rectangle (verbatim port from rectangle-drawing-tool.ts) ────────
+  // ── Hit-test + handle-rendering helpers ───────────────────────────
+  // distToSegment: shortest distance from point (px, py) to line
+  // segment (x1, y1)–(x2, y2). Used by line-style hit-tests with a
+  // small tolerance (we treat clicks within 6px as a hit so users
+  // don't need pixel-perfect aim).
+  function distToSegment(px, py, x1, y1, x2, y2) {
+    const dx = x2 - x1, dy = y2 - y1;
+    const len2 = dx * dx + dy * dy;
+    if (len2 === 0) return Math.hypot(px - x1, py - y1);
+    const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / len2));
+    const cx = x1 + t * dx, cy = y1 + t * dy;
+    return Math.hypot(px - cx, py - cy);
+  }
+  // drawHandle: paints a small white-fill, orange-stroke circle at
+  // (xMedia, yMedia). Coordinates passed in MEDIA pixels — the helper
+  // multiplies by the canvas's pixel ratios. Called only from the
+  // renderers' draw() methods, which already have a CanvasRenderingTarget2D
+  // scope around them.
+  function drawHandle(ctx, xMedia, yMedia, hpr, vpr) {
+    const r = 4 * Math.max(hpr, vpr);
+    const x = xMedia * hpr, y = yMedia * vpr;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, 2 * Math.PI);
+    ctx.fillStyle = "#fff";
+    ctx.fill();
+    ctx.strokeStyle = "#ff8c00";
+    ctx.lineWidth = 1.5 * Math.max(hpr, vpr);
+    ctx.stroke();
+  }
+
+  // ── Rectangle (port + Stage 2 editing methods) ──────────────────────
   class RectanglePaneRenderer {
-    constructor(p1, p2, fillColor, strokeColor) {
+    constructor(p1, p2, fillColor, strokeColor, selected) {
       this._p1 = p1; this._p2 = p2;
       this._fillColor = fillColor; this._strokeColor = strokeColor;
+      this._selected = selected;
     }
     draw(target) {
       target.useBitmapCoordinateSpace(scope => {
@@ -6777,8 +6847,16 @@ applyPriceScale();
         ctx.fillRect(hp.position, vp.position, hp.length, vp.length);
         if (this._strokeColor) {
           ctx.strokeStyle = this._strokeColor;
-          ctx.lineWidth = Math.max(1, scope.horizontalPixelRatio | 0);
+          ctx.lineWidth = Math.max(1, (this._selected ? 2 : 1) * scope.horizontalPixelRatio);
           ctx.strokeRect(hp.position, vp.position, hp.length, vp.length);
+        }
+        if (this._selected) {
+          // Four corner handles
+          const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+          drawHandle(ctx, this._p1.x, this._p1.y, hpr, vpr);
+          drawHandle(ctx, this._p2.x, this._p1.y, hpr, vpr);
+          drawHandle(ctx, this._p1.x, this._p2.y, hpr, vpr);
+          drawHandle(ctx, this._p2.x, this._p2.y, hpr, vpr);
         }
       });
     }
@@ -6792,7 +6870,8 @@ applyPriceScale();
     }
     renderer() {
       return new RectanglePaneRenderer(this._p1, this._p2,
-        this._source._options.fillColor, this._source._options.strokeColor);
+        this._source._options.fillColor, this._source._options.strokeColor,
+        this._source._selected);
     }
   }
   class Rectangle extends PluginBase {
@@ -6808,25 +6887,56 @@ applyPriceScale();
     updateAllViews() { this._paneViews.forEach(v => v.update()); }
     paneViews() { return this._paneViews; }
     updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+    // Stage 2 hooks
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return false;
+      const x1 = Math.min(v._p1.x, v._p2.x), x2 = Math.max(v._p1.x, v._p2.x);
+      const y1 = Math.min(v._p1.y, v._p2.y), y2 = Math.max(v._p1.y, v._p2.y);
+      return x >= x1 - 4 && x <= x2 + 4 && y >= y1 - 4 && y <= y2 + 4;
+    }
+    getCoords() {
+      const v = this._paneViews[0];
+      return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
+    }
+    applyDrag(orig, dx, dy) {
+      const ts = this.chart.timeScale(), s = this.series;
+      const t1 = ts.coordinateToTime(orig[0].x + dx);
+      const p1 = s.coordinateToPrice(orig[0].y + dy);
+      const t2 = ts.coordinateToTime(orig[1].x + dx);
+      const p2 = s.coordinateToPrice(orig[1].y + dy);
+      if (t1 != null && p1 != null && t2 != null && p2 != null) {
+        this._p1 = { time: t1, price: p1 };
+        this._p2 = { time: t2, price: p2 };
+        this.requestUpdate();
+      }
+    }
+    serialize() { return { kind: "rect", p1: this._p1, p2: this._p2 }; }
   }
 
-  // ── TrendLine ───────────────────────────────────────────────────────
+  // ── TrendLine (with Stage 2 editing) ────────────────────────────────
   class TrendLinePaneRenderer {
-    constructor(p1, p2, color, width) {
+    constructor(p1, p2, color, width, selected) {
       this._p1 = p1; this._p2 = p2; this._color = color; this._width = width;
+      this._selected = selected;
     }
     draw(target) {
       target.useBitmapCoordinateSpace(scope => {
         if (this._p1.x === null || this._p1.y === null ||
             this._p2.x === null || this._p2.y === null) return;
         const ctx = scope.context;
+        const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
         ctx.strokeStyle = this._color;
-        ctx.lineWidth = Math.max(1, Math.round(this._width * scope.verticalPixelRatio));
+        ctx.lineWidth = Math.max(1, Math.round((this._selected ? this._width + 1 : this._width) * vpr));
         ctx.lineCap = "round";
         ctx.beginPath();
-        ctx.moveTo(this._p1.x * scope.horizontalPixelRatio, this._p1.y * scope.verticalPixelRatio);
-        ctx.lineTo(this._p2.x * scope.horizontalPixelRatio, this._p2.y * scope.verticalPixelRatio);
+        ctx.moveTo(this._p1.x * hpr, this._p1.y * vpr);
+        ctx.lineTo(this._p2.x * hpr, this._p2.y * vpr);
         ctx.stroke();
+        if (this._selected) {
+          drawHandle(ctx, this._p1.x, this._p1.y, hpr, vpr);
+          drawHandle(ctx, this._p2.x, this._p2.y, hpr, vpr);
+        }
       });
     }
   }
@@ -6839,7 +6949,8 @@ applyPriceScale();
     }
     renderer() {
       return new TrendLinePaneRenderer(this._p1, this._p2,
-        this._source._options.color, this._source._options.width);
+        this._source._options.color, this._source._options.width,
+        this._source._selected);
     }
   }
   class TrendLine extends PluginBase {
@@ -6852,18 +6963,50 @@ applyPriceScale();
     updateAllViews() { this._paneViews.forEach(v => v.update()); }
     paneViews() { return this._paneViews; }
     updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return false;
+      return distToSegment(x, y, v._p1.x, v._p1.y, v._p2.x, v._p2.y) < 6;
+    }
+    getCoords() {
+      const v = this._paneViews[0];
+      return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
+    }
+    applyDrag(orig, dx, dy) {
+      const ts = this.chart.timeScale(), s = this.series;
+      const t1 = ts.coordinateToTime(orig[0].x + dx);
+      const p1 = s.coordinateToPrice(orig[0].y + dy);
+      const t2 = ts.coordinateToTime(orig[1].x + dx);
+      const p2 = s.coordinateToPrice(orig[1].y + dy);
+      if (t1 != null && p1 != null && t2 != null && p2 != null) {
+        this._p1 = { time: t1, price: p1 };
+        this._p2 = { time: t2, price: p2 };
+        this.requestUpdate();
+      }
+    }
+    serialize() { return { kind: "trend", p1: this._p1, p2: this._p2 }; }
   }
 
-  // ── HorizontalLine ──────────────────────────────────────────────────
+  // ── HorizontalLine (with Stage 2 editing) ──────────────────────────
   class HLinePaneRenderer {
-    constructor(y, color, width) { this._y = y; this._color = color; this._width = width; }
+    constructor(y, color, width, selected) {
+      this._y = y; this._color = color; this._width = width; this._selected = selected;
+    }
     draw(target) {
       target.useBitmapCoordinateSpace(scope => {
         if (this._y === null) return;
         const ctx = scope.context;
-        const yPos = positionsLine(this._y, scope.verticalPixelRatio, this._width);
+        const yPos = positionsLine(this._y, scope.verticalPixelRatio,
+          this._selected ? this._width + 1 : this._width);
         ctx.fillStyle = this._color;
         ctx.fillRect(0, yPos.position, scope.bitmapSize.width, yPos.length);
+        if (this._selected) {
+          // Two handles at left and middle for grab affordance
+          const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+          const widthMedia = scope.bitmapSize.width / hpr;
+          drawHandle(ctx, widthMedia * 0.25, this._y, hpr, vpr);
+          drawHandle(ctx, widthMedia * 0.75, this._y, hpr, vpr);
+        }
       });
     }
   }
@@ -6871,7 +7014,8 @@ applyPriceScale();
     constructor(source) { this._source = source; this._y = null; }
     update() { this._y = this._source.series.priceToCoordinate(this._source._p.price); }
     renderer() {
-      return new HLinePaneRenderer(this._y, this._source._options.color, this._source._options.width);
+      return new HLinePaneRenderer(this._y, this._source._options.color,
+        this._source._options.width, this._source._selected);
     }
   }
   class HorizontalLine extends PluginBase {
@@ -6883,18 +7027,41 @@ applyPriceScale();
     }
     updateAllViews() { this._paneViews.forEach(v => v.update()); }
     paneViews() { return this._paneViews; }
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._y === null) return false;
+      return Math.abs(y - v._y) < 6;
+    }
+    getCoords() { return [{ x: 0, y: this._paneViews[0]._y }]; }
+    applyDrag(orig, dx, dy) {
+      const newPrice = this.series.coordinateToPrice(orig[0].y + dy);
+      if (newPrice != null) {
+        this._p = { time: this._p.time, price: newPrice };
+        this.requestUpdate();
+      }
+    }
+    serialize() { return { kind: "hline", p: this._p }; }
   }
 
-  // ── VerticalLine ────────────────────────────────────────────────────
+  // ── VerticalLine (with Stage 2 editing) ────────────────────────────
   class VLinePaneRenderer {
-    constructor(x, color, width) { this._x = x; this._color = color; this._width = width; }
+    constructor(x, color, width, selected) {
+      this._x = x; this._color = color; this._width = width; this._selected = selected;
+    }
     draw(target) {
       target.useBitmapCoordinateSpace(scope => {
         if (this._x === null) return;
         const ctx = scope.context;
-        const xPos = positionsLine(this._x, scope.horizontalPixelRatio, this._width);
+        const xPos = positionsLine(this._x, scope.horizontalPixelRatio,
+          this._selected ? this._width + 1 : this._width);
         ctx.fillStyle = this._color;
         ctx.fillRect(xPos.position, 0, xPos.length, scope.bitmapSize.height);
+        if (this._selected) {
+          const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+          const heightMedia = scope.bitmapSize.height / vpr;
+          drawHandle(ctx, this._x, heightMedia * 0.25, hpr, vpr);
+          drawHandle(ctx, this._x, heightMedia * 0.75, hpr, vpr);
+        }
       });
     }
   }
@@ -6902,7 +7069,8 @@ applyPriceScale();
     constructor(source) { this._source = source; this._x = null; }
     update() { this._x = this._source.chart.timeScale().timeToCoordinate(this._source._p.time); }
     renderer() {
-      return new VLinePaneRenderer(this._x, this._source._options.color, this._source._options.width);
+      return new VLinePaneRenderer(this._x, this._source._options.color,
+        this._source._options.width, this._source._selected);
     }
   }
   class VerticalLine extends PluginBase {
@@ -6914,6 +7082,20 @@ applyPriceScale();
     }
     updateAllViews() { this._paneViews.forEach(v => v.update()); }
     paneViews() { return this._paneViews; }
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._x === null) return false;
+      return Math.abs(x - v._x) < 6;
+    }
+    getCoords() { return [{ x: this._paneViews[0]._x, y: 0 }]; }
+    applyDrag(orig, dx, dy) {
+      const newTime = this.chart.timeScale().coordinateToTime(orig[0].x + dx);
+      if (newTime != null) {
+        this._p = { time: newTime, price: this._p.price };
+        this.requestUpdate();
+      }
+    }
+    serialize() { return { kind: "vline", p: this._p }; }
   }
 
   // ── Tool catalog ───────────────────────────────────────────────────
@@ -6958,6 +7140,11 @@ applyPriceScale();
     let _points = [];
     let _preview = null;
     const _drawings = [];
+    let _selected = null;
+    // Drag state — only set during an active drag operation.
+    let _isDragging = false;
+    let _dragOrig = null;     // pixel-coord array snapshot of selected drawing's anchors at drag start
+    let _dragStartXY = null;  // mousedown position relative to wrap
 
     function _setActiveButton() {
       document.querySelectorAll("#left-toolbar .lt-btn").forEach(b => {
@@ -6966,8 +7153,15 @@ applyPriceScale();
         b.classList.toggle("active", isActive);
       });
     }
+    function _select(d) {
+      if (_selected === d) return;
+      if (_selected) _selected.setSelected(false);
+      _selected = d;
+      if (_selected) _selected.setSelected(true);
+    }
     function startDrawing(kind) {
       if (!TOOLS[kind]) return;
+      _select(null);
       _activeKind = kind;
       _points = [];
       _removePreview();
@@ -6980,10 +7174,20 @@ applyPriceScale();
       _setActiveButton();
     }
     function clearAll() {
+      _select(null);
       for (const d of _drawings) {
         try { series.detachPrimitive(d); } catch (e) {}
       }
       _drawings.length = 0;
+      _recordIfAvailable();
+    }
+    function _removeDrawing(d) {
+      const idx = _drawings.indexOf(d);
+      if (idx < 0) return;
+      try { series.detachPrimitive(d); } catch (e) {}
+      _drawings.splice(idx, 1);
+      if (_selected === d) _selected = null;
+      _recordIfAvailable();
     }
     function _addPreview(p1) {
       const tool = TOOLS[_activeKind];
@@ -6997,23 +7201,40 @@ applyPriceScale();
       try { series.detachPrimitive(_preview); } catch (e) {}
       _preview = null;
     }
+    function _hitTest(x, y) {
+      // Iterate in reverse so the topmost (most recently added) wins.
+      for (let i = _drawings.length - 1; i >= 0; i--) {
+        if (_drawings[i].hitTest(x, y)) return _drawings[i];
+      }
+      return null;
+    }
+
     function _onClick(param) {
-      if (!_activeKind || !param.point || !param.time) return;
-      const price = series.coordinateToPrice(param.point.y);
-      if (price === null || price === undefined) return;
-      const point = { time: param.time, price };
-      _points.push(point);
-      const need = TOOLS[_activeKind].nPts;
-      if (_points.length >= need) {
-        const drawing = TOOLS[_activeKind].build(_points);
-        try {
-          series.attachPrimitive(drawing);
-          _drawings.push(drawing);
-        } catch (e) { console.warn("[drawings] attach failed:", e); }
-        _removePreview();
-        stopDrawing();
-      } else if (_points.length === 1 && TOOLS[_activeKind].preview) {
-        _addPreview(point);
+      if (_activeKind) {
+        // Drawing-creation flow
+        if (!param.point || !param.time) return;
+        const price = series.coordinateToPrice(param.point.y);
+        if (price === null || price === undefined) return;
+        const point = { time: param.time, price };
+        _points.push(point);
+        const need = TOOLS[_activeKind].nPts;
+        if (_points.length >= need) {
+          const drawing = TOOLS[_activeKind].build(_points);
+          try {
+            series.attachPrimitive(drawing);
+            _drawings.push(drawing);
+            _recordIfAvailable();
+          } catch (e) { console.warn("[drawings] attach failed:", e); }
+          _removePreview();
+          stopDrawing();
+        } else if (_points.length === 1 && TOOLS[_activeKind].preview) {
+          _addPreview(point);
+        }
+      } else {
+        // Cursor mode: hit-test for selection
+        if (!param.point) return;
+        const hit = _hitTest(param.point.x, param.point.y);
+        _select(hit);
       }
     }
     function _onMove(param) {
@@ -7026,7 +7247,49 @@ applyPriceScale();
     topChart.subscribeClick(_onClick);
     topChart.subscribeCrosshairMove(_onMove);
 
-    // Toolbar wiring
+    // ── Drag-edit ───────────────────────────────────────────────────
+    // mousedown on the chart wrap (capture phase, BEFORE LWC's pan
+    // listener sees it). If we're in cursor mode AND the click hits
+    // the currently-selected drawing, we steal the event, disable
+    // the chart's pan, and track the drag on document mousemove.
+    const wrap = document.getElementById("chart-top-wrap");
+    function _onMouseDown(ev) {
+      if (_activeKind) return;     // mid-draw, leave alone
+      if (!_selected) return;      // nothing to drag
+      const rect = wrap.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      if (!_selected.hitTest(x, y)) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      // Pan/scale must be off while we drag — re-enabled on mouseup.
+      try { topChart.applyOptions({ handleScroll: false, handleScale: false }); } catch (e) {}
+      _isDragging = true;
+      _dragOrig = _selected.getCoords();
+      _dragStartXY = { x, y };
+      document.addEventListener("mousemove", _onMouseMove, true);
+      document.addEventListener("mouseup", _onMouseUp, true);
+    }
+    function _onMouseMove(ev) {
+      if (!_isDragging || !_selected) return;
+      const rect = wrap.getBoundingClientRect();
+      const x = ev.clientX - rect.left;
+      const y = ev.clientY - rect.top;
+      const dx = x - _dragStartXY.x;
+      const dy = y - _dragStartXY.y;
+      _selected.applyDrag(_dragOrig, dx, dy);
+    }
+    function _onMouseUp(ev) {
+      if (!_isDragging) return;
+      _isDragging = false;
+      document.removeEventListener("mousemove", _onMouseMove, true);
+      document.removeEventListener("mouseup", _onMouseUp, true);
+      try { topChart.applyOptions({ handleScroll: true, handleScale: true }); } catch (e) {}
+      _recordIfAvailable();
+    }
+    if (wrap) wrap.addEventListener("mousedown", _onMouseDown, true);
+
+    // ── Toolbar wiring ─────────────────────────────────────────────
     document.querySelectorAll("#left-toolbar .lt-btn").forEach(btn => {
       btn.addEventListener("click", () => {
         const kind = btn.getAttribute("data-tool");
@@ -7041,17 +7304,71 @@ applyPriceScale();
     });
 
     // Right-click cancels in-progress drawing.
-    const wrap = document.getElementById("chart-top-wrap");
     if (wrap) wrap.addEventListener("contextmenu", (ev) => {
       if (_activeKind) { ev.preventDefault(); stopDrawing(); }
     });
-    // Esc cancels too.
+
+    // ── Keyboard: Esc, Backspace/Delete ────────────────────────────
     document.addEventListener("keydown", (ev) => {
-      if (ev.key === "Escape" && _activeKind) stopDrawing();
+      if (ev.key === "Escape" && _activeKind) {
+        stopDrawing();
+        return;
+      }
+      if (ev.key === "Backspace" || ev.key === "Delete") {
+        if (!_selected || _activeKind || _isDragging) return;
+        const tag = (ev.target && ev.target.tagName) || "";
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
+        if (ev.target && ev.target.isContentEditable) return;
+        if (ev.ctrlKey || ev.metaKey || ev.altKey) return;
+        ev.preventDefault();
+        _removeDrawing(_selected);
+      }
     });
 
-    console.log("[drawings] tool manager ready (Stage 1)");
-    window.__drawings = { startDrawing, stopDrawing, clearAll, drawings: _drawings };
+    // ── Undo/redo bridge ───────────────────────────────────────────
+    // The global recordHistory() includes drawings via snapshotState's
+    // dr field, which calls window.__drawings.snapshot(). _recordIfAvailable
+    // is called after every create / drag-end / delete / clearAll.
+    function _recordIfAvailable() {
+      if (typeof recordHistory === "function") {
+        try { recordHistory(); } catch (e) {}
+      }
+    }
+    function snapshot() {
+      return _drawings.map(d => d.serialize());
+    }
+    function restore(arr) {
+      // Clear current drawings (without recording, applyState already
+      // suppresses history while we run).
+      _select(null);
+      for (const d of _drawings) {
+        try { series.detachPrimitive(d); } catch (e) {}
+      }
+      _drawings.length = 0;
+      if (!Array.isArray(arr)) return;
+      for (const data of arr) {
+        let d = null;
+        try {
+          if (data.kind === "trend") d = new TrendLine(data.p1, data.p2);
+          else if (data.kind === "rect") d = new Rectangle(data.p1, data.p2);
+          else if (data.kind === "hline") d = new HorizontalLine(data.p);
+          else if (data.kind === "vline") d = new VerticalLine(data.p);
+        } catch (e) { console.warn("[drawings] restore deserialize failed:", e); }
+        if (d) {
+          try {
+            series.attachPrimitive(d);
+            _drawings.push(d);
+          } catch (e) { console.warn("[drawings] restore attach failed:", e); }
+        }
+      }
+    }
+
+    console.log("[drawings] tool manager ready (Stage 2 — editing layer active)");
+    window.__drawings = {
+      startDrawing, stopDrawing, clearAll,
+      snapshot, restore,
+      drawings: _drawings,
+    };
     return true;
   }
   let _tries = 0;
