@@ -462,6 +462,18 @@ window.__loadMp4Muxer = function() {
   #modal .modal-x { background: none; border: none; color: #888; font-size: 20px;
     cursor: pointer; padding: 0 4px; line-height: 1; }
   #modal .modal-x:hover { color: #fff; }
+  /* Easy / Advanced picker mode toggle — sits between the disclaimer
+     and the close button on the modal header. Two segmented buttons,
+     same dark/orange treatment as the rest of the toolbar pill rows. */
+  #modal .picker-mode-toggle { display: inline-flex; gap: 0;
+    margin-right: 12px; border: 1px solid #2a2a2a; border-radius: 3px;
+    overflow: hidden; }
+  #modal .pmt-btn { background: transparent; color: #888; border: none;
+    padding: 4px 10px; cursor: pointer; font: 11px 'Source Code Pro', Consolas, monospace;
+    transition: background-color 0.08s ease, color 0.08s ease; }
+  #modal .pmt-btn:hover { background: #1a1a1a; color: #fff; }
+  #modal .pmt-btn.active { background: #1a1a1a; color: #ff8c00; }
+  #modal .pmt-btn + .pmt-btn { border-left: 1px solid #2a2a2a; }
   /* Modal search bar */
   #modal .modal-search { padding: 10px 18px; border-bottom: 1px solid #1f1f1f; flex-shrink: 0;
     position: relative; }
@@ -4310,6 +4322,31 @@ async function editIndicatorConfig(id, newConfig) {
 // ───────────────────────────────────────────────────────────────────────────
 // Add Indicator modal
 // ───────────────────────────────────────────────────────────────────────────
+// Indicator-picker viewing mode — "easy" (default) shows only BTC-weight
+// variants and renames "X (BTC) (STOCK)" → "X · STOCK", which trims the
+// list roughly in half. "advanced" restores every weight variant
+// (USD/Coinday/Valueday) with the full parenthesised names. The choice
+// is persisted in localStorage so it survives reloads.
+let _pickerMode = (function () {
+  try { return localStorage.getItem("bt_picker_mode") || "easy"; }
+  catch (e) { return "easy"; }
+})();
+function _savePickerMode() {
+  try { localStorage.setItem("bt_picker_mode", _pickerMode); } catch (e) {}
+}
+// True when an indicator's display name marks it as a non-BTC variant.
+function _isNonBtcVariant(name) {
+  return /\((USD|Coinday|Valueday)\)/.test(name || "");
+}
+// Easy-mode label transform: drops the implicit "(BTC)" and turns
+// "(STOCK)"/"(FLOW)" tags into a "· STOCK" / "· FLOW" suffix.
+function _easyLabel(name) {
+  return (name || "")
+    .replace(/ \(BTC\) \(STOCK\)/g, " · STOCK")
+    .replace(/ \(BTC\) \(FLOW\)/g, " · FLOW")
+    .replace(/ \(BTC\)/g, "");
+}
+
 function openAddModal() {
   const modal = document.getElementById("modal");
   const bg = document.getElementById("modal-bg");
@@ -4323,8 +4360,13 @@ function openAddModal() {
   // (active / inactive) rows are sorted alphabetically by displayName so
   // the catalog reads in dictionary order. localeCompare is used so
   // case-insensitive ordering works regardless of the user's locale.
+  // In "easy" mode, USD/Coinday/Valueday variants are filtered out so
+  // the user sees a much shorter list that covers the BTC defaults.
   function _sortedForPicker() {
-    return all.slice().sort((a, b) => {
+    const filtered = (_pickerMode === "easy")
+      ? all.filter(T => !_isNonBtcVariant(T.displayName))
+      : all.slice();
+    return filtered.sort((a, b) => {
       const aActive = _indicatorTypeIsActive(a.type) ? 0 : 1;
       const bActive = _indicatorTypeIsActive(b.type) ? 0 : 1;
       if (aActive !== bActive) return aActive - bActive;
@@ -4339,10 +4381,18 @@ function openAddModal() {
   const titleTxt   = (typeof _t === "function") ? _t("indicators")    : "Indicators";
   const discTxt    = (typeof _t === "function") ? _t("only_2_panels") : "Only 2 panels allowed at a time";
   const searchTxt  = (typeof _t === "function") ? _t("search")        : "Search";
+  // Easy/Advanced mode toggle — labels stay English (terms are short,
+  // technical, and consistent with the rest of the toolbar buttons).
+  const easyActive = (_pickerMode === "easy") ? " active" : "";
+  const advActive  = (_pickerMode === "advanced") ? " active" : "";
   let html =
     `<div class="modal-header">` +
       `<h3>${titleTxt}</h3>` +
       `<span class="modal-disclaimer">${discTxt}</span>` +
+      `<div class="picker-mode-toggle">` +
+        `<button id="picker-mode-easy" class="pmt-btn${easyActive}" title="BTC weights only — shorter list">Easy</button>` +
+        `<button id="picker-mode-adv"  class="pmt-btn${advActive}" title="Show every weight variant (USD, Coinday, Valueday)">Advanced</button>` +
+      `</div>` +
       `<button class="modal-x" id="modal-x" title="Close">×</button>` +
     `</div>` +
     `<div class="modal-search">` +
@@ -4357,6 +4407,24 @@ function openAddModal() {
 
   // Wire up close
   modal.querySelector("#modal-x").addEventListener("click", () => bg.classList.remove("show"));
+
+  // Easy / Advanced mode toggle — flips _pickerMode, persists, and
+  // rebuilds the picker body in place. The toggle's .active class is
+  // re-applied to whichever button is now selected.
+  function _setPickerMode(mode) {
+    if (_pickerMode === mode) return;
+    _pickerMode = mode;
+    _savePickerMode();
+    const easyBtn = modal.querySelector("#picker-mode-easy");
+    const advBtn  = modal.querySelector("#picker-mode-adv");
+    if (easyBtn) easyBtn.classList.toggle("active", _pickerMode === "easy");
+    if (advBtn)  advBtn.classList.toggle("active",  _pickerMode === "advanced");
+    _rerenderPickerBody();
+  }
+  const easyBtn = modal.querySelector("#picker-mode-easy");
+  const advBtn  = modal.querySelector("#picker-mode-adv");
+  if (easyBtn) easyBtn.addEventListener("click", () => _setPickerMode("easy"));
+  if (advBtn)  advBtn.addEventListener("click",  () => _setPickerMode("advanced"));
 
   // Click an option → add the indicator immediately with defaults.
   // The configure dialog is skipped — user can re-pick to swap or remove
@@ -4483,7 +4551,14 @@ function renderTypeOption(T) {
   // data-en-name preserves the English source so language switches can
   // re-translate without losing the original.
   const enName = T.displayName;
-  const dispName = (typeof _translateIndicatorName === "function") ? _translateIndicatorName(enName) : enName;
+  let dispName = (typeof _translateIndicatorName === "function") ? _translateIndicatorName(enName) : enName;
+  // Easy-mode rename — drop the implicit "(BTC)" and turn STOCK/FLOW
+  // tags into a "· STOCK" / "· FLOW" suffix so the row reads more
+  // like a sentence and less like a tag soup.
+  if (typeof _pickerMode !== "undefined" && _pickerMode === "easy"
+      && typeof _easyLabel === "function") {
+    dispName = _easyLabel(dispName);
+  }
   return `<div class="${cls}" data-type="${T.type}">` +
     `<span class="swatch" style="background:${swatch}"></span>` +
     `<span class="name" data-en-name="${enName.replace(/"/g,'&quot;')}">${dispName}</span>` +
