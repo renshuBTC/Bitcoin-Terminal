@@ -243,6 +243,16 @@ window.__loadMp4Muxer = function() {
   #left-toolbar #lt-color::-webkit-color-swatch-wrapper { padding: 0; }
   #left-toolbar #lt-color::-webkit-color-swatch { border: none; border-radius: 2px; }
   #left-toolbar #lt-color::-moz-color-swatch { border: none; border-radius: 2px; }
+  /* Inline text-label editor — appears at the click point when the
+     user picks the Text tool. Borrowed look from TradingView's inline
+     editor: thin colored border, ghost placeholder text, dark background. */
+  .draw-text-input { position: absolute; z-index: 100;
+    background: rgba(0, 0, 0, 0.85); color: #fff;
+    border: 1px solid #ff8c00; border-radius: 2px;
+    font: 13px 'Source Code Pro', Consolas, monospace;
+    padding: 2px 6px; outline: none; min-width: 80px;
+    box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6); }
+  .draw-text-input::placeholder { color: currentColor; opacity: 0.55; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
@@ -7554,11 +7564,10 @@ applyPriceScale();
     },
     text: {
       nPts: 1,
-      build: (pts, color) => {
-        const txt = window.prompt("Label text:", "");
-        if (!txt || !txt.trim()) return null;  // user cancelled
-        return new TextLabel(pts[0], txt.trim(), { color });
-      },
+      // Text uses an INLINE editor instead of build() — see the
+      // _activeKind === "text" branch in _onClick. build() is unused
+      // for this tool but kept defined so the catalog shape is uniform.
+      build: () => null,
       preview: null,
     },
   };
@@ -7658,6 +7667,54 @@ applyPriceScale();
       return null;
     }
 
+    // Spawn an inline text editor at the clicked pixel position. On
+    // commit (Enter or blur with non-empty text) we instantiate a
+    // TextLabel and attach it. On Escape or blur-with-empty we just
+    // discard. Auto-focused so the user can type immediately.
+    function _spawnTextInput(point, pixelX, pixelY) {
+      const wrap = document.getElementById("chart-top-wrap");
+      if (!wrap) return;
+      const input = document.createElement("input");
+      input.type = "text";
+      input.placeholder = "Add text";
+      input.className = "draw-text-input";
+      input.style.color = _currentColor;
+      input.style.borderColor = _currentColor;
+      input.style.left = (pixelX + 8) + "px";
+      input.style.top = (pixelY - 12) + "px";
+      wrap.appendChild(input);
+      let done = false;
+      function commit() {
+        if (done) return;
+        done = true;
+        const txt = input.value.trim();
+        const color = _currentColor;
+        try { input.remove(); } catch (e) {}
+        if (!txt) return;
+        const drawing = new TextLabel(point, txt, { color });
+        try {
+          series.attachPrimitive(drawing);
+          _drawings.push(drawing);
+          _recordIfAvailable();
+        } catch (e) { console.warn("[drawings] text attach failed:", e); }
+      }
+      function cancel() {
+        if (done) return;
+        done = true;
+        try { input.remove(); } catch (e) {}
+      }
+      input.addEventListener("keydown", (ev) => {
+        // Stop these keys reaching the page (so Backspace doesn't
+        // delete a selected drawing while we're typing).
+        ev.stopPropagation();
+        if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+        else if (ev.key === "Escape") { ev.preventDefault(); cancel(); }
+      });
+      input.addEventListener("blur", commit);
+      // Defer focus to the next frame so the synthetic click that
+      // spawned the input doesn't immediately blur it.
+      requestAnimationFrame(() => input.focus());
+    }
     function _onClick(param) {
       if (_activeKind) {
         // Drawing-creation flow
@@ -7665,6 +7722,13 @@ applyPriceScale();
         const price = series.coordinateToPrice(param.point.y);
         if (price === null || price === undefined) return;
         const point = { time: param.time, price };
+        // Text tool: spawn inline editor at the click and exit early —
+        // we don't go through the generic build/attach path.
+        if (_activeKind === "text") {
+          _spawnTextInput(point, param.point.x, param.point.y);
+          stopDrawing();
+          return;
+        }
         _points.push(point);
         const need = TOOLS[_activeKind].nPts;
         if (_points.length >= need) {
