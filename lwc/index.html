@@ -4795,6 +4795,12 @@ const DrawingsManager = (() => {
   // "drawing:selected"). Backspace/Delete removes whichever drawing
   // is in this slot.
   let _selectedId = null;
+  // Guard window: while > Date.now(), incoming plugin update events
+  // are ignored for the purposes of save+history. The guard is opened
+  // briefly during import / setAll / addDrawing so the secondary
+  // events those operations trigger don't blow away historyFuture
+  // (which would silently disable the redo button).
+  let _editGuardUntil = 0;
 
   // ── Coordinate helpers ─────────────────────────────────────────────
   // Used to translate viewport pixel coords into (time, price) pairs
@@ -4863,7 +4869,11 @@ const DrawingsManager = (() => {
       // exact event name isn't documented, so we subscribe to all
       // the common ones — at least one of these is the real "edit
       // finalized" event in the plugin's emitter.
+      // Guarded so that the secondary update events emitted during
+      // import/restore (undo/redo) don't trigger another recordHistory
+      // and clobber historyFuture (which would disable the redo button).
       const _onEdited = () => {
+        if (Date.now() < _editGuardUntil) return;
         _save();
         _recordIfAvailable();
       };
@@ -5075,6 +5085,10 @@ const DrawingsManager = (() => {
   }
   function setAll(json) {
     if (!pluginMgr) return;
+    // Suppress _onEdited for ~250ms so the cascade of update events
+    // emitted by clear+import doesn't trigger recordHistory and clear
+    // historyFuture mid-undo.
+    _editGuardUntil = Date.now() + 250;
     try {
       // Clear current drawings first
       const cur = pluginMgr.exportDrawings();
