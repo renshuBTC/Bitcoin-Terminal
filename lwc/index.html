@@ -669,12 +669,15 @@ const THEME = {
   // the in-Profit/in-Loss distinction conveyed by line style (solid vs
   // dashed), not hue.
   mean: "#00e676",
-  // LTH / STH — Bloomberg-bright signature pair: cyan vs orange. Maximum
-  // warm/cool contrast, the two most iconic Bloomberg terminal accents.
+  // LTH / STH — verbatim from the version-1 Plotly site (rp.js: LTH_COLOR /
+  // STH_COLOR = "#5599ff" / "#e6a817"). Light blue (LTH) vs amber (STH) is
+  // the canonical pair shared by every URPD-family dashboard; switching
+  // away from it makes the bars feel less crisp because Plotly's natural
+  // bar rendering pops against this exact palette.
   // Used for: LTH/STH Realised Price (top-pane lines), the LTH/STH URPD
   // and SOPD histograms, AND all 8 LTH/STH Realised-Price-in-Profit/Loss
   // filtered variants (BTC + USD weighted).
-  cyan: "#00d4ff", lth: "#00d4ff", sth: "#ff8c00", magenta: "#ff5cb3", yellow: "#ffeb3b",
+  cyan: "#00d4ff", lth: "#5599ff", sth: "#e6a817", magenta: "#ff5cb3", yellow: "#ffeb3b",
 };
 
 // ───────────────────────────────────────────────────────────────────────────
