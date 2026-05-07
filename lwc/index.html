@@ -4972,8 +4972,7 @@ const I18N = {
     // Hover-stats popup labels for histogram bars
     hs_spot: "Spot", hs_total: "Total", hs_bins: "Bins",
     hs_price: "Price", hs_value: "Value",
-    flip_to_loss: "would flip to Loss at this price",
-    flip_to_profit: "would flip to Profit at this price",
+    loss_at_price: "would be in Loss at this price",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "no data for",
     // Bottom-pane keyboard navigation help (HTML — keys stay verbatim)
     nav_help_full: "To activate, double-click on BTC price chart to fix tracer · press <kbd>A</kbd>/<kbd>←</kbd> or <kbd>D</kbd>/<kbd>→</kbd> to navigate · double-click to disable",
@@ -5036,8 +5035,7 @@ const I18N = {
     action_hide: "非表示", action_show: "表示", action_remove_btn: "削除",
     hs_spot: "スポット", hs_total: "合計", hs_bins: "ビン",
     hs_price: "価格", hs_value: "値",
-    flip_to_loss: "がこの価格で含み損に転じます",
-    flip_to_profit: "がこの価格で含み益に転じます",
+    loss_at_price: "がこの価格で含み損になります",
     hs_ycap: "Y上限", hs_err: "エラー", hs_no_data: "データなし:",
     nav_help_full: "BTC価格チャートをダブルクリックでトレーサー固定 · <kbd>A</kbd>/<kbd>←</kbd> または <kbd>D</kbd>/<kbd>→</kbd> でナビゲート · ダブルクリックで解除",
     modal_edit: "編集", modal_configure: "設定",
@@ -5096,8 +5094,7 @@ const I18N = {
     action_hide: "Masquer", action_show: "Afficher", action_remove_btn: "Retirer",
     hs_spot: "Cours", hs_total: "Total", hs_bins: "Bins",
     hs_price: "Prix", hs_value: "Valeur",
-    flip_to_loss: "passerait en perte à ce prix",
-    flip_to_profit: "passerait en profit à ce prix",
+    loss_at_price: "serait en perte à ce prix",
     hs_ycap: "Y-cap", hs_err: "err", hs_no_data: "aucune donnée pour",
     nav_help_full: "Double-cliquez sur le graphique BTC pour fixer le traceur · <kbd>A</kbd>/<kbd>←</kbd> ou <kbd>D</kbd>/<kbd>→</kbd> pour naviguer · double-clic pour désactiver",
     modal_edit: "Modifier", modal_configure: "Configurer",
@@ -5156,8 +5153,7 @@ const I18N = {
     action_hide: "پنهان کردن", action_show: "نمایش", action_remove_btn: "حذف",
     hs_spot: "اسپات", hs_total: "کل", hs_bins: "بازه‌ها",
     hs_price: "قیمت", hs_value: "مقدار",
-    flip_to_loss: "در این قیمت به ضرر می‌رود",
-    flip_to_profit: "در این قیمت به سود می‌رود",
+    loss_at_price: "در این قیمت در ضرر خواهد بود",
     hs_ycap: "حد Y", hs_err: "خطا", hs_no_data: "بدون داده برای",
     nav_help_full: "برای فعال‌سازی، روی نمودار قیمت BTC دو بار کلیک کنید تا تریسر ثابت شود · <kbd>A</kbd>/<kbd>←</kbd> یا <kbd>D</kbd>/<kbd>→</kbd> برای حرکت · دو بار کلیک برای غیرفعال",
     modal_edit: "ویرایش", modal_configure: "پیکربندی",
@@ -5216,8 +5212,7 @@ const I18N = {
     action_hide: "隐藏", action_show: "显示", action_remove_btn: "移除",
     hs_spot: "现价", hs_total: "总计", hs_bins: "区间",
     hs_price: "价格", hs_value: "数值",
-    flip_to_loss: "在此价格将转为亏损",
-    flip_to_profit: "在此价格将转为盈利",
+    loss_at_price: "在此价格处于亏损",
     hs_ycap: "Y 上限", hs_err: "错误", hs_no_data: "无数据:",
     nav_help_full: "双击 BTC 价格图固定追踪器 · 按 <kbd>A</kbd>/<kbd>←</kbd> 或 <kbd>D</kbd>/<kbd>→</kbd> 导航 · 双击解除",
     modal_edit: "编辑", modal_configure: "配置",
@@ -6009,10 +6004,8 @@ function _computeAggStats(seriesWithTotal, spot, hoverPrice) {
   let data;
   try { data = seriesWithTotal.data(); } catch (e) { return null; }
   if (!Array.isArray(data) || data.length === 0) return null;
-  let total = 0, profit = 0, loss = 0, deltaWeight = 0;
-  const lo = Math.min(hoverPrice, spot);
-  const hi = Math.max(hoverPrice, spot);
-  const hasDelta = (spot > 0 && hoverPrice > 0 && lo !== hi);
+  let total = 0, profit = 0, loss = 0, lossAtHover = 0;
+  const hasHover = (hoverPrice > 0 && spot > 0 && hoverPrice !== spot);
   for (const pt of data) {
     if (typeof pt.time !== "number" || pt.time <= 0) continue;
     const v = (typeof pt.value === "number") ? pt.value : 0;
@@ -6022,9 +6015,11 @@ function _computeAggStats(seriesWithTotal, spot, hoverPrice) {
       if (pt.time <= spot) profit += v;
       else loss += v;
     }
-    if (hasDelta && pt.time > lo && pt.time <= hi) deltaWeight += v;
+    // "In loss at this price" — bars whose cost basis exceeds the
+    // hovered price would be underwater if BTC were at that price.
+    if (hasHover && pt.time > hoverPrice) lossAtHover += v;
   }
-  return { total, profit, loss, deltaWeight, hasDelta };
+  return { total, profit, loss, lossAtHover, hasHover };
 }
 
 function _renderHoverStats(stack, param, currentDateStr) {
@@ -6089,18 +6084,15 @@ function _renderHoverStats(stack, param, currentDateStr) {
         out += `<div><span class="loss">${_tt("in_loss","In Loss")} ` +
           `${pL.toFixed(1)}% (${fmtCount(agg.loss)})</span></div>`;
       }
-      // Hover-delta — only when the cursor is meaningfully away from spot.
-      // Below spot: that supply would FLIP from Profit → Loss if price drops.
-      // Above spot: that supply would FLIP from Loss → Profit if price rises.
-      if (agg.hasDelta && agg.deltaWeight > 0) {
-        const pct = 100 * agg.deltaWeight / agg.total;
-        const flipsToLoss = (hoveredPrice < spotForAgg);
-        const cls = flipsToLoss ? "loss" : "profit";
-        const direction = flipsToLoss
-          ? _tt("flip_to_loss", "would flip to Loss at this price")
-          : _tt("flip_to_profit", "would flip to Profit at this price");
-        out += `<div><span class="${cls}">` +
-          `${pct.toFixed(1)}% (${fmtCount(agg.deltaWeight)}) ${direction}` +
+      // Hover-projected loss — when the cursor is away from spot, show
+      // the TOTAL % of supply that would be underwater if BTC sat at
+      // the hovered price (cost basis > hovered price). Strictly
+      // greater interpretation matches the at-spot loss line.
+      if (agg.hasHover) {
+        const pct = (agg.total > 0) ? (100 * agg.lossAtHover / agg.total) : 0;
+        out += `<div><span class="loss">` +
+          `${pct.toFixed(1)}% (${fmtCount(agg.lossAtHover)}) ` +
+          `${_tt("loss_at_price", "would be in Loss at this price")}` +
           `</span></div>`;
       }
       return out;
