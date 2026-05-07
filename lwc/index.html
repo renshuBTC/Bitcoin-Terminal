@@ -543,7 +543,7 @@ window.__loadMp4Muxer = function() {
     <button id="btn-fullscreen" class="icon-btn" title="Fullscreen mode (Shift+F)" aria-label="Fullscreen mode"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-png" class="icon-btn" title="Take a snapshot" aria-label="Take a snapshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8.5a2 2 0 0 1 2-2h2.2l1.4-1.8a1 1 0 0 1 .8-.4h5.2a1 1 0 0 1 .8.4l1.4 1.8H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
     <span class="spacer"></span>
-    <span id="credit-line"><span data-i18n="credit_like_my_work">If you like my work, follow me</span> <a href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" class="credit-link">@RenshuBTC</a></span>
+    <span id="credit-line" data-i18n="credit_powered_by">Powered by <a href="https://x.com/_nym21_" target="_blank" rel="noopener noreferrer" class="credit-link">Bitcoin Research Kit</a>. <span data-i18n="credit_inspired_by">Inspired by</span> <a href="https://x.com/_Checkmatey_" target="_blank" rel="noopener noreferrer" class="credit-link">@_Checkmatey_</a>. <span data-i18n="credit_follow_me">Follow me</span> <a href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" class="credit-link">@RenshuBTC</a></span>
     <div id="lang-wrap" title="Language">
       <button id="btn-lang"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="9" stroke="currentColor" stroke-width="1.6"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" stroke="currentColor" stroke-width="1.6"/></svg><span id="lang-label">EN</span><span class="arrow">▾</span></button>
       <div id="lang-menu">
@@ -4753,7 +4753,6 @@ const I18N = {
     lb_1y: "1 Year", lb_5y: "5 Years", lb_10y: "10 Years", lb_all: "All",
     iv_1d: "1 day", iv_1w: "1 week", iv_1m: "1 month",
     credit_powered_by: "Powered by", credit_inspired_by: "Inspired by", credit_follow_me: "Follow me",
-    credit_like_my_work: "If you like my work, follow me",
     language: "Language",
     no_description: "No description available.",
     no_credit: "—",
@@ -4826,7 +4825,6 @@ const I18N = {
     lb_1y: "1年", lb_5y: "5年", lb_10y: "10年", lb_all: "すべて",
     iv_1d: "1日", iv_1w: "1週間", iv_1m: "1か月",
     credit_powered_by: "提供:", credit_inspired_by: "インスパイア:", credit_follow_me: "フォロー:",
-    credit_like_my_work: "私の活動が気に入ったらフォローしてください",
     language: "言語",
     no_description: "説明は利用できません。",
     no_credit: "—",
@@ -4885,7 +4883,6 @@ const I18N = {
     lb_1y: "1 an", lb_5y: "5 ans", lb_10y: "10 ans", lb_all: "Tout",
     iv_1d: "1 jour", iv_1w: "1 semaine", iv_1m: "1 mois",
     credit_powered_by: "Propulsé par", credit_inspired_by: "Inspiré par", credit_follow_me: "Suivez-moi",
-    credit_like_my_work: "Si vous aimez mon travail, suivez-moi",
     language: "Langue",
     no_description: "Aucune description disponible.",
     no_credit: "—",
@@ -4944,7 +4941,6 @@ const I18N = {
     lb_1y: "۱ سال", lb_5y: "۵ سال", lb_10y: "۱۰ سال", lb_all: "همه",
     iv_1d: "۱ روز", iv_1w: "۱ هفته", iv_1m: "۱ ماه",
     credit_powered_by: "ارائه‌شده توسط", credit_inspired_by: "الهام‌گرفته از", credit_follow_me: "مرا دنبال کنید",
-    credit_like_my_work: "اگر کارم را دوست دارید، مرا دنبال کنید",
     language: "زبان",
     no_description: "توضیحی موجود نیست.",
     no_credit: "—",
@@ -5003,7 +4999,6 @@ const I18N = {
     lb_1y: "1 年", lb_5y: "5 年", lb_10y: "10 年", lb_all: "全部",
     iv_1d: "1 天", iv_1w: "1 周", iv_1m: "1 个月",
     credit_powered_by: "技术支持:", credit_inspired_by: "灵感来自:", credit_follow_me: "关注我:",
-    credit_like_my_work: "喜欢我的作品就关注我吧",
     language: "语言",
     no_description: "暂无说明。",
     no_credit: "—",
@@ -5083,7 +5078,8 @@ const _I18N_TARGETS = [
   { sel: '#interval-menu .opt[data-interval="1w"]', key: "iv_1w", mode: "text" },
   { sel: '#interval-menu .opt[data-interval="1m"]', key: "iv_1m", mode: "text" },
   // Credit line — direct text spans inside
-  { sel: '#credit-line span[data-i18n="credit_like_my_work"]', key: "credit_like_my_work", mode: "text" },
+  { sel: '#credit-line span[data-i18n="credit_inspired_by"]', key: "credit_inspired_by", mode: "text" },
+  { sel: '#credit-line span[data-i18n="credit_follow_me"]', key: "credit_follow_me", mode: "text" },
 ];
 
 // Translate the cycle dropdown items (text changes Cycle 1 Top → サイクル 1 天井, etc.)
