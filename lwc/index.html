@@ -2425,6 +2425,10 @@ for (const c of _RP_COHORTS) {
 // ───────────────────────────────────────────────────────────────────────────
 class _BottomSpotPaneView {
   constructor(source) { this._source = source; this._x = null; }
+  // 'top' forces the primitive to draw ABOVE every cohort histogram
+  // series in the pane. Without this the tracer renders at the
+  // 'normal' layer and gets hidden under the stacked bars.
+  zOrder() { return "top"; }
   update() {
     const src = this._source;
     if (!src._chart || src._spot == null || src._spot <= 0) {
@@ -2453,10 +2457,10 @@ class _BottomSpotRenderer {
       // as cycle / halving markers (rgba 255 255 255 0.85) for a unified
       // chart-overlay look.
       const y0 = 4 * vpr;
-      const y1 = h * 0.3;
-      ctx.strokeStyle = "rgba(255,255,255,0.85)";
-      ctx.lineWidth = Math.max(1, vpr | 0);
-      ctx.setLineDash([3 * vpr, 3 * vpr]);
+      const y1 = h * 0.32;
+      ctx.strokeStyle = "#ffffff";
+      ctx.lineWidth = Math.max(1.5, 1.5 * vpr);
+      ctx.setLineDash([4 * vpr, 3 * vpr]);
       ctx.beginPath();
       ctx.moveTo(x, y0);
       ctx.lineTo(x, y1);
