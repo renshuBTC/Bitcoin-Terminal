@@ -257,21 +257,6 @@ window.__loadMp4Muxer = function() {
     border-color: rgba(255,255,255,0.4); }
   .lt-color-cell.selected { box-shadow: 0 0 0 2px #ff8c00;
     border-color: #ff8c00; }
-  /* Font-size selector for the Text tool. Compact number input
-     styled to match the toolbar palette; native spinners are hidden
-     so the control reads as a tiny "T 14"-style chip. */
-  #left-toolbar #lt-fontsize { width: 28px; height: 22px; padding: 1px 2px;
-    margin-top: 4px; background: #0a0a0a; color: #aaa;
-    border: 1px solid #2a2a2a; border-radius: 3px;
-    font: 11px 'Source Code Pro', Consolas, monospace;
-    text-align: center; box-sizing: border-box;
-    -moz-appearance: textfield; appearance: textfield; }
-  #left-toolbar #lt-fontsize::-webkit-inner-spin-button,
-  #left-toolbar #lt-fontsize::-webkit-outer-spin-button {
-    -webkit-appearance: none; margin: 0; }
-  #left-toolbar #lt-fontsize:hover { color: #fff; border-color: #3a3a3a; }
-  #left-toolbar #lt-fontsize:focus { outline: none; color: #fff;
-    border-color: #ff8c00; }
   /* Inline text-label editor — appears at the click point when the
      user picks the Text tool. Borrowed look from TradingView's inline
      editor: thin colored border, ghost placeholder text, dark background. */
@@ -580,7 +565,6 @@ window.__loadMp4Muxer = function() {
       <button class="lt-btn" data-tool="text" title="Text label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 5 H19 M12 5 V20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <div class="lt-sep"></div>
       <button type="button" id="lt-color" title="Drawing color"></button>
-      <input type="number" id="lt-fontsize" value="14" min="8" max="72" step="1" title="Text label font size">
       <div class="lt-sep"></div>
       <button class="lt-btn" data-tool="clear" title="Remove all drawings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
@@ -7939,12 +7923,10 @@ applyPriceScale();
         _recordIfAvailable();
       }
     }
-    // Font size state — only used by the Text tool. Mirrors color
-    // semantics: read from the toolbar input at create time, and
-    // pushed live to the currently-selected TextLabel on edit.
-    const _fontInput = document.getElementById("lt-fontsize");
-    let _currentFontSize = (_fontInput && parseInt(_fontInput.value, 10)) || 14;
-    if (!Number.isFinite(_currentFontSize) || _currentFontSize < 8) _currentFontSize = 14;
+    // Default font size for newly-placed text labels. Resizing happens
+    // via the 8-handle box (corner = scale font + width, top/bottom
+    // edges = scale font only) — there is no toolbar input.
+    const _DEFAULT_FONT_SIZE = 14;
 
     function _setActiveButton() {
       document.querySelectorAll("#left-toolbar .lt-btn").forEach(b => {
@@ -7969,11 +7951,6 @@ applyPriceScale();
               && /^#[0-9a-fA-F]{6}$/.test(swatch)) {
             _colorInput.style.background = swatch;
             _currentColor = swatch;
-          }
-          if (_fontInput && _selected instanceof TextLabel
-              && Number.isFinite(opts.fontSize)) {
-            _fontInput.value = String(opts.fontSize);
-            _currentFontSize = opts.fontSize;
           }
         } catch (e) {}
       }
@@ -8042,12 +8019,12 @@ applyPriceScale();
       input.style.color = _currentColor;
       input.style.borderColor = _currentColor;
       // Preview at the same size the placed label will render at.
-      input.style.fontSize = _currentFontSize + "px";
+      input.style.fontSize = _DEFAULT_FONT_SIZE + "px";
       input.style.left = (pixelX + 8) + "px";
-      input.style.top = (pixelY - Math.max(10, Math.round(_currentFontSize * 0.7))) + "px";
+      input.style.top = (pixelY - Math.max(10, Math.round(_DEFAULT_FONT_SIZE * 0.7))) + "px";
       wrap.appendChild(input);
       let done = false;
-      const fontSize = _currentFontSize;
+      const fontSize = _DEFAULT_FONT_SIZE;
       function commit() {
         if (done) return;
         done = true;
@@ -8229,28 +8206,6 @@ applyPriceScale();
         if (_colorInput.contains(ev.target)) return;
         _hideColorPopover();
       }, true);
-    }
-
-    // ── Font size picker (Text tool) ───────────────────────────────
-    // Live-applies to the currently-selected TextLabel (so resizing
-    // is interactive) and is stamped onto any new text label at
-    // creation time. `change` records one undo step per commit.
-    if (_fontInput) {
-      _fontInput.addEventListener("input", () => {
-        const v = parseInt(_fontInput.value, 10);
-        if (!Number.isFinite(v)) return;
-        _currentFontSize = Math.max(8, Math.min(72, v));
-        if (_selected instanceof TextLabel
-            && typeof _selected.setFontSize === "function") {
-          _selected.setFontSize(_currentFontSize);
-        }
-      });
-      _fontInput.addEventListener("change", () => {
-        // Clamp the visible value back to the allowed range so the
-        // user doesn't see a stale out-of-range number.
-        _fontInput.value = String(_currentFontSize);
-        if (_selected instanceof TextLabel) _recordIfAvailable();
-      });
     }
 
     // ── Keyboard: Esc, Backspace/Delete ────────────────────────────
