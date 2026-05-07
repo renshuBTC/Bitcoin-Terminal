@@ -2433,15 +2433,15 @@ class _BottomSpotPaneView {
     const src = this._source;
     if (!src._chart || src._spot == null || src._spot <= 0) {
       this._x = null;
-      if (window.__BTSPOT_DEBUG) console.log("[btspot] update: no chart/spot", { hasChart: !!src._chart, spot: src._spot });
+      console.log("[btspot] update: no chart/spot", { hasChart: !!src._chart, spot: src._spot });
       return;
     }
     try {
       this._x = src._chart.timeScale().timeToCoordinate(src._spot);
-      if (window.__BTSPOT_DEBUG) console.log("[btspot] update: spot=" + src._spot + " -> x=" + this._x);
+      console.log("[btspot] update: spot=" + src._spot + " -> x=" + this._x);
     } catch (e) {
       this._x = null;
-      if (window.__BTSPOT_DEBUG) console.log("[btspot] update: timeToCoordinate threw", e);
+      console.log("[btspot] update: timeToCoordinate threw", e);
     }
   }
   renderer() {
@@ -2452,7 +2452,7 @@ class _BottomSpotPaneView {
 class _BottomSpotRenderer {
   constructor(x, spot, label) { this._x = x; this._spot = spot; this._label = label; }
   draw(target) {
-    if (window.__BTSPOT_DEBUG) console.log("[btspot] draw called, x=" + this._x + " spot=" + this._spot);
+    console.log("[btspot] draw called, x=" + this._x + " spot=" + this._spot);
     target.useBitmapCoordinateSpace(scope => {
       if (this._x == null) return;
       const ctx = scope.context;
@@ -2733,13 +2733,13 @@ class ProfileHistogramIndicator extends Indicator {
     // primitive lives across date changes; we just re-attach to the
     // newly-created series and update the spot value. Hidden when no
     // spot is available.
-    if (window.__BTSPOT_DEBUG) console.log("[btspot] profile attach: spot=" + spot + " dateStr=" + dateStr);
+    console.log("[btspot] profile attach: spot=" + spot + " dateStr=" + dateStr);
     if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
     try {
       this._series.attachPrimitive(this._spotPrim);
-      if (window.__BTSPOT_DEBUG) console.log("[btspot] profile attach OK");
+      console.log("[btspot] profile attach OK");
     } catch (e) {
-      if (window.__BTSPOT_DEBUG) console.warn("[btspot] profile attach FAILED:", e);
+      console.warn("[btspot] profile attach FAILED:", e);
     }
     this._spotPrim.setSpot(spot || null);
 
@@ -3070,17 +3070,21 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
 
     // Spot tracer — short vertical dashed line at the BTC price's
     // x-coordinate on this stacked histogram, with a "BTC Price $X"
-    // label. Attaches to the first series we just rebuilt; survives
-    // date changes by re-attaching each pass.
+    // label. Attaches to the LAST series we just rebuilt; that series
+    // is drawn last (on top of all other cohort series), and the
+    // primitive's zOrder='top' on its pane view then puts it above
+    // even that series. Attaching to series[0] would draw the line
+    // under the later-drawn cohort series and stay hidden.
     const spot = getSpotForDate(dateStr) || 0;
-    if (window.__BTSPOT_DEBUG) console.log("[btspot] stacked attach: series.length=" + this.series.length + " spot=" + spot + " dateStr=" + dateStr);
+    console.log("[btspot] stacked attach: series.length=" + this.series.length + " spot=" + spot + " dateStr=" + dateStr);
     if (this.series.length > 0) {
       if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
+      const hostSeries = this.series[this.series.length - 1];
       try {
-        this.series[0].attachPrimitive(this._spotPrim);
-        if (window.__BTSPOT_DEBUG) console.log("[btspot] stacked attach OK");
+        hostSeries.attachPrimitive(this._spotPrim);
+        console.log("[btspot] stacked attach OK on last series");
       } catch (e) {
-        if (window.__BTSPOT_DEBUG) console.warn("[btspot] stacked attach FAILED:", e);
+        console.warn("[btspot] stacked attach FAILED:", e);
       }
       this._spotPrim.setSpot(spot || null);
     }
