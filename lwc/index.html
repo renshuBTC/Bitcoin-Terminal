@@ -4859,11 +4859,21 @@ function _translateChartType(label) {
 // Re-render the chart-type popover so its option labels reflect the
 // current language. The active type's icon button slot doesn't need
 // updating (it's an SVG only).
+//
+// `CHART_TYPES` is a `const` declared further down the file, so this
+// helper is in temporal-dead-zone for it during the very first
+// `setLanguage(_currentLang)` boot call. A `typeof CHART_TYPES`
+// guard does NOT save us — `typeof` of a TDZ binding still throws
+// ReferenceError. We use a try/catch to silently bail in that case;
+// once the script has finished parsing, `applyTranslations()` runs
+// fine on subsequent invocations.
 function _retranslateChartTypeMenu() {
-  if (typeof CHART_TYPES === "undefined") return;
+  let types;
+  try { types = CHART_TYPES; } catch (e) { return; }
+  if (!Array.isArray(types)) return;
   document.querySelectorAll("#chart-type-menu .opt").forEach(el => {
     const v = el.getAttribute("data-type");
-    const def = CHART_TYPES.find(t => t.v === v);
+    const def = types.find(t => t.v === v);
     if (!def) return;
     const span = el.querySelector("span");
     if (span) span.textContent = _translateChartType(def.label);
@@ -4979,16 +4989,17 @@ function applyTranslations() {
       }
     });
   }
-  // Cycle dropdown items (programmatic since they have nested spans).
-  _retranslateCycleMenu();
-  // Cycle landmark markers on the BTC price chart.
-  _retranslateCycleMarkers();
-  // Chart-type popover labels.
-  _retranslateChartTypeMenu();
-  // Indicator picker rows + active panel.
-  _retranslatePickerAndPanel();
-  // Open modal contents (Indicators / Explainer), if any.
-  _retranslateOpenModal();
+  // Each retranslate helper is wrapped in its own try/catch so a
+  // single failure (most often: TDZ on a `const` declared further
+  // down the file when applyTranslations runs at boot) cannot abort
+  // the rest of the language pass. Without this guard, throwing
+  // here on the very first setLanguage(_currentLang) call would
+  // halt script parsing and leave the chart blank.
+  try { _retranslateCycleMenu(); }       catch (e) { console.warn("i18n cycle menu:", e); }
+  try { _retranslateCycleMarkers(); }    catch (e) { console.warn("i18n cycle markers:", e); }
+  try { _retranslateChartTypeMenu(); }   catch (e) { console.warn("i18n chart-type menu:", e); }
+  try { _retranslatePickerAndPanel(); }  catch (e) { console.warn("i18n picker/panel:", e); }
+  try { _retranslateOpenModal(); }       catch (e) { console.warn("i18n open modal:", e); }
   // Update the language picker label + RTL direction for Persian.
   const langLabel = document.getElementById("lang-label");
   if (langLabel) langLabel.textContent = _t("code");
@@ -5026,8 +5037,15 @@ function setLanguage(lang) {
   });
 })();
 
-// Apply the saved language on first paint.
-setLanguage(_currentLang);
+// Apply the saved language on first paint. Deferred to a microtask so
+// any `const`/`let` declared further down the file (e.g. CHART_TYPES at
+// ~line 5037) has finished initializing by the time the retranslate
+// helpers run. Without this, a saved non-EN language would TDZ on
+// CHART_TYPES and the boot error would blank the chart.
+queueMicrotask(() => {
+  try { setLanguage(_currentLang); }
+  catch (e) { console.warn("Initial language apply failed:", e); }
+});
 
 // ───────────────────────────────────────────────────────────────────────────
 // Chart type selector — 12 series styles. BRK only has daily close, so OHLC
