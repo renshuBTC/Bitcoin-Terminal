@@ -219,6 +219,45 @@ window.__loadMp4Muxer = function() {
   /* Lookback button group */
   /* (lookback button base styles now scoped under #bottom-toolbar above) */
 
+  /* Middle area: left drawing toolbar + chart column. The toolbar is
+     a fixed 36px-wide vertical strip; the chart column owns the rest of
+     the horizontal space and stays a column flex so its existing
+     layout (chart-stack + time-axis) renders unchanged. */
+  #middle-area { flex: 1; display: flex; flex-direction: row; min-height: 0; min-width: 0; }
+  #chart-column { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #left-toolbar { flex: 0 0 36px; background: #000; border-right: 1px solid #1a1a1a;
+    display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 2px;
+    user-select: none; }
+  #left-toolbar .lt-tool { width: 28px; height: 28px; padding: 0; margin: 0;
+    background: transparent; border: 1px solid transparent; border-radius: 3px;
+    color: #888; cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; transition: background-color 90ms, color 90ms; }
+  #left-toolbar .lt-tool:hover { background: #1a1a1a; color: #fff; }
+  #left-toolbar .lt-tool.active { background: #1a1a1a; color: #ff8c00;
+    border-color: #2a2a2a; }
+  #left-toolbar .lt-tool svg { display: block; }
+  #left-toolbar .lt-sep { width: 18px; height: 1px; background: #1a1a1a; margin: 4px 0; }
+  /* SVG drawing overlay — sits on top of #chart-top. pointer-events:none
+     by default so the chart canvas keeps receiving mouse interactions
+     (crosshair, scrub, drag-pan). DrawingsManager flips it to
+     `auto` while a drawing tool is active so clicks land on the SVG
+     instead. z-index sits above the watermark (1) and chart canvas but
+     below pane labels (which use higher z-index where needed). */
+  .drawings-overlay { position: absolute; inset: 0; pointer-events: none;
+    z-index: 4; overflow: hidden; }
+  .drawings-overlay.is-drawing { pointer-events: auto; cursor: crosshair; }
+  /* Per-drawing groups are interactive even when the overlay isn't (so
+     users can click an existing line to select/delete it later). */
+  .drawings-overlay .draw-group { pointer-events: auto; cursor: pointer; }
+  .drawings-overlay .draw-line { stroke: #ff8c00; stroke-width: 1.6; fill: none; }
+  .drawings-overlay .draw-fib   { stroke-width: 1.2; fill: none; opacity: 0.85; }
+  .drawings-overlay .draw-fib-label { font: 10px 'Source Code Pro', Consolas, monospace;
+    fill: #d4d4d4; }
+  .drawings-overlay .draw-rect  { stroke: #ff8c00; stroke-width: 1.4; fill: rgba(255,140,0,0.08); }
+  .drawings-overlay .draw-text  { font: 12px 'Source Code Pro', Consolas, monospace;
+    fill: #ff8c00; }
+  .drawings-overlay .draw-handle { fill: #fff; stroke: #ff8c00; stroke-width: 1.4; }
+
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
@@ -499,37 +538,63 @@ window.__loadMp4Muxer = function() {
     </div>
   </div>
 
-  <div id="chart-stack">
-    <div id="chart-top-wrap">
-      <div id="chart-top"></div>
-      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
-      <div id="date-tracer"><div class="line"></div></div>
-      <div class="pane-label" id="header-top">
-        <div class="pane-title-row">
-          <span class="pane-title">
-            <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
-            <span class="sep">·</span><span>D</span>
-            <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
-          </span>
-          <span class="hover-readout" id="hover-top"></span>
-        </div>
-        <div class="ind-rows" id="ind-rows-top"></div>
-      </div>
+  <!-- Middle area = vertical drawing toolbar (left) + chart column (right).
+       The toolbar is fixed-width; the chart column owns the remaining
+       horizontal space and stays a column flex so its existing layout
+       (chart-stack + time-axis) continues to work without changes. -->
+  <div id="middle-area">
+    <div id="left-toolbar">
+      <button class="lt-tool active" data-tool="cursor" title="Cursor"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 3 L5 19 L9.5 15 L12 21 L14 20.2 L11.5 14 L17 14 Z" fill="currentColor"/></svg></button>
+      <div class="lt-sep"></div>
+      <button class="lt-tool" data-tool="trend" title="Trend line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="20" x2="21" y2="4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="3" cy="20" r="2" fill="currentColor"/><circle cx="21" cy="4" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-tool" data-tool="hline" title="Horizontal line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-tool" data-tool="vline" title="Vertical line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="2" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-tool" data-tool="rect" title="Rectangle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="2" fill="none" rx="1"/></svg></button>
+      <button class="lt-tool" data-tool="fib" title="Fibonacci retracement"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="5" x2="21" y2="5" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="14" x2="21" y2="14" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      <button class="lt-tool" data-tool="text" title="Text label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 5 H19 M12 5 V20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <div class="lt-sep"></div>
+      <button class="lt-tool" data-tool="clear" title="Remove all drawings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
-    <div id="chart-divider" title="Drag to resize"></div>
-    <div id="chart-bottom-wrap">
-      <div id="chart-bottom"></div>
-      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
-      <div class="pane-label" id="header-bottom">
-        <div class="ind-rows" id="ind-rows-bottom"></div>
-        <div id="nav-instruction"></div>
+    <div id="chart-column">
+      <div id="chart-stack">
+        <div id="chart-top-wrap">
+          <div id="chart-top"></div>
+          <!-- SVG drawing overlay — sits on top of the chart canvas. Its
+               pointer-events default is `none` so the chart remains
+               interactive; when a drawing tool is active, the
+               DrawingsManager flips it to `auto` so clicks land here
+               instead of on the chart. -->
+          <svg id="drawings-overlay-top" class="drawings-overlay" xmlns="http://www.w3.org/2000/svg"></svg>
+          <div class="chart-watermark">BITCOINTERMINAL.NET</div>
+          <div id="date-tracer"><div class="line"></div></div>
+          <div class="pane-label" id="header-top">
+            <div class="pane-title-row">
+              <span class="pane-title">
+                <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
+                <span class="sep">·</span><span>D</span>
+                <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
+              </span>
+              <span class="hover-readout" id="hover-top"></span>
+            </div>
+            <div class="ind-rows" id="ind-rows-top"></div>
+          </div>
+        </div>
+        <div id="chart-divider" title="Drag to resize"></div>
+        <div id="chart-bottom-wrap">
+          <div id="chart-bottom"></div>
+          <div class="chart-watermark">BITCOINTERMINAL.NET</div>
+          <div class="pane-label" id="header-bottom">
+            <div class="ind-rows" id="ind-rows-bottom"></div>
+            <div id="nav-instruction"></div>
+          </div>
+          <div id="stats-stack"></div>
+          <div id="status">Loading…</div>
+        </div>
       </div>
-      <div id="stats-stack"></div>
-      <div id="status">Loading…</div>
+
+      <div id="chart-time-axis"></div>
     </div>
   </div>
-
-  <div id="chart-time-axis"></div>
 
   <div id="bottom-toolbar">
     <div id="lb-group" title="Lookback window">
@@ -4419,6 +4484,355 @@ function openExplainerModal() {
 document.getElementById("btn-explainer")?.addEventListener("click", openExplainerModal);
 
 // ───────────────────────────────────────────────────────────────────────────
+// Drawings manager — left-toolbar drawing tools (trend line, horizontal
+// line, vertical line, rectangle, fibonacci retracement, text label).
+//
+// Architecture: each drawing is a plain object stored in `_drawings`
+// with anchor data in (time, price) coordinates so the drawing
+// re-renders correctly when the user pans/zooms the chart. The render
+// step uses `chart.timeScale().timeToCoordinate(time)` and
+// `series.priceToCoordinate(price)` to translate anchors to pixel
+// positions inside the SVG overlay (#drawings-overlay-top).
+//
+// Persistence: drawings array is serialized to localStorage under
+// `bt_drawings`; load on boot, save on every change.
+// ───────────────────────────────────────────────────────────────────────────
+const DrawingsManager = (() => {
+  const LS_KEY = "bt_drawings";
+  const SVG_NS = "http://www.w3.org/2000/svg";
+  const overlay = document.getElementById("drawings-overlay-top");
+  const wrap    = document.getElementById("chart-top-wrap");
+  // Cache fib levels — standard 7-level retracement (TradingView default).
+  const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+  const FIB_COLORS = ["#787b86","#f23645","#ff9800","#4caf50","#2196f3","#9c27b0","#787b86"];
+
+  let _drawings = [];      // [{id, tool, points: [{time, price}], text?}]
+  let _activeTool = null;  // null = cursor mode; otherwise tool id
+  let _pending = null;     // {tool, points: [...], previewEvent?} during multi-click drawing
+  let _idSeq = 1;
+
+  // ── Coordinate helpers ─────────────────────────────────────────────
+  function _btcSeries() {
+    if (typeof activeIndicators === "undefined") return null;
+    for (const ind of activeIndicators.values()) {
+      if (ind.constructor.type === "btc_price") return ind.getPriceSeries && ind.getPriceSeries();
+    }
+    return null;
+  }
+  function _timeToX(time) {
+    try {
+      const x = topChart.timeScale().timeToCoordinate(time);
+      return (x == null) ? null : x;
+    } catch (e) { return null; }
+  }
+  function _priceToY(price) {
+    const s = _btcSeries();
+    if (!s) return null;
+    try {
+      const y = s.priceToCoordinate(price);
+      return (y == null) ? null : y;
+    } catch (e) { return null; }
+  }
+  function _xToTime(x) {
+    try { return topChart.timeScale().coordinateToTime(x); }
+    catch (e) { return null; }
+  }
+  function _yToPrice(y) {
+    const s = _btcSeries();
+    if (!s) return null;
+    try { return s.coordinateToPrice(y); }
+    catch (e) { return null; }
+  }
+
+  // ── localStorage persistence ───────────────────────────────────────
+  function _save() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(_drawings)); }
+    catch (e) { /* quota / privacy mode — ignore */ }
+  }
+  function _load() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      if (!raw) return;
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) {
+        _drawings = arr;
+        // Reseed _idSeq above the highest existing id so new draws
+        // don't collide with restored ones.
+        for (const d of _drawings) {
+          const n = parseInt(String(d.id || "").replace(/\D/g, ""), 10);
+          if (!isNaN(n) && n >= _idSeq) _idSeq = n + 1;
+        }
+      }
+    } catch (e) { /* corrupt JSON — start fresh */ }
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────
+  function _resizeOverlay() {
+    if (!wrap || !overlay) return;
+    const w = wrap.clientWidth, h = wrap.clientHeight;
+    overlay.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    overlay.setAttribute("width", w);
+    overlay.setAttribute("height", h);
+    return { w, h };
+  }
+  function render() {
+    if (!overlay) return;
+    const dims = _resizeOverlay();
+    if (!dims) return;
+    const { w, h } = dims;
+    // Clear
+    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    // Draw each finalized drawing
+    for (const d of _drawings) _renderOne(d, w, h);
+    // Draw any pending preview (e.g. user has clicked first point)
+    if (_pending && _pending.points.length > 0) _renderPending(w, h);
+  }
+  function _renderOne(d, w, h) {
+    if (d.tool === "trend"  && d.points.length === 2) _renderLine(d, d.points[0], d.points[1]);
+    else if (d.tool === "hline" && d.points.length === 1) _renderHLine(d, d.points[0], w);
+    else if (d.tool === "vline" && d.points.length === 1) _renderVLine(d, d.points[0], h);
+    else if (d.tool === "rect"  && d.points.length === 2) _renderRect(d, d.points[0], d.points[1]);
+    else if (d.tool === "fib"   && d.points.length === 2) _renderFib(d, d.points[0], d.points[1], w);
+    else if (d.tool === "text"  && d.points.length === 1) _renderText(d, d.points[0]);
+  }
+  function _renderLine(d, p1, p2) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+    const g = _g(d);
+    _line(g, x1, y1, x2, y2, "draw-line");
+    _handle(g, x1, y1); _handle(g, x2, y2);
+    overlay.appendChild(g);
+  }
+  function _renderHLine(d, p, w) {
+    const y = _priceToY(p.price);
+    if (y == null) return;
+    const g = _g(d);
+    _line(g, 0, y, w, y, "draw-line");
+    _handle(g, w / 2, y);
+    overlay.appendChild(g);
+  }
+  function _renderVLine(d, p, h) {
+    const x = _timeToX(p.time);
+    if (x == null) return;
+    const g = _g(d);
+    _line(g, x, 0, x, h, "draw-line");
+    _handle(g, x, h / 2);
+    overlay.appendChild(g);
+  }
+  function _renderRect(d, p1, p2) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+    const g = _g(d);
+    const x = Math.min(x1, x2), y = Math.min(y1, y2);
+    const ww = Math.abs(x2 - x1), hh = Math.abs(y2 - y1);
+    const r = document.createElementNS(SVG_NS, "rect");
+    r.setAttribute("x", x); r.setAttribute("y", y);
+    r.setAttribute("width", ww); r.setAttribute("height", hh);
+    r.setAttribute("class", "draw-rect");
+    g.appendChild(r);
+    overlay.appendChild(g);
+  }
+  function _renderFib(d, p1, p2, w) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+    const g = _g(d);
+    const xL = Math.min(x1, x2), xR = Math.max(x1, x2);
+    const priceLow  = Math.min(p1.price, p2.price);
+    const priceHigh = Math.max(p1.price, p2.price);
+    // Fib level prices interpolated between low and high.
+    FIB_LEVELS.forEach((lvl, i) => {
+      const price = priceHigh - (priceHigh - priceLow) * lvl;
+      const y = _priceToY(price);
+      if (y == null) return;
+      const ln = _line(g, xL, y, xR, y, "draw-fib");
+      ln.setAttribute("style", `stroke:${FIB_COLORS[i]}`);
+      const lbl = document.createElementNS(SVG_NS, "text");
+      lbl.setAttribute("x", xL + 4); lbl.setAttribute("y", y - 3);
+      lbl.setAttribute("class", "draw-fib-label");
+      lbl.textContent = `${lvl.toFixed(3).replace(/0+$/,"").replace(/\.$/,"")} (${price.toFixed(0)})`;
+      g.appendChild(lbl);
+    });
+    _handle(g, x1, y1); _handle(g, x2, y2);
+    overlay.appendChild(g);
+  }
+  function _renderText(d, p) {
+    const x = _timeToX(p.time), y = _priceToY(p.price);
+    if (x == null || y == null) return;
+    const g = _g(d);
+    const t = document.createElementNS(SVG_NS, "text");
+    t.setAttribute("x", x); t.setAttribute("y", y);
+    t.setAttribute("class", "draw-text");
+    t.textContent = d.text || "";
+    g.appendChild(t);
+    overlay.appendChild(g);
+  }
+  function _renderPending(w, h) {
+    // Preview while user is mid-draw. Two-click tools (trend/rect/fib)
+    // only have one point so far, so _renderOne would skip them. We
+    // explicitly show a small handle at the first point as feedback
+    // that their click registered, then they can click the second
+    // point to complete the drawing.
+    const pseudo = { id: "_pending", tool: _pending.tool, points: _pending.points };
+    if (_pending.points.length === 1) {
+      const p = _pending.points[0];
+      const x = _timeToX(p.time), y = _priceToY(p.price);
+      if (x != null && y != null) {
+        const g = document.createElementNS(SVG_NS, "g");
+        g.setAttribute("class", "draw-group draw-pending");
+        _handle(g, x, y);
+        overlay.appendChild(g);
+      }
+      return;
+    }
+    _renderOne(pseudo, w, h);
+  }
+  // ── DOM helpers ────────────────────────────────────────────────────
+  function _g(d) {
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("class", "draw-group");
+    g.setAttribute("data-id", d.id);
+    g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); remove(d.id); });
+    return g;
+  }
+  function _line(parent, x1, y1, x2, y2, cls) {
+    const ln = document.createElementNS(SVG_NS, "line");
+    ln.setAttribute("x1", x1); ln.setAttribute("y1", y1);
+    ln.setAttribute("x2", x2); ln.setAttribute("y2", y2);
+    ln.setAttribute("class", cls);
+    parent.appendChild(ln);
+    return ln;
+  }
+  function _handle(parent, x, y) {
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 3);
+    c.setAttribute("class", "draw-handle");
+    parent.appendChild(c);
+    return c;
+  }
+
+  // ── Public API ─────────────────────────────────────────────────────
+  function setActiveTool(tool) {
+    _activeTool = (tool === "cursor" || !tool) ? null : tool;
+    _pending = null;
+    if (overlay) overlay.classList.toggle("is-drawing", !!_activeTool);
+    // Update toolbar UI active state.
+    document.querySelectorAll("#left-toolbar .lt-tool").forEach(b => {
+      const t = b.getAttribute("data-tool");
+      const isActive = (_activeTool === null && t === "cursor") || (_activeTool === t);
+      b.classList.toggle("active", isActive);
+    });
+    render();
+  }
+  function clearAll() {
+    _drawings = [];
+    _save();
+    render();
+  }
+  function remove(id) {
+    _drawings = _drawings.filter(d => String(d.id) !== String(id));
+    _save();
+    render();
+  }
+  function _finalize(drawing) {
+    drawing.id = "d" + (_idSeq++);
+    _drawings.push(drawing);
+    _pending = null;
+    _save();
+    render();
+  }
+
+  // ── Click handler on the SVG overlay ───────────────────────────────
+  if (overlay) {
+    overlay.addEventListener("click", (ev) => {
+      if (!_activeTool) return;
+      const rect = overlay.getBoundingClientRect();
+      const px = ev.clientX - rect.left;
+      const py = ev.clientY - rect.top;
+      const time  = _xToTime(px);
+      const price = _yToPrice(py);
+      if (time == null || price == null) return;
+      const t = _activeTool;
+
+      if (t === "hline") {
+        _finalize({ tool: "hline", points: [{ time, price }] });
+        setActiveTool("cursor");
+        return;
+      }
+      if (t === "vline") {
+        _finalize({ tool: "vline", points: [{ time, price }] });
+        setActiveTool("cursor");
+        return;
+      }
+      if (t === "text") {
+        const promptMsg = (typeof _t === "function") ? _t("dt_label_prompt") : "Label text:";
+        const text = window.prompt(promptMsg, "");
+        if (text == null || !text.trim()) { setActiveTool("cursor"); return; }
+        _finalize({ tool: "text", points: [{ time, price }], text: text.trim() });
+        setActiveTool("cursor");
+        return;
+      }
+      // Two-click tools: trend / rect / fib
+      if (!_pending) _pending = { tool: t, points: [] };
+      _pending.points.push({ time, price });
+      if (_pending.points.length >= 2) {
+        _finalize({ tool: t, points: _pending.points.slice(0, 2) });
+        setActiveTool("cursor");
+      } else {
+        render();
+      }
+    });
+    // Right-click cancels an in-progress drawing.
+    overlay.addEventListener("contextmenu", (ev) => {
+      if (_pending) { ev.preventDefault(); _pending = null; setActiveTool("cursor"); }
+    });
+  }
+
+  // ── Reflow on chart pan/zoom/resize ────────────────────────────────
+  // LWC fires visibleLogicalRangeChange on pan/zoom and crosshair-move
+  // happens often enough to also catch most layout changes.
+  function _hookChartEvents() {
+    if (!topChart) return;
+    try {
+      topChart.timeScale().subscribeVisibleLogicalRangeChange(() => render());
+      topChart.timeScale().subscribeSizeChange?.(() => render());
+    } catch (e) {}
+  }
+  // ResizeObserver on the chart wrap so the overlay's viewBox stays
+  // in sync with the actual rendered size (important when the user
+  // drags the divider between top/bottom panes).
+  if (typeof ResizeObserver !== "undefined" && wrap) {
+    new ResizeObserver(() => render()).observe(wrap);
+  }
+  // Defer event hookup — topChart isn't constructed until later in the
+  // file. queueMicrotask runs after the current synchronous parse.
+  queueMicrotask(_hookChartEvents);
+
+  // ── Toolbar wiring ─────────────────────────────────────────────────
+  document.querySelectorAll("#left-toolbar .lt-tool").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const t = btn.getAttribute("data-tool");
+      if (t === "clear") {
+        const confirmMsg = (typeof _t === "function") ? _t("dt_clear_confirm") : "Remove all drawings?";
+        if (_drawings.length > 0 && window.confirm(confirmMsg)) clearAll();
+        return;
+      }
+      setActiveTool(t);
+    });
+  });
+
+  // ── Boot ───────────────────────────────────────────────────────────
+  _load();
+  // Initial render is deferred until the chart has data; we'll re-render
+  // again from the first visibleLogicalRangeChange.
+  queueMicrotask(() => render());
+
+  return { setActiveTool, clearAll, remove, render };
+})();
+
+// ───────────────────────────────────────────────────────────────────────────
 // i18n — translate visible UI strings. Five languages: en, ja, fr, fa, zh.
 // Indicator type names (BTC, USD, CD, VD, STOCK, FLOW, LTH, STH, AGE, EPOCH,
 // URPD, SOPD, RP, SP) and proper names (BITCOIN/USD, watermark, person
@@ -4496,6 +4910,13 @@ const I18N = {
     status_added: "Added", status_updated: "Updated", status_failed: "Failed",
     // Hide-toggle on top toolbar (collapses sidebar / extras)
     toggle_show: "Show", toggle_hide: "Hide",
+    // Left drawing toolbar tool tooltips
+    dt_cursor: "Cursor", dt_trend: "Trend line",
+    dt_hline:  "Horizontal line", dt_vline: "Vertical line",
+    dt_rect:   "Rectangle", dt_fib: "Fibonacci retracement",
+    dt_text:   "Text label", dt_clear: "Remove all drawings",
+    dt_label_prompt: "Label text:",
+    dt_clear_confirm: "Remove all drawings?",
   },
   ja: {
     code: "日本語",
@@ -4553,6 +4974,12 @@ const I18N = {
     modal_no_options: "このインジケーターに設定項目はありません。",
     status_added: "追加しました", status_updated: "更新しました", status_failed: "失敗",
     toggle_show: "表示", toggle_hide: "非表示",
+    dt_cursor: "カーソル", dt_trend: "トレンドライン",
+    dt_hline:  "水平線", dt_vline: "垂直線",
+    dt_rect:   "矩形", dt_fib: "フィボナッチ・リトレースメント",
+    dt_text:   "テキストラベル", dt_clear: "すべての描画を削除",
+    dt_label_prompt: "ラベルテキスト：",
+    dt_clear_confirm: "すべての描画を削除しますか？",
   },
   fr: {
     code: "FR",
@@ -4610,6 +5037,12 @@ const I18N = {
     modal_no_options: "Aucune option pour cet indicateur.",
     status_added: "Ajouté", status_updated: "Mis à jour", status_failed: "Échec",
     toggle_show: "Afficher", toggle_hide: "Masquer",
+    dt_cursor: "Curseur", dt_trend: "Ligne de tendance",
+    dt_hline:  "Ligne horizontale", dt_vline: "Ligne verticale",
+    dt_rect:   "Rectangle", dt_fib: "Retracement de Fibonacci",
+    dt_text:   "Étiquette texte", dt_clear: "Supprimer tous les dessins",
+    dt_label_prompt: "Texte de l'étiquette :",
+    dt_clear_confirm: "Supprimer tous les dessins ?",
   },
   fa: {
     code: "FA",
@@ -4667,6 +5100,12 @@ const I18N = {
     modal_no_options: "این اندیکاتور گزینه‌ای ندارد.",
     status_added: "اضافه شد", status_updated: "به‌روزرسانی شد", status_failed: "ناموفق",
     toggle_show: "نمایش", toggle_hide: "پنهان",
+    dt_cursor: "نشانگر", dt_trend: "خط روند",
+    dt_hline:  "خط افقی", dt_vline: "خط عمودی",
+    dt_rect:   "مستطیل", dt_fib: "اصلاح فیبوناچی",
+    dt_text:   "برچسب متن", dt_clear: "حذف همه نقشه‌ها",
+    dt_label_prompt: "متن برچسب:",
+    dt_clear_confirm: "همه نقشه‌ها حذف شوند؟",
   },
   zh: {
     code: "中文",
@@ -4724,6 +5163,12 @@ const I18N = {
     modal_no_options: "该指标无可配置选项。",
     status_added: "已添加", status_updated: "已更新", status_failed: "失败",
     toggle_show: "显示", toggle_hide: "隐藏",
+    dt_cursor: "光标", dt_trend: "趋势线",
+    dt_hline:  "水平线", dt_vline: "垂直线",
+    dt_rect:   "矩形", dt_fib: "斐波那契回撤",
+    dt_text:   "文本标签", dt_clear: "删除所有绘图",
+    dt_label_prompt: "标签文本：",
+    dt_clear_confirm: "删除所有绘图？",
   },
 };
 
@@ -4770,6 +5215,15 @@ const _I18N_TARGETS = [
   // Credit line — direct text spans inside
   { sel: '#credit-line span[data-i18n="credit_inspired_by"]', key: "credit_inspired_by", mode: "text" },
   { sel: '#credit-line span[data-i18n="credit_follow_me"]', key: "credit_follow_me", mode: "text" },
+  // Left drawing toolbar — title attributes on each tool button.
+  { sel: '#left-toolbar .lt-tool[data-tool="cursor"]', key: "dt_cursor", mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="trend"]',  key: "dt_trend",  mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="hline"]',  key: "dt_hline",  mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="vline"]',  key: "dt_vline",  mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="rect"]',   key: "dt_rect",   mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="fib"]',    key: "dt_fib",    mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="text"]',   key: "dt_text",   mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="clear"]',  key: "dt_clear",  mode: "title" },
 ];
 
 // Translate the cycle dropdown items (text changes Cycle 1 Top → サイクル 1 天井, etc.)
