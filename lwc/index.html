@@ -677,10 +677,12 @@ const THEME = {
   // the in-Profit/in-Loss distinction conveyed by line style (solid vs
   // dashed), not hue.
   mean: "#00e676",
-  // LTH / STH match the previous Plotly site (rp.js: LTH_COLOR / STH_COLOR).
-  // Used for: LTH/STH Realised Price (top-pane lines) AND all 8 LTH/STH
-  // Realised-Price-in-Profit/Loss filtered variants (BTC + USD weighted).
-  cyan: "#00d4ff", lth: "#5599ff", sth: "#e6a817", magenta: "#d94fff", yellow: "#ffd34f",
+  // LTH / STH — Bloomberg-bright signature pair: cyan vs orange. Maximum
+  // warm/cool contrast, the two most iconic Bloomberg terminal accents.
+  // Used for: LTH/STH Realised Price (top-pane lines), the LTH/STH URPD
+  // and SOPD histograms, AND all 8 LTH/STH Realised-Price-in-Profit/Loss
+  // filtered variants (BTC + USD weighted).
+  cyan: "#00d4ff", lth: "#00d4ff", sth: "#ff8c00", magenta: "#ff5cb3", yellow: "#ffeb3b",
 };
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -2504,7 +2506,7 @@ class BottomSpotPrimitive {
     this._series = null;
     this._requestUpdate = null;
     this._spot = null;
-    this._label = label || "BTC Price";
+    this._label = label || "BTC/USD";
     this._paneViews = [new _BottomSpotPaneView(this)];
   }
   attached({ chart, series, requestUpdate }) {
@@ -2522,7 +2524,7 @@ class BottomSpotPrimitive {
     this._spot = (typeof spot === "number" && spot > 0) ? spot : null;
     if (this._requestUpdate) this._requestUpdate();
   }
-  setLabel(label) { this._label = label || "BTC Price"; }
+  setLabel(label) { this._label = label || "BTC/USD"; }
   updateAllViews() { this._paneViews.forEach(v => v.update()); }
   paneViews() { return this._paneViews; }
 }
@@ -2738,7 +2740,7 @@ class ProfileHistogramIndicator extends Indicator {
     // primitive lives across date changes; we just re-attach to the
     // newly-created series and update the spot value. Hidden when no
     // spot is available.
-    if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
+    if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC/USD");
     try { this._series.attachPrimitive(this._spotPrim); } catch (e) {}
     this._spotPrim.setSpot(spot || null);
 
@@ -2832,12 +2834,18 @@ const _AGE_BANDS = [
   { cohort: "utxos_12y_to_15y_old", label: "12y-15y" },
   { cohort: "utxos_over_15y_old",   label: ">15y"   },
 ];
+// Bloomberg-bright 21-band palette — fully saturated rainbow walk from
+// red (youngest) through orange/yellow/green/cyan/blue/violet to magenta
+// (oldest). Every entry is at peak HSV value/saturation so the bars pop
+// against the black background, matching the Bloomberg-terminal look of
+// the EPOCH palette below. Replaces the previous viridis-ish gradient
+// whose tail (#90A0E8, #B8C8F0) faded to pastel.
 const _AGE_BAND_COLORS = [
-  "#FF3B2E", "#FF5A2E", "#FF7A2E", "#FF9A2E", "#FFB82E",
-  "#FFD42E", "#E8D834", "#C8D43A", "#A0C840", "#5AAF54",
-  "#3A9A6A", "#2E8878", "#287888", "#226898", "#1C58A8",
-  "#1848B8", "#2040C0", "#4858C8", "#6878D8", "#90A0E8",
-  "#B8C8F0",
+  "#ff3b30", "#ff5500", "#ff7700", "#ff9900", "#ffaa00",
+  "#ffcc00", "#ffeb3b", "#d6e600", "#a8d000", "#5cc000",
+  "#00d44c", "#00e676", "#00cc99", "#00ccc8", "#00d4ff",
+  "#00aaff", "#3366ff", "#5544ff", "#8833ff", "#cc33ff",
+  "#ff5cb3",
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
@@ -3076,7 +3084,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     // under the later-drawn cohort series and stay hidden.
     const spot = getSpotForDate(dateStr) || 0;
     if (this.series.length > 0) {
-      if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC Price");
+      if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC/USD");
       const hostSeries = this.series[this.series.length - 1];
       try { hostSeries.attachPrimitive(this._spotPrim); } catch (e) {}
       this._spotPrim.setSpot(spot || null);
