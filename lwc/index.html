@@ -7365,6 +7365,20 @@ applyPriceScale();
         const x1 = Math.min(this._p1.x, this._p2.x);
         const x2 = Math.max(this._p1.x, this._p2.x);
         const xStart = x1 * hpr, xEnd = x2 * hpr;
+        // Dashed connector from p1 to p2 — shows the diagonal of the
+        // user's drag (matches TradingView's preview style and stays
+        // visible after placement as a visual cue).
+        ctx.strokeStyle = this._color;
+        ctx.lineWidth = Math.max(1, vpr | 0);
+        ctx.setLineDash([4 * vpr, 4 * vpr]);
+        ctx.globalAlpha = 0.55;
+        ctx.beginPath();
+        ctx.moveTo(this._p1.x * hpr, this._p1.y * vpr);
+        ctx.lineTo(this._p2.x * hpr, this._p2.y * vpr);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        // Solid horizontal level lines + labels.
         ctx.fillStyle = this._color;
         ctx.font = (10 * vpr) + "px sans-serif";
         ctx.textAlign = "left";
@@ -7373,7 +7387,6 @@ applyPriceScale();
           const yMedia = this._p1.y + (this._p2.y - this._p1.y) * lvl;
           const yPos = positionsLine(yMedia, vpr, this._selected ? 2 : 1);
           ctx.fillRect(xStart, yPos.position, xEnd - xStart, yPos.length);
-          // Label: percent + price
           const price = this._p1Price + (this._p2Price - this._p1Price) * lvl;
           const label = (lvl * 100).toFixed(1) + "%  " + price.toFixed(2);
           ctx.fillText(label, xEnd + 6 * hpr, yMedia * vpr);
@@ -7560,7 +7573,10 @@ applyPriceScale();
     fib: {
       nPts: 2,
       build: (pts, color) => new FibRetracement(pts[0], pts[1], { color }),
-      preview: (p1, color) => new FibRetracement(p1, p1, { color: addAlpha(color, 0.45) }),
+      // Full-opacity preview — identical look to a placed fib so the
+      // user can read the actual price levels as they drag the second
+      // anchor, picking the second click for the price they want.
+      preview: (p1, color) => new FibRetracement(p1, p1, { color }),
     },
     text: {
       nPts: 1,
