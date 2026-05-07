@@ -56,14 +56,6 @@ window.__loadMp4Muxer = function() {
      don't render a "selected" badge for them. */
   #bottom-toolbar .bb-btn.active { background: transparent; color: #d4d4d4; }
   #bottom-toolbar .bb-btn.active:hover { background: #1a1a1a; color: #fff; }
-  /* Anchored-marker toggles — these specific buttons DO show their on/off
-     state so the user can see at a glance whether halvings / cycle
-     landmarks are visible on the chart. Off = dim grey, on = normal. */
-  #bottom-toolbar #btn-halvings:not(.active),
-  #bottom-toolbar #btn-cycles:not(.active) { color: #555; }
-  #bottom-toolbar #btn-halvings:not(.active):hover,
-  #bottom-toolbar #btn-cycles:not(.active):hover { color: #aaa;
-    background: #1a1a1a; }
   /* Lookback buttons share .bb-btn styling — keep them as a tight group */
   #bottom-toolbar #lb-group { display: inline-flex; gap: 0; }
   #bottom-toolbar #lb-group button { padding: 5px 9px; min-width: 32px; font-weight: 400; }
