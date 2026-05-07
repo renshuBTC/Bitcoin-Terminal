@@ -219,6 +219,22 @@ window.__loadMp4Muxer = function() {
   /* Lookback button group */
   /* (lookback button base styles now scoped under #bottom-toolbar above) */
 
+  /* Middle area = drawing toolbar (left, 36px) + chart column (right, flex). */
+  #middle-area { flex: 1; display: flex; flex-direction: row; min-height: 0; min-width: 0; }
+  #chart-column { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #left-toolbar { flex: 0 0 36px; background: #000; border-right: 1px solid #1a1a1a;
+    display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 2px;
+    user-select: none; }
+  #left-toolbar .lt-btn { width: 28px; height: 28px; padding: 0; margin: 0;
+    background: transparent; border: 1px solid transparent; border-radius: 3px;
+    color: #888; cursor: pointer; display: inline-flex; align-items: center;
+    justify-content: center; transition: background-color 90ms, color 90ms; }
+  #left-toolbar .lt-btn:hover { background: #1a1a1a; color: #fff; }
+  #left-toolbar .lt-btn.active { background: #1a1a1a; color: #ff8c00;
+    border-color: #2a2a2a; }
+  #left-toolbar .lt-btn svg { display: block; }
+  #left-toolbar .lt-sep { width: 18px; height: 1px; background: #1a1a1a; margin: 4px 0; }
+
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
   #chart-bottom-wrap { flex: 1 1 0; position: relative; min-height: 80px; min-width: 0; overflow: hidden; }
@@ -499,37 +515,56 @@ window.__loadMp4Muxer = function() {
     </div>
   </div>
 
-  <div id="chart-stack">
-    <div id="chart-top-wrap">
-      <div id="chart-top"></div>
-      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
-      <div id="date-tracer"><div class="line"></div></div>
-      <div class="pane-label" id="header-top">
-        <div class="pane-title-row">
-          <span class="pane-title">
-            <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
-            <span class="sep">·</span><span>D</span>
-            <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
-          </span>
-          <span class="hover-readout" id="hover-top"></span>
-        </div>
-        <div class="ind-rows" id="ind-rows-top"></div>
-      </div>
+  <!-- Middle area: thin drawing-tools toolbar (left) + chart column (right).
+       The toolbar mirrors TradingView's pattern but stays minimal — cursor +
+       five drawing tools + clear-all. The chart column owns the rest of the
+       horizontal space and keeps its existing column flex (chart-stack +
+       chart-time-axis) so nothing inside it changes. -->
+  <div id="middle-area">
+    <div id="left-toolbar">
+      <button class="lt-btn active" data-tool="cursor" title="Cursor"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 3 L5 19 L9.5 15 L12 21 L14 20.2 L11.5 14 L17 14 Z" fill="currentColor"/></svg></button>
+      <div class="lt-sep"></div>
+      <button class="lt-btn" data-tool="trend" title="Trend line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="20" x2="21" y2="4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="3" cy="20" r="2" fill="currentColor"/><circle cx="21" cy="4" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-btn" data-tool="hline" title="Horizontal line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-btn" data-tool="vline" title="Vertical line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="2" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-btn" data-tool="rect" title="Rectangle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="2" fill="none" rx="1"/></svg></button>
+      <div class="lt-sep"></div>
+      <button class="lt-btn" data-tool="clear" title="Remove all drawings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
-    <div id="chart-divider" title="Drag to resize"></div>
-    <div id="chart-bottom-wrap">
-      <div id="chart-bottom"></div>
-      <div class="chart-watermark">BITCOINTERMINAL.NET</div>
-      <div class="pane-label" id="header-bottom">
-        <div class="ind-rows" id="ind-rows-bottom"></div>
-        <div id="nav-instruction"></div>
+    <div id="chart-column">
+      <div id="chart-stack">
+        <div id="chart-top-wrap">
+          <div id="chart-top"></div>
+          <div class="chart-watermark">BITCOINTERMINAL.NET</div>
+          <div id="date-tracer"><div class="line"></div></div>
+          <div class="pane-label" id="header-top">
+            <div class="pane-title-row">
+              <span class="pane-title">
+                <span>BITCOIN</span><span class="sep">/</span><span>USD</span>
+                <span class="sep">·</span><span>D</span>
+                <span class="sep">·</span><span class="source">BITCOIN RESEARCH KIT</span>
+              </span>
+              <span class="hover-readout" id="hover-top"></span>
+            </div>
+            <div class="ind-rows" id="ind-rows-top"></div>
+          </div>
+        </div>
+        <div id="chart-divider" title="Drag to resize"></div>
+        <div id="chart-bottom-wrap">
+          <div id="chart-bottom"></div>
+          <div class="chart-watermark">BITCOINTERMINAL.NET</div>
+          <div class="pane-label" id="header-bottom">
+            <div class="ind-rows" id="ind-rows-bottom"></div>
+            <div id="nav-instruction"></div>
+          </div>
+          <div id="stats-stack"></div>
+          <div id="status">Loading…</div>
+        </div>
       </div>
-      <div id="stats-stack"></div>
-      <div id="status">Loading…</div>
+
+      <div id="chart-time-axis"></div>
     </div>
   </div>
-
-  <div id="chart-time-axis"></div>
 
   <div id="bottom-toolbar">
     <div id="lb-group" title="Lookback window">
@@ -6675,6 +6710,399 @@ applyPriceScale();
       console.warn(`default ${ind.constructor.type} load failed:`, err);
     })));
   }
+})();
+
+// ───────────────────────────────────────────────────────────────────────────
+// Drawing tools — left-toolbar interactive drawings.
+//
+// Built directly on TradingView's official rectangle-drawing-tool pattern
+// (plugin-examples/src/plugins/rectangle-drawing-tool/). We use LWC's
+// own `chart.subscribeClick()` + `subscribeCrosshairMove()` event bus
+// (NOT raw DOM listeners), so we sidestep the chart-canvas event-routing
+// issues that broke our earlier deepentropy-plugin attempt.
+//
+// Each drawing class:
+//   1. Extends PluginBase (which manages chart/series attach/detach)
+//   2. Stores anchor points in {time, price} coords
+//   3. Has a PaneView whose update() converts anchors to pixel coords
+//   4. Has a PaneRenderer whose draw(target) paints to the chart canvas
+//   5. Is attached to the BTC price series via series.attachPrimitive(...)
+//
+// The DrawingToolManager owns the toolbar wiring + click flow:
+//   - Toolbar button click → manager.startDrawing(kind)
+//   - First chart click → first point captured + preview attached
+//   - Mouse move → preview's second point updates live
+//   - Second click → finalized drawing created, preview detached
+// ───────────────────────────────────────────────────────────────────────────
+(function setupDrawings() {
+  // ── Helpers (ported from plugin-examples/src/helpers) ───────────────
+  // positionsBox: bitmap-pixel rounding for crisp 1px shape edges.
+  function positionsBox(p1, p2, ratio) {
+    const a = Math.round(ratio * p1);
+    const b = Math.round(ratio * p2);
+    return { position: Math.min(a, b), length: Math.abs(b - a) + 1 };
+  }
+  // positionsLine: same idea but for a single thin line of given width.
+  function positionsLine(positionMedia, pixelRatio, desiredWidthMedia) {
+    desiredWidthMedia = desiredWidthMedia == null ? 1 : desiredWidthMedia;
+    const scaledPosition = Math.round(pixelRatio * positionMedia);
+    const lineBitmapWidth = Math.round(desiredWidthMedia * pixelRatio);
+    const offset = Math.floor(lineBitmapWidth * 0.5);
+    return { position: scaledPosition - offset, length: lineBitmapWidth };
+  }
+
+  // ── PluginBase (ported from plugin-examples/src/plugins/plugin-base.ts) ─
+  // Boilerplate every primitive needs: store chart+series on attach,
+  // expose .chart / .series getters, request a redraw via requestUpdate().
+  class PluginBase {
+    constructor() {
+      this._chart = null;
+      this._series = null;
+      this._requestUpdate = null;
+    }
+    attached(param) {
+      this._chart = param.chart;
+      this._series = param.series;
+      this._requestUpdate = param.requestUpdate;
+      this.requestUpdate();
+    }
+    detached() {
+      this._chart = null;
+      this._series = null;
+      this._requestUpdate = null;
+    }
+    requestUpdate() {
+      if (this._requestUpdate) this._requestUpdate();
+    }
+    get chart() { return this._chart; }
+    get series() { return this._series; }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // Rectangle (verbatim port from rectangle-drawing-tool.ts)
+  // ───────────────────────────────────────────────────────────────────
+  class RectanglePaneRenderer {
+    constructor(p1, p2, fillColor, strokeColor) {
+      this._p1 = p1; this._p2 = p2;
+      this._fillColor = fillColor; this._strokeColor = strokeColor;
+    }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._p1.x === null || this._p1.y === null ||
+            this._p2.x === null || this._p2.y === null) return;
+        const ctx = scope.context;
+        const hp = positionsBox(this._p1.x, this._p2.x, scope.horizontalPixelRatio);
+        const vp = positionsBox(this._p1.y, this._p2.y, scope.verticalPixelRatio);
+        ctx.fillStyle = this._fillColor;
+        ctx.fillRect(hp.position, vp.position, hp.length, vp.length);
+        if (this._strokeColor) {
+          ctx.strokeStyle = this._strokeColor;
+          ctx.lineWidth = Math.max(1, scope.horizontalPixelRatio | 0);
+          ctx.strokeRect(hp.position, vp.position, hp.length, vp.length);
+        }
+      });
+    }
+  }
+  class RectanglePaneView {
+    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+    update() {
+      const s = this._source.series, ts = this._source.chart.timeScale();
+      this._p1 = { x: ts.timeToCoordinate(this._source._p1.time), y: s.priceToCoordinate(this._source._p1.price) };
+      this._p2 = { x: ts.timeToCoordinate(this._source._p2.time), y: s.priceToCoordinate(this._source._p2.price) };
+    }
+    renderer() {
+      return new RectanglePaneRenderer(this._p1, this._p2,
+        this._source._options.fillColor, this._source._options.strokeColor);
+    }
+  }
+  class Rectangle extends PluginBase {
+    constructor(p1, p2, options) {
+      super();
+      this._p1 = p1; this._p2 = p2;
+      this._options = Object.assign({
+        fillColor: "rgba(255,140,0,0.20)",
+        strokeColor: "rgba(255,140,0,0.85)",
+      }, options || {});
+      this._paneViews = [new RectanglePaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // TrendLine — line from p1 to p2
+  // ───────────────────────────────────────────────────────────────────
+  class TrendLinePaneRenderer {
+    constructor(p1, p2, color, width) {
+      this._p1 = p1; this._p2 = p2; this._color = color; this._width = width;
+    }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._p1.x === null || this._p1.y === null ||
+            this._p2.x === null || this._p2.y === null) return;
+        const ctx = scope.context;
+        ctx.strokeStyle = this._color;
+        ctx.lineWidth = Math.max(1, Math.round(this._width * scope.verticalPixelRatio));
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(this._p1.x * scope.horizontalPixelRatio, this._p1.y * scope.verticalPixelRatio);
+        ctx.lineTo(this._p2.x * scope.horizontalPixelRatio, this._p2.y * scope.verticalPixelRatio);
+        ctx.stroke();
+      });
+    }
+  }
+  class TrendLinePaneView {
+    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+    update() {
+      const s = this._source.series, ts = this._source.chart.timeScale();
+      this._p1 = { x: ts.timeToCoordinate(this._source._p1.time), y: s.priceToCoordinate(this._source._p1.price) };
+      this._p2 = { x: ts.timeToCoordinate(this._source._p2.time), y: s.priceToCoordinate(this._source._p2.price) };
+    }
+    renderer() {
+      return new TrendLinePaneRenderer(this._p1, this._p2,
+        this._source._options.color, this._source._options.width);
+    }
+  }
+  class TrendLine extends PluginBase {
+    constructor(p1, p2, options) {
+      super();
+      this._p1 = p1; this._p2 = p2;
+      this._options = Object.assign({ color: "#ff8c00", width: 2 }, options || {});
+      this._paneViews = [new TrendLinePaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // HorizontalLine — single price level, full chart width
+  // ───────────────────────────────────────────────────────────────────
+  class HLinePaneRenderer {
+    constructor(y, color, width) { this._y = y; this._color = color; this._width = width; }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._y === null) return;
+        const ctx = scope.context;
+        const yPos = positionsLine(this._y, scope.verticalPixelRatio, this._width);
+        ctx.fillStyle = this._color;
+        ctx.fillRect(0, yPos.position, scope.bitmapSize.width, yPos.length);
+      });
+    }
+  }
+  class HLinePaneView {
+    constructor(source) { this._source = source; this._y = null; }
+    update() {
+      this._y = this._source.series.priceToCoordinate(this._source._p.price);
+    }
+    renderer() {
+      return new HLinePaneRenderer(this._y, this._source._options.color, this._source._options.width);
+    }
+  }
+  class HorizontalLine extends PluginBase {
+    constructor(p, options) {
+      super();
+      this._p = p;
+      this._options = Object.assign({ color: "#ff8c00", width: 2 }, options || {});
+      this._paneViews = [new HLinePaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p = p; this.requestUpdate(); }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // VerticalLine — single time, full chart height
+  // ───────────────────────────────────────────────────────────────────
+  class VLinePaneRenderer {
+    constructor(x, color, width) { this._x = x; this._color = color; this._width = width; }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._x === null) return;
+        const ctx = scope.context;
+        const xPos = positionsLine(this._x, scope.horizontalPixelRatio, this._width);
+        ctx.fillStyle = this._color;
+        ctx.fillRect(xPos.position, 0, xPos.length, scope.bitmapSize.height);
+      });
+    }
+  }
+  class VLinePaneView {
+    constructor(source) { this._source = source; this._x = null; }
+    update() {
+      this._x = this._source.chart.timeScale().timeToCoordinate(this._source._p.time);
+    }
+    renderer() {
+      return new VLinePaneRenderer(this._x, this._source._options.color, this._source._options.width);
+    }
+  }
+  class VerticalLine extends PluginBase {
+    constructor(p, options) {
+      super();
+      this._p = p;
+      this._options = Object.assign({ color: "#ff8c00", width: 2 }, options || {});
+      this._paneViews = [new VLinePaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p = p; this.requestUpdate(); }
+  }
+
+  // ───────────────────────────────────────────────────────────────────
+  // DrawingToolManager
+  // ───────────────────────────────────────────────────────────────────
+  // Catalog: tool kind id → metadata (number of points, factory function
+  // that builds a finalized drawing, factory function for the preview).
+  // Preview options are dimmer/translucent versions of the final ones.
+  const TOOLS = {
+    trend: {
+      nPts: 2,
+      build: (pts) => new TrendLine(pts[0], pts[1]),
+      preview: (p1) => new TrendLine(p1, p1, { color: "rgba(255,140,0,0.45)", width: 1.5 }),
+    },
+    hline: {
+      nPts: 1,
+      build: (pts) => new HorizontalLine(pts[0]),
+      preview: null,  // hline finalizes on first click; no preview needed
+    },
+    vline: {
+      nPts: 1,
+      build: (pts) => new VerticalLine(pts[0]),
+      preview: null,
+    },
+    rect: {
+      nPts: 2,
+      build: (pts) => new Rectangle(pts[0], pts[1]),
+      preview: (p1) => new Rectangle(p1, p1, {
+        fillColor: "rgba(255,140,0,0.10)",
+        strokeColor: "rgba(255,140,0,0.40)",
+      }),
+    },
+  };
+
+  function _btcSeries() {
+    if (typeof activeIndicators === "undefined") return null;
+    for (const ind of activeIndicators.values()) {
+      if (ind.constructor.type === "btc_price") {
+        return ind.getPriceSeries && ind.getPriceSeries();
+      }
+    }
+    return null;
+  }
+
+  // Main manager. Initialized once the BTC series is ready (we poll for
+  // it, since indicators load asynchronously after BTCPriceIndicator.load).
+  function _initOnce() {
+    const series = _btcSeries();
+    if (!series || typeof topChart === "undefined" || !topChart) return false;
+
+    let _activeKind = null;
+    let _points = [];
+    let _preview = null;
+    const _drawings = [];
+
+    function _setActiveButton() {
+      document.querySelectorAll("#left-toolbar .lt-btn").forEach(b => {
+        const k = b.getAttribute("data-tool");
+        const isActive = (_activeKind === null && k === "cursor") || (_activeKind === k);
+        b.classList.toggle("active", isActive);
+      });
+    }
+    function startDrawing(kind) {
+      if (!TOOLS[kind]) return;
+      _activeKind = kind;
+      _points = [];
+      _removePreview();
+      _setActiveButton();
+    }
+    function stopDrawing() {
+      _activeKind = null;
+      _points = [];
+      _removePreview();
+      _setActiveButton();
+    }
+    function clearAll() {
+      for (const d of _drawings) {
+        try { series.detachPrimitive(d); } catch (e) {}
+      }
+      _drawings.length = 0;
+    }
+    function _addPreview(p1) {
+      const tool = TOOLS[_activeKind];
+      if (!tool || !tool.preview) return;
+      _preview = tool.preview(p1);
+      try { series.attachPrimitive(_preview); }
+      catch (e) { console.warn("[drawings] preview attach failed:", e); _preview = null; }
+    }
+    function _removePreview() {
+      if (!_preview) return;
+      try { series.detachPrimitive(_preview); } catch (e) {}
+      _preview = null;
+    }
+    function _onClick(param) {
+      if (!_activeKind || !param.point || !param.time) return;
+      const price = series.coordinateToPrice(param.point.y);
+      if (price === null || price === undefined) return;
+      const point = { time: param.time, price };
+      _points.push(point);
+      const need = TOOLS[_activeKind].nPts;
+      if (_points.length >= need) {
+        const drawing = TOOLS[_activeKind].build(_points);
+        try {
+          series.attachPrimitive(drawing);
+          _drawings.push(drawing);
+        } catch (e) { console.warn("[drawings] attach failed:", e); }
+        _removePreview();
+        stopDrawing();
+      } else if (_points.length === 1 && TOOLS[_activeKind].preview) {
+        _addPreview(point);
+      }
+    }
+    function _onMove(param) {
+      if (!_activeKind || !_preview || !param.point || !param.time) return;
+      const price = series.coordinateToPrice(param.point.y);
+      if (price === null || price === undefined) return;
+      _preview.updatePreviewEnd({ time: param.time, price });
+    }
+
+    // LWC's own event bus — no DOM listener fights with the canvas.
+    topChart.subscribeClick(_onClick);
+    topChart.subscribeCrosshairMove(_onMove);
+
+    // Toolbar wiring
+    document.querySelectorAll("#left-toolbar .lt-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const kind = btn.getAttribute("data-tool");
+        if (kind === "cursor") { stopDrawing(); return; }
+        if (kind === "clear") {
+          if (_drawings.length === 0) return;
+          if (window.confirm("Remove all drawings?")) clearAll();
+          return;
+        }
+        if (_activeKind === kind) stopDrawing(); else startDrawing(kind);
+      });
+    });
+
+    // Right-click anywhere on the chart cancels an in-progress drawing.
+    const wrap = document.getElementById("chart-top-wrap");
+    if (wrap) wrap.addEventListener("contextmenu", (ev) => {
+      if (_activeKind) { ev.preventDefault(); stopDrawing(); }
+    });
+
+    // Esc cancels too.
+    document.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && _activeKind) stopDrawing();
+    });
+
+    console.log("[drawings] tool manager ready");
+    // Expose for debugging
+    window.__drawings = { startDrawing, stopDrawing, clearAll, drawings: _drawings };
+    return true;
+  }
+  let _tries = 0;
+  const _timer = setInterval(() => {
+    if (_initOnce() || ++_tries > 50) clearInterval(_timer);
+  }, 200);
 })();
 </script>
 </body>
