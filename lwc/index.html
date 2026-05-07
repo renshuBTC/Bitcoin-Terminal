@@ -586,6 +586,11 @@ window.__loadMp4Muxer = function() {
       <button class="lt-tool" data-tool="rect" title="Rectangle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="2" fill="none" rx="1"/></svg></button>
       <button class="lt-tool" data-tool="fib" title="Fibonacci retracement"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="5" x2="21" y2="5" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="14" x2="21" y2="14" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.6"/></svg></button>
       <button class="lt-tool" data-tool="text" title="Text label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 5 H19 M12 5 V20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
+      <button class="lt-tool" data-tool="ray" title="Ray"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="20" x2="22" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="3" cy="20" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-tool" data-tool="parallel" title="Parallel channel"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="18" x2="21" y2="6" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="22" x2="21" y2="10" stroke="currentColor" stroke-width="1.6" opacity="0.6"/></svg></button>
+      <button class="lt-tool" data-tool="pitchfork" title="Andrew's pitchfork"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="14" x2="22" y2="6" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="14" x2="22" y2="14" stroke="currentColor" stroke-width="1.6"/><line x1="3" y1="14" x2="22" y2="22" stroke="currentColor" stroke-width="1.6"/></svg></button>
+      <button class="lt-tool" data-tool="gann" title="Gann fan"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="21" x2="21" y2="3" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="21" x2="21" y2="9" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="21" x2="21" y2="14" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="21" x2="21" y2="19" stroke="currentColor" stroke-width="1.4"/></svg></button>
+      <button class="lt-tool" data-tool="fibext" title="Fibonacci extension"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="4" x2="21" y2="4" stroke="currentColor" stroke-width="1.4" stroke-dasharray="2 2"/><line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="14" x2="21" y2="14" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.4"/></svg></button>
       <div class="lt-sep"></div>
       <button class="lt-tool" data-tool="clear" title="Remove all drawings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
@@ -4628,6 +4633,150 @@ const DrawingsManager = (() => {
     else if (d.tool === "rect"  && d.points.length === 2) _renderRect(d, d.points[0], d.points[1]);
     else if (d.tool === "fib"   && d.points.length === 2) _renderFib(d, d.points[0], d.points[1], w);
     else if (d.tool === "text"  && d.points.length === 1) _renderText(d, d.points[0]);
+    else if (d.tool === "ray"      && d.points.length === 2) _renderRay(d, d.points[0], d.points[1], w);
+    else if (d.tool === "parallel" && d.points.length === 3) _renderParallel(d, d.points[0], d.points[1], d.points[2]);
+    else if (d.tool === "pitchfork"&& d.points.length === 3) _renderPitchfork(d, d.points[0], d.points[1], d.points[2], w);
+    else if (d.tool === "gann"     && d.points.length === 2) _renderGann(d, d.points[0], d.points[1], w);
+    else if (d.tool === "fibext"   && d.points.length === 3) _renderFibExt(d, d.points[0], d.points[1], d.points[2], w);
+  }
+  // ── New shapes (breadth ask: pitchfork/parallel-channel/gann/ray/fib-ext) ──
+  // Ray: trend line that extends to the right edge of the chart.
+  function _renderRay(d, p1, p2, w) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+    // Project to the right edge using the slope (y - y1) / (x - x1) = (y2 - y1) / (x2 - x1).
+    const dx = x2 - x1, dy = y2 - y1;
+    const xEnd = w + 24;
+    const yEnd = (Math.abs(dx) < 0.001) ? y2 : y1 + dy * (xEnd - x1) / dx;
+    const g = _g(d);
+    _line(g, x1, y1, xEnd, yEnd, "draw-line");
+    _handle(g, x1, y1); _handle(g, x2, y2);
+    overlay.appendChild(g);
+  }
+  // Parallel channel: 3 points = trend (p1, p2) + offset point (p3). Two
+  // parallel lines: one through p1-p2, one passing through p3 with the
+  // same slope.
+  function _renderParallel(d, p1, p2, p3) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
+    // Slope of main line; vertical offset between main line and p3.
+    const dx = x2 - x1, dy = y2 - y1;
+    const slopeY = (Math.abs(dx) < 0.001) ? 0 : dy / dx;
+    const yOnMainAtX3 = y1 + slopeY * (x3 - x1);
+    const offY = y3 - yOnMainAtX3;
+    const g = _g(d);
+    _line(g, x1, y1, x2, y2, "draw-line");
+    _line(g, x1, y1 + offY, x2, y2 + offY, "draw-line");
+    // Connectors at endpoints
+    const ln3 = _line(g, x1, y1, x1, y1 + offY, "draw-line");
+    ln3.setAttribute("style", "stroke-dasharray:3 3;opacity:0.4");
+    const ln4 = _line(g, x2, y2, x2, y2 + offY, "draw-line");
+    ln4.setAttribute("style", "stroke-dasharray:3 3;opacity:0.4");
+    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
+    overlay.appendChild(g);
+  }
+  // Andrew's pitchfork: 3 points. p1 is the anchor; the median runs from
+  // p1 through the midpoint of p2 and p3. Two parallel lines run through
+  // p2 and p3 with the same slope as the median.
+  function _renderPitchfork(d, p1, p2, p3, w) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
+    const mx = (x2 + x3) / 2, my = (y2 + y3) / 2;
+    const dx = mx - x1, dy = my - y1;
+    const slopeY = (Math.abs(dx) < 0.001) ? 0 : dy / dx;
+    const xEnd = w + 24;
+    // Project median + the two outer parallels to the right edge.
+    const projY = (xStart, yStart) => yStart + slopeY * (xEnd - xStart);
+    const g = _g(d);
+    // Median (p1 → midpoint, extended)
+    _line(g, x1, y1, xEnd, projY(x1, y1), "draw-line");
+    // Upper rail through p2
+    _line(g, x2, y2, xEnd, projY(x2, y2), "draw-line");
+    // Lower rail through p3
+    _line(g, x3, y3, xEnd, projY(x3, y3), "draw-line");
+    // The "tine" connecting p2 and p3 (ghost-line, dashed)
+    const tine = _line(g, x2, y2, x3, y3, "draw-line");
+    tine.setAttribute("style", "stroke-dasharray:3 3;opacity:0.5");
+    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
+    overlay.appendChild(g);
+  }
+  // Gann fan: 2 points define the anchor (p1) + direction (p2). Draws
+  // 7 lines through p1 at the standard 1x1, 1x2, 1x3, 1x4, 1x8 ratios
+  // plus their inverses (2x1, 3x1...). For an upward fan we flip
+  // signs of dy/dx so the rays splay correctly.
+  function _renderGann(d, p1, p2, w) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
+    // Use the p1→p2 distance as the "1x1" reference. Other ratios scale
+    // off this baseline.
+    const dx = x2 - x1, dy = y2 - y1;
+    const ratios = [
+      { num: 1, den: 8 }, { num: 1, den: 4 }, { num: 1, den: 3 },
+      { num: 1, den: 2 }, { num: 1, den: 1 },
+      { num: 2, den: 1 }, { num: 3, den: 1 }, { num: 4, den: 1 }, { num: 8, den: 1 },
+    ];
+    const xEnd = w + 24;
+    const g = _g(d);
+    for (const r of ratios) {
+      const slope = (dy / dx) * (r.num / r.den);
+      const yEnd = y1 + slope * (xEnd - x1);
+      const ln = _line(g, x1, y1, xEnd, yEnd, "draw-line");
+      // 1x1 line is the reference, render at full opacity. Others
+      // dimmed proportionally to how far they are from the 1x1.
+      const isMain = (r.num === 1 && r.den === 1);
+      ln.setAttribute("style", isMain
+        ? "opacity:1;stroke-width:1.8"
+        : "opacity:0.55;stroke-width:1.2");
+    }
+    _handle(g, x1, y1); _handle(g, x2, y2);
+    overlay.appendChild(g);
+  }
+  // Fibonacci extension: 3 points (A, B, C). Levels 0/0.236/0.382/0.5/
+  // 0.618/0.786/1.0 between A and B, then 1.272/1.414/1.618/2.0/2.618
+  // projected from C in the direction of the A→B move.
+  function _renderFibExt(d, p1, p2, p3, w) {
+    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
+    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
+    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
+    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
+    const move = p2.price - p1.price; // signed move from A to B
+    // Standard extension levels (TradingView default: shows 0/0.382/0.5/
+    // 0.618/0.786 over A→B and 1.0/1.272/1.414/1.618/2.0/2.618 from C).
+    const LEVELS = [
+      { f: 0,     col: "#787b86" },
+      { f: 0.382, col: "#f23645" },
+      { f: 0.5,   col: "#ff9800" },
+      { f: 0.618, col: "#4caf50" },
+      { f: 0.786, col: "#2196f3" },
+      { f: 1.0,   col: "#9c27b0" },
+      { f: 1.272, col: "#e91e63" },
+      { f: 1.618, col: "#3f51b5" },
+      { f: 2.0,   col: "#009688" },
+      { f: 2.618, col: "#795548" },
+    ];
+    const xL = Math.min(x1, x3), xR = Math.max(x2, x3, w);
+    const g = _g(d);
+    LEVELS.forEach(lvl => {
+      const price = p3.price + move * lvl.f;
+      const y = _priceToY(price);
+      if (y == null) return;
+      const ln = _line(g, xL, y, xR, y, "draw-fib");
+      ln.setAttribute("style", `stroke:${lvl.col}`);
+      const lbl = document.createElementNS(SVG_NS, "text");
+      lbl.setAttribute("x", xL + 4);
+      lbl.setAttribute("y", y - 3);
+      lbl.setAttribute("class", "draw-fib-label");
+      lbl.textContent = `${lvl.f.toFixed(3).replace(/0+$/,"").replace(/\.$/,"")} (${price.toFixed(0)})`;
+      g.appendChild(lbl);
+    });
+    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
+    overlay.appendChild(g);
   }
   function _renderLine(d, p1, p2) {
     const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
@@ -4704,24 +4853,17 @@ const DrawingsManager = (() => {
     overlay.appendChild(g);
   }
   function _renderPending(w, h) {
-    // Preview while user is mid-draw. Two-click tools (trend/rect/fib)
-    // only have one point so far, so _renderOne would skip them. We
-    // explicitly show a small handle at the first point as feedback
-    // that their click registered, then they can click the second
-    // point to complete the drawing.
-    const pseudo = { id: "_pending", tool: _pending.tool, points: _pending.points };
-    if (_pending.points.length === 1) {
-      const p = _pending.points[0];
+    // Preview while user is mid-draw. Show a handle at every placed
+    // point as feedback. Multi-click tools (parallel channel, pitchfork,
+    // fib extension) need 3 points — the user gets visual feedback on
+    // each click so they know how many they have left.
+    const g = document.createElementNS(SVG_NS, "g");
+    g.setAttribute("class", "draw-group draw-pending");
+    for (const p of _pending.points) {
       const x = _timeToX(p.time), y = _priceToY(p.price);
-      if (x != null && y != null) {
-        const g = document.createElementNS(SVG_NS, "g");
-        g.setAttribute("class", "draw-group draw-pending");
-        _handle(g, x, y);
-        overlay.appendChild(g);
-      }
-      return;
+      if (x != null && y != null) _handle(g, x, y);
     }
-    _renderOne(pseudo, w, h);
+    overlay.appendChild(g);
   }
   // ── DOM helpers ────────────────────────────────────────────────────
   function _g(d) {
@@ -4840,11 +4982,14 @@ const DrawingsManager = (() => {
         setActiveTool("cursor");
         return;
       }
-      // Two-click tools: trend / rect / fib
+      // Multi-click tools. Most need 2 points (trend/rect/fib/ray/gann),
+      // a few need 3 (parallel channel, pitchfork, fib extension).
+      const NEED = { trend: 2, rect: 2, fib: 2, ray: 2, gann: 2,
+                     parallel: 3, pitchfork: 3, fibext: 3 }[t] || 2;
       if (!_pending) _pending = { tool: t, points: [] };
       _pending.points.push({ time, price });
-      if (_pending.points.length >= 2) {
-        _finalize({ tool: t, points: _pending.points.slice(0, 2) });
+      if (_pending.points.length >= NEED) {
+        _finalize({ tool: t, points: _pending.points.slice(0, NEED) });
         setActiveTool("cursor");
       } else {
         render();
@@ -4981,6 +5126,11 @@ const I18N = {
     dt_hline:  "Horizontal line", dt_vline: "Vertical line",
     dt_rect:   "Rectangle", dt_fib: "Fibonacci retracement",
     dt_text:   "Text label", dt_clear: "Remove all drawings",
+    dt_ray:       "Ray",
+    dt_parallel:  "Parallel channel",
+    dt_pitchfork: "Andrew's pitchfork",
+    dt_gann:      "Gann fan",
+    dt_fibext:    "Fibonacci extension",
     dt_label_prompt: "Label text:",
     dt_clear_confirm: "Remove all drawings?",
   },
@@ -5044,6 +5194,11 @@ const I18N = {
     dt_hline:  "水平線", dt_vline: "垂直線",
     dt_rect:   "矩形", dt_fib: "フィボナッチ・リトレースメント",
     dt_text:   "テキストラベル", dt_clear: "すべての描画を削除",
+    dt_ray:       "レイ",
+    dt_parallel:  "平行チャネル",
+    dt_pitchfork: "アンドリュース・ピッチフォーク",
+    dt_gann:      "ギャンファン",
+    dt_fibext:    "フィボナッチ・エクステンション",
     dt_label_prompt: "ラベルテキスト：",
     dt_clear_confirm: "すべての描画を削除しますか？",
   },
@@ -5107,6 +5262,11 @@ const I18N = {
     dt_hline:  "Ligne horizontale", dt_vline: "Ligne verticale",
     dt_rect:   "Rectangle", dt_fib: "Retracement de Fibonacci",
     dt_text:   "Étiquette texte", dt_clear: "Supprimer tous les dessins",
+    dt_ray:       "Rayon",
+    dt_parallel:  "Canal parallèle",
+    dt_pitchfork: "Fourche d'Andrews",
+    dt_gann:      "Éventail de Gann",
+    dt_fibext:    "Extension de Fibonacci",
     dt_label_prompt: "Texte de l'étiquette :",
     dt_clear_confirm: "Supprimer tous les dessins ?",
   },
@@ -5170,6 +5330,11 @@ const I18N = {
     dt_hline:  "خط افقی", dt_vline: "خط عمودی",
     dt_rect:   "مستطیل", dt_fib: "اصلاح فیبوناچی",
     dt_text:   "برچسب متن", dt_clear: "حذف همه نقشه‌ها",
+    dt_ray:       "پرتو",
+    dt_parallel:  "کانال موازی",
+    dt_pitchfork: "چنگال اندروز",
+    dt_gann:      "بادبزن گان",
+    dt_fibext:    "گسترش فیبوناچی",
     dt_label_prompt: "متن برچسب:",
     dt_clear_confirm: "همه نقشه‌ها حذف شوند؟",
   },
@@ -5233,6 +5398,11 @@ const I18N = {
     dt_hline:  "水平线", dt_vline: "垂直线",
     dt_rect:   "矩形", dt_fib: "斐波那契回撤",
     dt_text:   "文本标签", dt_clear: "删除所有绘图",
+    dt_ray:       "射线",
+    dt_parallel:  "平行通道",
+    dt_pitchfork: "安德鲁斯叉",
+    dt_gann:      "江恩扇",
+    dt_fibext:    "斐波那契扩展",
     dt_label_prompt: "标签文本：",
     dt_clear_confirm: "删除所有绘图？",
   },
@@ -5288,8 +5458,13 @@ const _I18N_TARGETS = [
   { sel: '#left-toolbar .lt-tool[data-tool="vline"]',  key: "dt_vline",  mode: "title" },
   { sel: '#left-toolbar .lt-tool[data-tool="rect"]',   key: "dt_rect",   mode: "title" },
   { sel: '#left-toolbar .lt-tool[data-tool="fib"]',    key: "dt_fib",    mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="text"]',   key: "dt_text",   mode: "title" },
-  { sel: '#left-toolbar .lt-tool[data-tool="clear"]',  key: "dt_clear",  mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="text"]',     key: "dt_text",     mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="ray"]',      key: "dt_ray",      mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="parallel"]', key: "dt_parallel", mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="pitchfork"]',key: "dt_pitchfork",mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="gann"]',     key: "dt_gann",     mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="fibext"]',   key: "dt_fibext",   mode: "title" },
+  { sel: '#left-toolbar .lt-tool[data-tool="clear"]',    key: "dt_clear",    mode: "title" },
 ];
 
 // Translate the cycle dropdown items (text changes Cycle 1 Top → サイクル 1 天井, etc.)
