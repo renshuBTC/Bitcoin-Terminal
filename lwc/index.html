@@ -2437,11 +2437,30 @@ class _BottomSpotPaneView {
       return;
     }
     try {
-      this._x = src._chart.timeScale().timeToCoordinate(src._spot);
-      console.log("[btspot] update: spot=" + src._spot + " -> x=" + this._x);
+      // timeToCoordinate only returns coords for EXACT time values present
+      // in the data; our histogram data is on bin edges (49.99, 99.98, …),
+      // so the spot price almost never matches and we get null. Instead,
+      // interpolate linearly across the visible time range.
+      const ts = src._chart.timeScale();
+      const range = ts.getVisibleRange();
+      const w = ts.width();
+      if (!range || !w || range.to === range.from) {
+        this._x = null;
+        console.log("[btspot] update: no visible range / width", { range, w });
+        return;
+      }
+      const prop = (src._spot - range.from) / (range.to - range.from);
+      if (prop < 0 || prop > 1) {
+        // Spot is panned outside the visible window; line correctly hidden.
+        this._x = null;
+        console.log("[btspot] update: spot out of visible range", { spot: src._spot, range });
+        return;
+      }
+      this._x = prop * w;
+      console.log("[btspot] update: spot=" + src._spot + " range=" + range.from + "→" + range.to + " w=" + w + " -> x=" + this._x);
     } catch (e) {
       this._x = null;
-      console.log("[btspot] update: timeToCoordinate threw", e);
+      console.log("[btspot] update: getVisibleRange threw", e);
     }
   }
   renderer() {
