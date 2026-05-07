@@ -4858,6 +4858,20 @@ const DrawingsManager = (() => {
       try { pluginMgr.on && pluginMgr.on("drawing:selected",   _trackSelected); } catch (e) {}
       try { pluginMgr.on && pluginMgr.on("drawing:deselected", _clearSelected); } catch (e) {}
       try { pluginMgr.on && pluginMgr.on("drawing:created",    _trackSelected); } catch (e) {}
+      // After a drag-edit completes, persist the new endpoints and
+      // record an undo step so the move is reversible. The plugin's
+      // exact event name isn't documented, so we subscribe to all
+      // the common ones — at least one of these is the real "edit
+      // finalized" event in the plugin's emitter.
+      const _onEdited = () => {
+        _save();
+        _recordIfAvailable();
+      };
+      try { pluginMgr.on && pluginMgr.on("drawing:updated", _onEdited); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:moved",   _onEdited); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:changed", _onEdited); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:edited",  _onEdited); } catch (e) {}
+      try { pluginMgr.on && pluginMgr.on("drawing:dragend", _onEdited); } catch (e) {}
       _loadFromLS();
       return true;
     } catch (e) {
