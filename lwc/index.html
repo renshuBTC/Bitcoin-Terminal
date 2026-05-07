@@ -662,7 +662,11 @@ const PRICE_EPOCH_DATE = new Date(2009, 0, 3);
 const THEME = {
   background: "#000", text: "#d4d4d4", grid: "rgba(255,255,255,0.05)", border: "#222",
   crosshair: "rgba(255,140,0,0.9)", priceLine: "rgba(255,255,255,0.85)",
-  spot: "#ff8c00", profit: "#2ecc71", loss: "#e74c3c",
+  // profit / loss — verbatim from version 1 (PROFIT_COLOR / LOSS_COLOR in
+  // index.html). Brighter & more saturated than the previous values
+  // (#2ecc71 / #e74c3c), giving the same crisp profit/loss split as the
+  // Plotly URPD/SOPD histograms.
+  spot: "#ff8c00", profit: "#00e676", loss: "#ff1744",
   // `mean` = MEAN_COLOR from the previous Plotly site (rp.js: #00e676).
   // Used for: Realised Price (top-pane line), Realised Price in Profit,
   // and Realised Price in Loss — all three share this single colour, with
@@ -2829,18 +2833,17 @@ const _AGE_BANDS = [
   { cohort: "utxos_12y_to_15y_old", label: "12y-15y" },
   { cohort: "utxos_over_15y_old",   label: ">15y"   },
 ];
-// Bloomberg-bright 21-band palette — fully saturated rainbow walk from
-// red (youngest) through orange/yellow/green/cyan/blue/violet to magenta
-// (oldest). Every entry is at peak HSV value/saturation so the bars pop
-// against the black background, matching the Bloomberg-terminal look of
-// the EPOCH palette below. Replaces the previous viridis-ish gradient
-// whose tail (#90A0E8, #B8C8F0) faded to pastel.
+// AGE 21-band palette — verbatim from version 1's index.html
+// (AGE_BAND_COLORS). Smooth red→orange→yellow→green→teal→blue ramp
+// matching every URPD-family dashboard. The light-blue tail
+// (#90A0E8, #B8C8F0) is intentional — it lets the oldest bands fade
+// without overpowering the spot tracer overlay.
 const _AGE_BAND_COLORS = [
-  "#ff3b30", "#ff5500", "#ff7700", "#ff9900", "#ffaa00",
-  "#ffcc00", "#ffeb3b", "#d6e600", "#a8d000", "#5cc000",
-  "#00d44c", "#00e676", "#00cc99", "#00ccc8", "#00d4ff",
-  "#00aaff", "#3366ff", "#5544ff", "#8833ff", "#cc33ff",
-  "#ff5cb3",
+  "#FF3B2E", "#FF5A2E", "#FF7A2E", "#FF9A2E", "#FFB82E",
+  "#FFD42E", "#E8D834", "#C8D43A", "#A0C840", "#5AAF54",
+  "#3A9A6A", "#2E8878", "#287888", "#226898", "#1C58A8",
+  "#1848B8", "#2040C0", "#4858C8", "#6878D8", "#90A0E8",
+  "#B8C8F0",
 ];
 
 // ───────────────────────────────────────────────────────────────────────────
