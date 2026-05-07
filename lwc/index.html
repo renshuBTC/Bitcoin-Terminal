@@ -6992,6 +6992,19 @@ applyPriceScale();
     } else {
       await loadDefaults();
     }
+    // Auto-enter nav mode so URPD/SOPD histograms render at boot. Without
+    // this, the histogram pane is empty until the user double-clicks on
+    // the BTC price chart to "lock" a tracer date. Picks the saved-state
+    // date if one's present and valid, otherwise the latest available
+    // data date (which is today for fresh data).
+    if (priceDateStrs && priceDateStrs.length > 0) {
+      const latestDate = priceDateStrs[priceDateStrs.length - 1];
+      const navDate = (savedState && savedState.d &&
+                       priceDateStrs.indexOf(savedState.d) >= 0)
+        ? savedState.d : latestDate;
+      try { enterNavMode(navDate); }
+      catch (e) { console.warn("auto enterNavMode:", e); }
+    }
     refreshIndicatorPanel();
   } catch (e) {
     console.error("Boot failed:", e);
