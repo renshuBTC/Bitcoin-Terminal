@@ -7195,11 +7195,18 @@ document.getElementById("btn-auto").addEventListener("click", () => {
 applyPriceScale();
 
 // Export kebab menu — toggles a popover with Copy link / Save PNG / Export MP4
-// View counter — fetches the total page-view count from counterapi.dev
-// (free, no auth) and shows it at the centre of the top toolbar. Each
-// page load increments the counter once. If the API is unreachable
-// (offline / blocked / down), the placeholder "— views" stays. Swap
-// the URL to any other public counter service later if you want.
+// View counter — total = historical GA pageviews + live counterapi.dev
+// count from this site's deploy onwards. counterapi.dev is free, no
+// auth. If the API is unreachable (offline / blocked / down), the
+// placeholder "— views" stays.
+//
+// To include your existing Google Analytics history: open GA, go to
+// Reports → Engagement → Pages and screens (GA4) or Behavior →
+// Overview (UA), set date range to "All time", grab the Views /
+// Pageviews number, and update GA_HISTORICAL_VIEWS below. The
+// displayed counter then equals (GA history) + (every new visit since
+// this counter went live), so it never undercounts.
+const GA_HISTORICAL_VIEWS = 6000;
 (function wireViewCounter() {
   const el = document.getElementById("view-counter");
   if (!el) return;
@@ -7210,7 +7217,8 @@ applyPriceScale();
     .then(r => r.ok ? r.json() : null)
     .then(data => {
       if (!data || typeof data.count !== "number") return;
-      el.textContent = data.count.toLocaleString("en-US") + " views";
+      const total = GA_HISTORICAL_VIEWS + data.count;
+      el.textContent = total.toLocaleString("en-US") + " views";
     })
     .catch(() => { /* leave the placeholder; nothing to do */ });
 })();
