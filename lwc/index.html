@@ -3088,6 +3088,10 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
     // Stats — reused by the hover tooltip (same shape as the base class).
     const fmtCount = (n) => `${(n/1e6).toFixed(2)}M BTC`;
     this._stats = {
+      // `spot` is needed by the shared hover renderer which reads it
+      // unconditionally; stacked stats previously omitted it and the
+      // missing-field crash broke LWC's render loop.
+      spot,
       total: totalWeight,
       cohortLabels: this.cohortLabels(),
       cohortColors: colors,
@@ -5836,16 +5840,32 @@ function _renderHoverStats(stack, currentDateStr) {
     const capLine = (s.yCapPct && s.yCapValue != null)
       ? `<div><span class="label">${_tt("hs_ycap","Y-cap")}</span> <span class="value">p${s.yCapPct} = ${s.fmtCount(s.yCapValue)}</span></div>`
       : "";
+    // Defensive coalescing — stacked indicators don't carry binCount,
+    // pctProfit, profit, loss; missing-field crashes here would break
+    // LWC's render loop and silently kill all primitives. `spot` is now
+    // always present, but other fields may not be.
+    const spotStr = (typeof s.spot === "number")
+      ? s.spot.toLocaleString("en-US", { maximumFractionDigits: 0 })
+      : "—";
+    const binsStr = (typeof s.binCount === "number") ? s.binCount : "—";
+    const pctP = (typeof s.pctProfit === "number") ? s.pctProfit : null;
+    const pctL = (pctP != null) ? (100 - pctP) : null;
+    const profitLine = (pctP != null && typeof s.profit === "number")
+      ? `<div><span class="profit">${_tt("in_profit","In Profit")} ${pctP.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>`
+      : "";
+    const lossLine = (pctL != null && typeof s.loss === "number")
+      ? `<div><span class="loss">${_tt("in_loss","In Loss")} ${pctL.toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>`
+      : "";
     html += `<div class="stat-box"><div class="title-row">` +
       `<span class="swatch" style="background:${ind.swatchColor()}"></span>` +
       `<span class="name">${dispName}</span>` +
       `<span class="date">${s.dateStr}</span></div>` +
-      `<div><span class="label">${_tt("hs_spot","Spot")}</span> <span class="value">$${s.spot.toLocaleString("en-US",{maximumFractionDigits:0})}</span></div>` +
+      `<div><span class="label">${_tt("hs_spot","Spot")}</span> <span class="value">$${spotStr}</span></div>` +
       `<div><span class="label">${_tt("hs_total","Total")}</span> <span class="value">${s.fmtCount(s.total)}</span> &nbsp;` +
-        `<span class="label">${_tt("hs_bins","Bins")}</span> <span class="value">${s.binCount}</span></div>` +
+        `<span class="label">${_tt("hs_bins","Bins")}</span> <span class="value">${binsStr}</span></div>` +
       capLine +
-      `<div><span class="profit">${_tt("in_profit","In Profit")} ${s.pctProfit.toFixed(1)}% (${s.fmtCount(s.profit)})</span></div>` +
-      `<div><span class="loss">${_tt("in_loss","In Loss")} ${(100-s.pctProfit).toFixed(1)}% (${s.fmtCount(s.loss)})</span></div>` +
+      profitLine +
+      lossLine +
       `</div>`;
   }
   stack.innerHTML = html;
