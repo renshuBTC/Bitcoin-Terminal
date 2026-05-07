@@ -38,7 +38,16 @@ window.__loadMp4Muxer = function() {
     font-family: 'Source Code Pro', Consolas, monospace; font-size: 13px; }
   #app { display: flex; flex-direction: column; height: 100vh; }
   #toolbar { display: flex; align-items: center; gap: 6px; padding: 8px 12px;
-    background: #000; flex-wrap: wrap; }
+    background: #000; flex-wrap: wrap; position: relative; }
+  /* View counter — absolute-centred on the toolbar so it sits at the
+     visual midpoint regardless of how wide the left/right clusters
+     get. Same colour/font as the credit line. Click-through (no
+     pointer events) so it never blocks the buttons it overlaps with;
+     since it's a tiny string in the centre, this is fine. */
+  #view-counter { position: absolute; left: 50%; top: 50%;
+    transform: translate(-50%, -50%); pointer-events: none;
+    color: #888; font-size: 11px; font-variant-numeric: tabular-nums;
+    white-space: nowrap; }
   /* Bottom toolbar — TradingView-style minimal status row */
   #bottom-toolbar { display: flex; align-items: center; gap: 4px; padding: 4px 10px;
     background: #000; border-top: 1px solid #1a1a1a; flex-wrap: wrap; flex-shrink: 0;
@@ -542,6 +551,7 @@ window.__loadMp4Muxer = function() {
     <button id="btn-redo" class="icon-btn" title="Redo (Ctrl+Y)" disabled><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M21 7v6h-6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3L21 13" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-fullscreen" class="icon-btn" title="Fullscreen mode (Shift+F)" aria-label="Fullscreen mode"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     <button id="btn-png" class="icon-btn" title="Take a snapshot" aria-label="Take a snapshot"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M3 8.5a2 2 0 0 1 2-2h2.2l1.4-1.8a1 1 0 0 1 .8-.4h5.2a1 1 0 0 1 .8.4l1.4 1.8H19a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-9Z" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><circle cx="12" cy="13" r="3.5" stroke="currentColor" stroke-width="1.6"/></svg></button>
+    <span id="view-counter" title="Total website views">— views</span>
     <span class="spacer"></span>
     <span id="credit-line" data-i18n="credit_powered_by">Powered by <a href="https://x.com/_nym21_" target="_blank" rel="noopener noreferrer" class="credit-link">Bitcoin Research Kit</a>. <span data-i18n="credit_inspired_by">Inspired by</span> <a href="https://x.com/_Checkmatey_" target="_blank" rel="noopener noreferrer" class="credit-link">@_Checkmatey_</a>. <span data-i18n="credit_follow_me">Follow me</span> <a href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" class="credit-link">@RenshuBTC</a></span>
     <div id="lang-wrap" title="Language">
@@ -7185,6 +7195,26 @@ document.getElementById("btn-auto").addEventListener("click", () => {
 applyPriceScale();
 
 // Export kebab menu — toggles a popover with Copy link / Save PNG / Export MP4
+// View counter — fetches the total page-view count from counterapi.dev
+// (free, no auth) and shows it at the centre of the top toolbar. Each
+// page load increments the counter once. If the API is unreachable
+// (offline / blocked / down), the placeholder "— views" stays. Swap
+// the URL to any other public counter service later if you want.
+(function wireViewCounter() {
+  const el = document.getElementById("view-counter");
+  if (!el) return;
+  const NAMESPACE = "bitcointerminal-net";
+  const KEY = "lwc-views";
+  const url = `https://api.counterapi.dev/v1/${NAMESPACE}/${KEY}/up`;
+  fetch(url, { cache: "no-store" })
+    .then(r => r.ok ? r.json() : null)
+    .then(data => {
+      if (!data || typeof data.count !== "number") return;
+      el.textContent = data.count.toLocaleString("en-US") + " views";
+    })
+    .catch(() => { /* leave the placeholder; nothing to do */ });
+})();
+
 (function wireExportMenu() {
   const btn = document.getElementById("btn-export");
   const menu = document.getElementById("export-menu");
