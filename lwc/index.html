@@ -4850,6 +4850,39 @@ const DrawingsManager = (() => {
       _logRegistry();
       // Stash a debug handle so we can inspect from devtools.
       try { window.__pluginMgr = pluginMgr; } catch (e) {}
+      // Forward DOM mouse events to the plugin's handlers in capture
+      // phase. LWC's chart canvas catches mousedown/mousemove/mouseup
+      // for its pan/zoom logic and (likely) calls stopPropagation, so
+      // listeners the plugin attached internally on the wrap during
+      // attach() never fire. Capture-phase listeners run BEFORE the
+      // canvas sees the event, ensuring the plugin gets them.
+      // Only forwards when a draw tool is active OR a drawing is
+      // selected (drag-edit) so we don't pollute normal cursor-mode
+      // pan/scroll behavior.
+      const _shouldForward = () => {
+        if (!pluginMgr) return false;
+        try {
+          const tool = pluginMgr.getActiveTool && pluginMgr.getActiveTool();
+          if (tool) return true;
+          const sel = pluginMgr.getSelectedDrawing && pluginMgr.getSelectedDrawing();
+          if (sel) return true;
+        } catch (e) {}
+        return false;
+      };
+      const _fwd = (method) => (ev) => {
+        if (!_shouldForward()) return;
+        const fn = pluginMgr && pluginMgr[method];
+        if (typeof fn !== "function") return;
+        try { fn.call(pluginMgr, ev); }
+        catch (e) { console.warn("[drawings] forward " + method + ":", e && e.message); }
+      };
+      try {
+        wrap.addEventListener("mousedown", _fwd("handleMouseDown"), true);
+        wrap.addEventListener("mousemove", _fwd("handleMouseMove"), true);
+        wrap.addEventListener("mouseup",   _fwd("handleMouseUp"),   true);
+        wrap.addEventListener("click",     _fwd("handleClick"),     true);
+        console.log("[drawings] capture-phase mouse forwarders attached");
+      } catch (e) { console.warn("[drawings] forwarder attach failed:", e); }
       // Subscribe to selection events so the keyboard handler knows
       // which drawing to delete on Backspace/Delete. The exact event
       // names + payload shapes aren't documented; we try the common
