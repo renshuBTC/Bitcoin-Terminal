@@ -234,6 +234,15 @@ window.__loadMp4Muxer = function() {
     border-color: #2a2a2a; }
   #left-toolbar .lt-btn svg { display: block; }
   #left-toolbar .lt-sep { width: 18px; height: 1px; background: #1a1a1a; margin: 4px 0; }
+  /* Color picker — strip the native browser chrome so it blends in
+     with the icon-only toolbar. The native control still drives the
+     OS color dialog when clicked. */
+  #left-toolbar #lt-color { width: 22px; height: 22px; padding: 0;
+    border: 1px solid #2a2a2a; border-radius: 3px; cursor: pointer;
+    background: transparent; -webkit-appearance: none; appearance: none; }
+  #left-toolbar #lt-color::-webkit-color-swatch-wrapper { padding: 0; }
+  #left-toolbar #lt-color::-webkit-color-swatch { border: none; border-radius: 2px; }
+  #left-toolbar #lt-color::-moz-color-swatch { border: none; border-radius: 2px; }
 
   #chart-stack { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   #chart-top-wrap { flex: 0 0 60%; position: relative; min-height: 80px; overflow: hidden; }
@@ -527,6 +536,8 @@ window.__loadMp4Muxer = function() {
       <button class="lt-btn" data-tool="hline" title="Horizontal line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
       <button class="lt-btn" data-tool="vline" title="Vertical line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="2" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
       <button class="lt-btn" data-tool="rect" title="Rectangle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="2" fill="none" rx="1"/></svg></button>
+      <div class="lt-sep"></div>
+      <input type="color" id="lt-color" value="#ff8c00" title="Drawing color">
       <div class="lt-sep"></div>
       <button class="lt-btn" data-tool="clear" title="Remove all drawings"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
     </div>
@@ -6828,6 +6839,27 @@ applyPriceScale();
     ctx.lineWidth = 1.5 * Math.max(hpr, vpr);
     ctx.stroke();
   }
+  // addAlpha: convert a "#rrggbb" hex (from the color picker) to an
+  // rgba(...) string with the given alpha. Used for translucent fills
+  // and previews so the user-selected color flows through both the
+  // solid stroke and the semi-transparent fill of a rectangle.
+  function addAlpha(hex, alpha) {
+    if (typeof hex !== "string") return hex;
+    if (hex[0] !== "#") return hex;  // already rgba or named
+    let r, g, b;
+    if (hex.length === 7) {
+      r = parseInt(hex.slice(1, 3), 16);
+      g = parseInt(hex.slice(3, 5), 16);
+      b = parseInt(hex.slice(5, 7), 16);
+    } else if (hex.length === 4) {
+      r = parseInt(hex[1] + hex[1], 16);
+      g = parseInt(hex[2] + hex[2], 16);
+      b = parseInt(hex[3] + hex[3], 16);
+    } else {
+      return hex;
+    }
+    return "rgba(" + r + "," + g + "," + b + "," + alpha + ")";
+  }
 
   // ── Rectangle (port + Stage 2 editing methods) ──────────────────────
   class RectanglePaneRenderer {
@@ -6895,23 +6927,73 @@ applyPriceScale();
       const y1 = Math.min(v._p1.y, v._p2.y), y2 = Math.max(v._p1.y, v._p2.y);
       return x >= x1 - 4 && x <= x2 + 4 && y >= y1 - 4 && y <= y2 + 4;
     }
+    // Returns 0..3 for the four corners (TL, TR, BL, BR) when the
+    // click landed within 8px of one — else -1 to signal "drag the
+    // whole rectangle". Only meaningful when this.selected is true.
+    hitTestAnchor(x, y) {
+      if (!this._selected) return -1;
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return -1;
+      const corners = [
+        { x: v._p1.x, y: v._p1.y },  // 0: top-left  (p1 fully)
+        { x: v._p2.x, y: v._p1.y },  // 1: top-right (p2.t, p1.p)
+        { x: v._p1.x, y: v._p2.y },  // 2: bot-left  (p1.t, p2.p)
+        { x: v._p2.x, y: v._p2.y },  // 3: bot-right (p2 fully)
+      ];
+      for (let i = 0; i < 4; i++) {
+        if (Math.hypot(x - corners[i].x, y - corners[i].y) < 8) return i;
+      }
+      return -1;
+    }
     getCoords() {
       const v = this._paneViews[0];
       return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
     }
-    applyDrag(orig, dx, dy) {
+    applyDrag(orig, dx, dy, anchorIdx) {
       const ts = this.chart.timeScale(), s = this.series;
-      const t1 = ts.coordinateToTime(orig[0].x + dx);
-      const p1 = s.coordinateToPrice(orig[0].y + dy);
-      const t2 = ts.coordinateToTime(orig[1].x + dx);
-      const p2 = s.coordinateToPrice(orig[1].y + dy);
-      if (t1 != null && p1 != null && t2 != null && p2 != null) {
-        this._p1 = { time: t1, price: p1 };
-        this._p2 = { time: t2, price: p2 };
+      if (anchorIdx == null || anchorIdx === -1) {
+        // Whole-body translation — both anchors shift by (dx, dy).
+        const t1 = ts.coordinateToTime(orig[0].x + dx);
+        const p1 = s.coordinateToPrice(orig[0].y + dy);
+        const t2 = ts.coordinateToTime(orig[1].x + dx);
+        const p2 = s.coordinateToPrice(orig[1].y + dy);
+        if (t1 != null && p1 != null && t2 != null && p2 != null) {
+          this._p1 = { time: t1, price: p1 };
+          this._p2 = { time: t2, price: p2 };
+          this.requestUpdate();
+        }
+      } else {
+        // Single-corner resize. Compute new (time, price) for the
+        // dragged corner only and update the right axis of the right
+        // anchor point. Corner index encoding matches hitTestAnchor.
+        const cornerOrigX = (anchorIdx === 1 || anchorIdx === 3) ? orig[1].x : orig[0].x;
+        const cornerOrigY = (anchorIdx === 2 || anchorIdx === 3) ? orig[1].y : orig[0].y;
+        const newTime = ts.coordinateToTime(cornerOrigX + dx);
+        const newPrice = s.coordinateToPrice(cornerOrigY + dy);
+        if (newTime == null || newPrice == null) return;
+        if (anchorIdx === 0) {
+          this._p1 = { time: newTime, price: newPrice };
+        } else if (anchorIdx === 1) {
+          this._p2 = { time: newTime, price: this._p2.price };
+          this._p1 = { time: this._p1.time, price: newPrice };
+        } else if (anchorIdx === 2) {
+          this._p1 = { time: newTime, price: this._p1.price };
+          this._p2 = { time: this._p2.time, price: newPrice };
+        } else if (anchorIdx === 3) {
+          this._p2 = { time: newTime, price: newPrice };
+        }
         this.requestUpdate();
       }
     }
-    serialize() { return { kind: "rect", p1: this._p1, p2: this._p2 }; }
+    setColor(color) {
+      this._options.strokeColor = color;
+      this._options.fillColor = addAlpha(color, 0.20);
+      this.requestUpdate();
+    }
+    serialize() {
+      return { kind: "rect", p1: this._p1, p2: this._p2,
+        color: this._options.strokeColor };
+    }
   }
 
   // ── TrendLine (with Stage 2 editing) ────────────────────────────────
@@ -6968,23 +7050,51 @@ applyPriceScale();
       if (v._p1.x === null || v._p2.x === null) return false;
       return distToSegment(x, y, v._p1.x, v._p1.y, v._p2.x, v._p2.y) < 6;
     }
+    // Returns 0 (p1) or 1 (p2) when the click landed within 8px of an
+    // endpoint, else -1 (drag the whole line / rotate via endpoint).
+    hitTestAnchor(x, y) {
+      if (!this._selected) return -1;
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return -1;
+      if (Math.hypot(x - v._p1.x, y - v._p1.y) < 8) return 0;
+      if (Math.hypot(x - v._p2.x, y - v._p2.y) < 8) return 1;
+      return -1;
+    }
     getCoords() {
       const v = this._paneViews[0];
       return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
     }
-    applyDrag(orig, dx, dy) {
+    applyDrag(orig, dx, dy, anchorIdx) {
       const ts = this.chart.timeScale(), s = this.series;
-      const t1 = ts.coordinateToTime(orig[0].x + dx);
-      const p1 = s.coordinateToPrice(orig[0].y + dy);
-      const t2 = ts.coordinateToTime(orig[1].x + dx);
-      const p2 = s.coordinateToPrice(orig[1].y + dy);
-      if (t1 != null && p1 != null && t2 != null && p2 != null) {
-        this._p1 = { time: t1, price: p1 };
-        this._p2 = { time: t2, price: p2 };
+      if (anchorIdx == null || anchorIdx === -1) {
+        // Translate both endpoints together.
+        const t1 = ts.coordinateToTime(orig[0].x + dx);
+        const p1 = s.coordinateToPrice(orig[0].y + dy);
+        const t2 = ts.coordinateToTime(orig[1].x + dx);
+        const p2 = s.coordinateToPrice(orig[1].y + dy);
+        if (t1 != null && p1 != null && t2 != null && p2 != null) {
+          this._p1 = { time: t1, price: p1 };
+          this._p2 = { time: t2, price: p2 };
+          this.requestUpdate();
+        }
+      } else {
+        // Move only the grabbed endpoint — this implicitly rotates +
+        // resizes the line at the same time.
+        const newTime = ts.coordinateToTime(orig[anchorIdx].x + dx);
+        const newPrice = s.coordinateToPrice(orig[anchorIdx].y + dy);
+        if (newTime == null || newPrice == null) return;
+        if (anchorIdx === 0) this._p1 = { time: newTime, price: newPrice };
+        else this._p2 = { time: newTime, price: newPrice };
         this.requestUpdate();
       }
     }
-    serialize() { return { kind: "trend", p1: this._p1, p2: this._p2 }; }
+    setColor(color) {
+      this._options.color = color;
+      this.requestUpdate();
+    }
+    serialize() {
+      return { kind: "trend", p1: this._p1, p2: this._p2, color: this._options.color };
+    }
   }
 
   // ── HorizontalLine (with Stage 2 editing) ──────────────────────────
@@ -7032,6 +7142,10 @@ applyPriceScale();
       if (v._y === null) return false;
       return Math.abs(y - v._y) < 6;
     }
+    // HLine spans full chart width; "anchors" are visual only, no
+    // resize semantics (you'd just be moving the line). Returning -1
+    // routes any drag through applyDrag's whole-body branch.
+    hitTestAnchor() { return -1; }
     getCoords() { return [{ x: 0, y: this._paneViews[0]._y }]; }
     applyDrag(orig, dx, dy) {
       const newPrice = this.series.coordinateToPrice(orig[0].y + dy);
@@ -7040,7 +7154,8 @@ applyPriceScale();
         this.requestUpdate();
       }
     }
-    serialize() { return { kind: "hline", p: this._p }; }
+    setColor(color) { this._options.color = color; this.requestUpdate(); }
+    serialize() { return { kind: "hline", p: this._p, color: this._options.color }; }
   }
 
   // ── VerticalLine (with Stage 2 editing) ────────────────────────────
@@ -7087,6 +7202,7 @@ applyPriceScale();
       if (v._x === null) return false;
       return Math.abs(x - v._x) < 6;
     }
+    hitTestAnchor() { return -1; }  // see HorizontalLine note
     getCoords() { return [{ x: this._paneViews[0]._x, y: 0 }]; }
     applyDrag(orig, dx, dy) {
       const newTime = this.chart.timeScale().coordinateToTime(orig[0].x + dx);
@@ -7095,27 +7211,32 @@ applyPriceScale();
         this.requestUpdate();
       }
     }
-    serialize() { return { kind: "vline", p: this._p }; }
+    setColor(color) { this._options.color = color; this.requestUpdate(); }
+    serialize() { return { kind: "vline", p: this._p, color: this._options.color }; }
   }
 
   // ── Tool catalog ───────────────────────────────────────────────────
-  // Each entry: nPts (clicks needed), build() (final shape), preview()
-  // (translucent in-progress shape, optional). hline + vline finalize
-  // on first click — no preview needed.
+  // Each entry: nPts (clicks needed), build(pts, color) (final shape),
+  // preview(p1, color) (translucent in-progress shape, optional).
+  // hline + vline finalize on first click — no preview needed.
+  // Color is sourced from the toolbar's color picker at draw time.
   const TOOLS = {
     trend: {
       nPts: 2,
-      build: (pts) => new TrendLine(pts[0], pts[1]),
-      preview: (p1) => new TrendLine(p1, p1, { color: "rgba(255,140,0,0.45)", width: 1.5 }),
+      build: (pts, color) => new TrendLine(pts[0], pts[1], { color }),
+      preview: (p1, color) => new TrendLine(p1, p1, { color: addAlpha(color, 0.45), width: 1.5 }),
     },
-    hline: { nPts: 1, build: (pts) => new HorizontalLine(pts[0]), preview: null },
-    vline: { nPts: 1, build: (pts) => new VerticalLine(pts[0]),   preview: null },
+    hline: { nPts: 1, build: (pts, color) => new HorizontalLine(pts[0], { color }), preview: null },
+    vline: { nPts: 1, build: (pts, color) => new VerticalLine(pts[0], { color }),   preview: null },
     rect:  {
       nPts: 2,
-      build: (pts) => new Rectangle(pts[0], pts[1]),
-      preview: (p1) => new Rectangle(p1, p1, {
-        fillColor: "rgba(255,140,0,0.10)",
-        strokeColor: "rgba(255,140,0,0.40)",
+      build: (pts, color) => new Rectangle(pts[0], pts[1], {
+        fillColor: addAlpha(color, 0.20),
+        strokeColor: color,
+      }),
+      preview: (p1, color) => new Rectangle(p1, p1, {
+        fillColor: addAlpha(color, 0.10),
+        strokeColor: addAlpha(color, 0.40),
       }),
     },
   };
@@ -7143,8 +7264,14 @@ applyPriceScale();
     let _selected = null;
     // Drag state — only set during an active drag operation.
     let _isDragging = false;
-    let _dragOrig = null;     // pixel-coord array snapshot of selected drawing's anchors at drag start
-    let _dragStartXY = null;  // mousedown position relative to wrap
+    let _dragOrig = null;       // pixel-coord array snapshot of selected drawing's anchors at drag start
+    let _dragStartXY = null;    // mousedown position relative to wrap
+    let _dragAnchorIdx = -1;    // -1 = body drag (translate), else specific anchor index (resize)
+    // Color state — sourced from the toolbar's <input type="color">.
+    // Used at create-time for new drawings AND applied to the
+    // currently-selected drawing on every change.
+    const _colorInput = document.getElementById("lt-color");
+    let _currentColor = (_colorInput && _colorInput.value) || "#ff8c00";
 
     function _setActiveButton() {
       document.querySelectorAll("#left-toolbar .lt-btn").forEach(b => {
@@ -7192,7 +7319,7 @@ applyPriceScale();
     function _addPreview(p1) {
       const tool = TOOLS[_activeKind];
       if (!tool || !tool.preview) return;
-      _preview = tool.preview(p1);
+      _preview = tool.preview(p1, _currentColor);
       try { series.attachPrimitive(_preview); }
       catch (e) { console.warn("[drawings] preview attach failed:", e); _preview = null; }
     }
@@ -7219,7 +7346,7 @@ applyPriceScale();
         _points.push(point);
         const need = TOOLS[_activeKind].nPts;
         if (_points.length >= need) {
-          const drawing = TOOLS[_activeKind].build(_points);
+          const drawing = TOOLS[_activeKind].build(_points, _currentColor);
           try {
             series.attachPrimitive(drawing);
             _drawings.push(drawing);
@@ -7259,12 +7386,19 @@ applyPriceScale();
       const rect = wrap.getBoundingClientRect();
       const x = ev.clientX - rect.left;
       const y = ev.clientY - rect.top;
-      if (!_selected.hitTest(x, y)) return;
+      // First check whether the click landed on a specific anchor
+      // handle. If yes, this is a per-anchor RESIZE (or per-endpoint
+      // rotate for trend lines). If no, fall back to whole-body
+      // translation if the click is on the drawing's body at all.
+      const anchorIdx = (typeof _selected.hitTestAnchor === "function")
+        ? _selected.hitTestAnchor(x, y) : -1;
+      if (anchorIdx === -1 && !_selected.hitTest(x, y)) return;
       ev.preventDefault();
       ev.stopPropagation();
       // Pan/scale must be off while we drag — re-enabled on mouseup.
       try { topChart.applyOptions({ handleScroll: false, handleScale: false }); } catch (e) {}
       _isDragging = true;
+      _dragAnchorIdx = anchorIdx;
       _dragOrig = _selected.getCoords();
       _dragStartXY = { x, y };
       document.addEventListener("mousemove", _onMouseMove, true);
@@ -7277,7 +7411,7 @@ applyPriceScale();
       const y = ev.clientY - rect.top;
       const dx = x - _dragStartXY.x;
       const dy = y - _dragStartXY.y;
-      _selected.applyDrag(_dragOrig, dx, dy);
+      _selected.applyDrag(_dragOrig, dx, dy, _dragAnchorIdx);
     }
     function _onMouseUp(ev) {
       if (!_isDragging) return;
@@ -7307,6 +7441,22 @@ applyPriceScale();
     if (wrap) wrap.addEventListener("contextmenu", (ev) => {
       if (_activeKind) { ev.preventDefault(); stopDrawing(); }
     });
+
+    // ── Color picker ───────────────────────────────────────────────
+    // Track the picked color and apply it to (a) any future drawing
+    // created from the toolbar AND (b) the currently-selected drawing
+    // for instant recolor. Recolors record an undo step.
+    if (_colorInput) {
+      _colorInput.addEventListener("input", () => {
+        _currentColor = _colorInput.value;
+        if (_selected && typeof _selected.setColor === "function") {
+          _selected.setColor(_currentColor);
+        }
+      });
+      _colorInput.addEventListener("change", () => {
+        if (_selected) _recordIfAvailable();
+      });
+    }
 
     // ── Keyboard: Esc, Backspace/Delete ────────────────────────────
     document.addEventListener("keydown", (ev) => {
@@ -7348,11 +7498,22 @@ applyPriceScale();
       if (!Array.isArray(arr)) return;
       for (const data of arr) {
         let d = null;
+        // Color survives the round-trip via serialize/restore.
+        // Pre-color saves (older snapshots) lack `color` and fall
+        // back to each tool's default.
+        const color = data.color;
         try {
-          if (data.kind === "trend") d = new TrendLine(data.p1, data.p2);
-          else if (data.kind === "rect") d = new Rectangle(data.p1, data.p2);
-          else if (data.kind === "hline") d = new HorizontalLine(data.p);
-          else if (data.kind === "vline") d = new VerticalLine(data.p);
+          if (data.kind === "trend") {
+            d = new TrendLine(data.p1, data.p2, color ? { color } : undefined);
+          } else if (data.kind === "rect") {
+            d = new Rectangle(data.p1, data.p2, color ? {
+              strokeColor: color, fillColor: addAlpha(color, 0.20),
+            } : undefined);
+          } else if (data.kind === "hline") {
+            d = new HorizontalLine(data.p, color ? { color } : undefined);
+          } else if (data.kind === "vline") {
+            d = new VerticalLine(data.p, color ? { color } : undefined);
+          }
         } catch (e) { console.warn("[drawings] restore deserialize failed:", e); }
         if (d) {
           try {
@@ -7363,7 +7524,7 @@ applyPriceScale();
       }
     }
 
-    console.log("[drawings] tool manager ready (Stage 2 — editing layer active)");
+    console.log("[drawings] tool manager ready (Stage 2.2 — editing layer + color picker + per-handle resize)");
     window.__drawings = {
       startDrawing, stopDrawing, clearAll,
       snapshot, restore,
