@@ -2452,11 +2452,26 @@ class _BottomSpotPaneView {
   }
   renderer() {
     return new _BottomSpotRenderer(this._x, this._source._spot,
-      this._source._label);
+      this._source._label, this._source._dateStr);
   }
 }
 class _BottomSpotRenderer {
-  constructor(x, spot, label) { this._x = x; this._spot = spot; this._label = label; }
+  constructor(x, spot, label, dateStr) {
+    this._x = x; this._spot = spot; this._label = label;
+    this._dateStr = dateStr || null;
+  }
+  // Format a YYYY-MM-DD date string as "7 May 2026". Falls back to the
+  // input when the date can't be parsed so we never silently swallow.
+  _fmtDate(dateStr) {
+    if (!dateStr || typeof dateStr !== "string") return "";
+    const m = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return dateStr;
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const idx = parseInt(m[2], 10) - 1;
+    const d = parseInt(m[3], 10);
+    return d + " " + (months[idx] || m[2]) + " " + m[1];
+  }
   draw(target) {
     target.useBitmapCoordinateSpace(scope => {
       if (this._x == null) return;
@@ -2471,7 +2486,14 @@ class _BottomSpotRenderer {
       // baseline rather than the x-axis-label area below it.
       const fontSize = 11 * vpr;
       const padX = 4 * hpr, padY = 2 * vpr;
-      const labelBoxH = fontSize + padY * 2 + 2 * vpr;
+      const lineGap = 2 * vpr;            // gap between the two label rows
+      const dateStr = this._fmtDate(this._dateStr);
+      const lines = [
+        this._label + " $" + Math.round(this._spot).toLocaleString("en-US"),
+      ];
+      if (dateStr) lines.push(dateStr);
+      const labelBoxH = fontSize * lines.length
+        + lineGap * (lines.length - 1) + padY * 2 + 2 * vpr;
       const y1 = h * 0.95;                    // floor of the bars
       const y0 = Math.max(2 * vpr, y1 - h * 0.75);  // top, 75% above floor
       ctx.strokeStyle = "#ffffff";
@@ -2482,20 +2504,23 @@ class _BottomSpotRenderer {
       ctx.lineTo(x, y1);
       ctx.stroke();
       ctx.setLineDash([]);
-      // Label — "BTC Price $X". Sits just above the top of the line so
-      // it tracks the line's height (and disappears with it).
+      // Label box — two stacked rows: "BTC/USD $X" then "7 May 2026".
+      // Sits just above the top of the line so it tracks the line's
+      // height (and disappears with it).
       ctx.font = fontSize + "px sans-serif";
       ctx.textAlign = "left";
       ctx.textBaseline = "top";
-      const text = this._label + " $" +
-        Math.round(this._spot).toLocaleString("en-US");
-      const w = ctx.measureText(text).width;
+      let maxWidth = 0;
+      for (const l of lines) maxWidth = Math.max(maxWidth, ctx.measureText(l).width);
       const labelX = x + 4 * hpr;
       const labelY = Math.max(0, y0 - labelBoxH - 2 * vpr);
       ctx.fillStyle = "rgba(0,0,0,0.7)";
-      ctx.fillRect(labelX, labelY, w + padX * 2, labelBoxH);
+      ctx.fillRect(labelX, labelY, maxWidth + padX * 2, labelBoxH);
       ctx.fillStyle = "rgba(255,255,255,0.95)";
-      ctx.fillText(text, labelX + padX, labelY + padY);
+      for (let i = 0; i < lines.length; i++) {
+        const ty = labelY + padY + i * (fontSize + lineGap);
+        ctx.fillText(lines[i], labelX + padX, ty);
+      }
     });
   }
 }
@@ -2505,6 +2530,7 @@ class BottomSpotPrimitive {
     this._series = null;
     this._requestUpdate = null;
     this._spot = null;
+    this._dateStr = null;
     this._label = label || "BTC/USD";
     this._paneViews = [new _BottomSpotPaneView(this)];
   }
@@ -2521,6 +2547,10 @@ class BottomSpotPrimitive {
   }
   setSpot(spot) {
     this._spot = (typeof spot === "number" && spot > 0) ? spot : null;
+    if (this._requestUpdate) this._requestUpdate();
+  }
+  setDate(dateStr) {
+    this._dateStr = (typeof dateStr === "string" && dateStr) ? dateStr : null;
     if (this._requestUpdate) this._requestUpdate();
   }
   setLabel(label) { this._label = label || "BTC/USD"; }
@@ -2742,6 +2772,7 @@ class ProfileHistogramIndicator extends Indicator {
     if (!this._spotPrim) this._spotPrim = new BottomSpotPrimitive("BTC/USD");
     try { this._series.attachPrimitive(this._spotPrim); } catch (e) {}
     this._spotPrim.setSpot(spot || null);
+    this._spotPrim.setDate(dateStr);
 
     // Stash per-indicator stats. The hover handler shows these in a small
     // tooltip near the cursor when the user mouses over a histogram bar
@@ -3086,6 +3117,7 @@ class StackedURPDHistoryIndicator extends ProfileHistogramIndicator {
       const hostSeries = this.series[this.series.length - 1];
       try { hostSeries.attachPrimitive(this._spotPrim); } catch (e) {}
       this._spotPrim.setSpot(spot || null);
+      this._spotPrim.setDate(dateStr);
     }
 
     // Stats — reused by the hover tooltip (same shape as the base class).
