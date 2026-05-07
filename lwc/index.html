@@ -56,6 +56,14 @@ window.__loadMp4Muxer = function() {
      don't render a "selected" badge for them. */
   #bottom-toolbar .bb-btn.active { background: transparent; color: #d4d4d4; }
   #bottom-toolbar .bb-btn.active:hover { background: #1a1a1a; color: #fff; }
+  /* Anchored-marker toggles — these specific buttons DO show their on/off
+     state so the user can see at a glance whether halvings / cycle
+     landmarks are visible on the chart. Off = dim grey, on = normal. */
+  #bottom-toolbar #btn-halvings:not(.active),
+  #bottom-toolbar #btn-cycles:not(.active) { color: #555; }
+  #bottom-toolbar #btn-halvings:not(.active):hover,
+  #bottom-toolbar #btn-cycles:not(.active):hover { color: #aaa;
+    background: #1a1a1a; }
   /* Lookback buttons share .bb-btn styling — keep them as a tight group */
   #bottom-toolbar #lb-group { display: inline-flex; gap: 0; }
   #bottom-toolbar #lb-group button { padding: 5px 9px; min-width: 32px; font-weight: 400; }
@@ -643,6 +651,8 @@ window.__loadMp4Muxer = function() {
       <div id="tz-menu"></div>
     </div>
     <span class="bb-sep"></span>
+    <button id="btn-halvings" class="bb-btn active" title="Toggle halving markers">Halvings</button>
+    <button id="btn-cycles"   class="bb-btn active" title="Toggle cycle landmark markers">Cycles</button>
     <button id="btn-pct"  class="bb-btn" title="Toggle Percentage">%</button>
     <button id="btn-log"  class="bb-btn" title="Toggle Log Scale">log</button>
     <button id="btn-auto" class="bb-btn active" title="Toggle Auto Scale">auto</button>
@@ -1542,19 +1552,37 @@ const CYCLE_LANDMARKS = [
   { time: "2025-10-06", top: true,  text: "Cycle 5 Top" },
 ];
 
-// Build the combined marker array for cycle tops/bottoms (white arrows)
-// AND BTC halvings (orange circles). LWC v5 requires markers sorted
-// ascending by time, so we merge then sort the whole list. The
-// halving-date list lives further down in the file (under the EPOCH
-// cohort classifier) — referenced by name, both consts are top-level
-// and resolved at marker-attach time, which only happens after the
-// whole script body has run.
+// Anchored-marker visibility, persisted in localStorage so the user's
+// toggle preferences survive reloads. Keys default to "on".
+const ANNO_VIS = {
+  halvings: (function () {
+    try { return localStorage.getItem("bt_anno_halvings") !== "0"; }
+    catch (e) { return true; }
+  })(),
+  cycles: (function () {
+    try { return localStorage.getItem("bt_anno_cycles") !== "0"; }
+    catch (e) { return true; }
+  })(),
+};
+function _saveAnnoVis() {
+  try {
+    localStorage.setItem("bt_anno_halvings", ANNO_VIS.halvings ? "1" : "0");
+    localStorage.setItem("bt_anno_cycles",   ANNO_VIS.cycles   ? "1" : "0");
+  } catch (e) {}
+}
+// Build the combined marker array for cycle tops/bottoms AND BTC halvings,
+// filtered by ANNO_VIS. Both render as white shapes with white labels —
+// LWC v5's marker `color` controls both the shape and the text, so the
+// label colour follows the shape colour. Cycle markers use arrows; halvings
+// use circles; the shape difference (plus position relative to the bar)
+// keeps them visually distinguishable. LWC requires markers sorted
+// ascending by time, so we merge then sort.
 function _buildAnchoredMarkers() {
   const cyc = (typeof _t === "function" ? _t("cycle") : "Cycle");
   const top = (typeof _t === "function" ? _t("top") : "Top");
   const bot = (typeof _t === "function" ? _t("bottom") : "Bottom");
   const hv  = (typeof _t === "function" ? _t("halving") : "Halving");
-  const cycleMarkers = CYCLE_LANDMARKS.map((lm, i) => {
+  const cycleMarkers = ANNO_VIS.cycles ? CYCLE_LANDMARKS.map((lm, i) => {
     const cycleNum = Math.floor(i / 2) + 1;
     const fixedNum = (i === 8) ? 5 : cycleNum;  // last entry is "Cycle 5 Top"
     return {
@@ -1565,19 +1593,33 @@ function _buildAnchoredMarkers() {
       text: `${cyc} ${fixedNum} ${lm.top ? top : bot}`,
       size: 1,
     };
-  });
-  const halvingMarkers = (typeof _HALVING_DATES !== "undefined")
+  }) : [];
+  const halvingMarkers = (ANNO_VIS.halvings && typeof _HALVING_DATES !== "undefined")
     ? _HALVING_DATES.map((date, i) => ({
         time: date,
         position: "aboveBar",
         shape: "circle",
-        color: "rgba(255, 140, 0, 0.95)",
+        color: "rgba(255,255,255,0.85)",
         text: `${hv} ${i + 1}`,
         size: 1,
       }))
     : [];
   return [...cycleMarkers, ...halvingMarkers].sort((a, b) =>
     a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+}
+// Re-push the current marker set to whichever primitive the BTC price
+// indicator owns. Called on any visibility toggle so the chart updates
+// without needing to rebuild the indicator.
+function _refreshAnchoredMarkers() {
+  let btcInd = null;
+  if (typeof activeIndicators !== "undefined") {
+    for (const ind of activeIndicators.values()) {
+      if (ind.constructor.type === "btc_price") { btcInd = ind; break; }
+    }
+  }
+  if (!btcInd || !btcInd._cycleMarkersPrim) return;
+  try { btcInd._cycleMarkersPrim.setMarkers(_buildAnchoredMarkers()); }
+  catch (e) { console.warn("anchored markers refresh:", e); }
 }
 // Attach the anchored markers (cycle landmarks + halvings) to the
 // supplied price series. v5.0 moved markers out of the series API
@@ -6676,6 +6718,31 @@ function applyPriceScale() {
   document.getElementById("btn-log").classList.toggle("active", psState.log);
   document.getElementById("btn-auto").classList.toggle("active", psState.auto);
 }
+
+// Anchored marker toggles — Halvings and Cycles. Each flips the
+// matching ANNO_VIS flag, persists it, refreshes the marker primitive
+// on the BTC price chart, and updates the .active class so the button
+// reads correctly. Initial .active state is synced from the persisted
+// values below.
+(function wireAnchoredToggles() {
+  const halvBtn = document.getElementById("btn-halvings");
+  const cycBtn  = document.getElementById("btn-cycles");
+  if (!halvBtn || !cycBtn) return;
+  halvBtn.classList.toggle("active", ANNO_VIS.halvings);
+  cycBtn.classList.toggle("active", ANNO_VIS.cycles);
+  halvBtn.addEventListener("click", () => {
+    ANNO_VIS.halvings = !ANNO_VIS.halvings;
+    halvBtn.classList.toggle("active", ANNO_VIS.halvings);
+    _saveAnnoVis();
+    _refreshAnchoredMarkers();
+  });
+  cycBtn.addEventListener("click", () => {
+    ANNO_VIS.cycles = !ANNO_VIS.cycles;
+    cycBtn.classList.toggle("active", ANNO_VIS.cycles);
+    _saveAnnoVis();
+    _refreshAnchoredMarkers();
+  });
+})();
 
 document.getElementById("btn-pct").addEventListener("click", () => {
   psState.pct = !psState.pct;
