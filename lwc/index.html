@@ -6122,9 +6122,13 @@ document.getElementById("date-input").addEventListener("change", (e) => setCurre
 // ───────────────────────────────────────────────────────────────────────────
 // Lookback: controls the top chart's visible time window
 // ───────────────────────────────────────────────────────────────────────────
-let currentLookback = "all";
+// Default lookback is 5Y so the URPD/SOPD context fits in view without
+// the user touching the lookback row. Boot also calls applyLookback with
+// `centerTip` set, which extends the visible range into the empty future
+// so the chain tip sits at the horizontal center of the chart.
+let currentLookback = 1825;
 
-function applyLookback(lb) {
+function applyLookback(lb, centerTip = false) {
   currentLookback = lb;
   // Update active class on buttons
   document.querySelectorAll("#lb-group button").forEach(btn => {
@@ -6138,6 +6142,21 @@ function applyLookback(lb) {
   }
   const days = parseInt(lb, 10);
   if (!isFinite(days) || days <= 0) { topChart.timeScale().fitContent(); return; }
+  if (centerTip) {
+    // Center the chain tip — extend the visible logical range `days`
+    // bars BEYOND the last data point so the latest bar sits at the
+    // midpoint of the visible window. The right half is intentionally
+    // empty space (no data after today). Falls back to right-aligned
+    // tip if the API throws.
+    const tipIdx = priceDateStrs.length - 1;
+    try {
+      topChart.timeScale().setVisibleLogicalRange({
+        from: tipIdx - days,
+        to:   tipIdx + days,
+      });
+      return;
+    } catch (e) { /* fall through to standard tip-right behaviour */ }
+  }
   const fromDate = new Date(lastDate + "T00:00:00");
   fromDate.setDate(fromDate.getDate() - days);
   const fromStr = fromDate.toISOString().slice(0, 10);
@@ -7197,6 +7216,12 @@ applyPriceScale();
     // we forced cycles on — rebuild them now so the cycle arrows actually
     // appear on first paint.
     try { _refreshAnchoredMarkers(); } catch (e) {}
+    // Default time window — 5Y lookback, but with the chain tip pulled
+    // to the horizontal centre of the chart (so the right half is empty
+    // future space). Saved state, when restored, uses the standard
+    // tip-on-right applyLookback path; only the fresh-defaults branch
+    // hits the centered version.
+    try { applyLookback(1825, true); } catch (e) { console.warn("default lookback:", e); }
     const inds = [
       new SpotPriceLineIndicator(),
       new STHRealisedPriceIndicator(),
