@@ -644,7 +644,15 @@ function commonChartOpts() {
   };
 }
 
+// Top BTC price chart keeps the TradingView attribution logo enabled —
+// satisfies the Lightweight Charts NOTICE/Apache-2.0 attribution
+// requirement for the whole page (one visible credit is enough). The
+// bottom URPD/SOPD chart and the time-axis strip continue to suppress
+// it via commonChartOpts() so we don't double up.
 const topChart = LightweightCharts.createChart(topContainer, Object.assign(commonChartOpts(), {
+  layout: { background: { type: "solid", color: THEME.background }, textColor: THEME.text,
+    fontFamily: "'Source Code Pro', Consolas, monospace", fontSize: 11,
+    attributionLogo: true },
   rightPriceScale: { borderColor: THEME.border, mode: LightweightCharts.PriceScaleMode.Normal, autoScale: true },
   // Hide the top chart's time axis — it's rendered in the shared #chart-time-axis below.
   // rightOffset: 0 — the latest data point sits AT the right axis. With a
