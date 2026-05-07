@@ -4523,34 +4523,72 @@ function openExplainerModal() {
 document.getElementById("btn-explainer")?.addEventListener("click", openExplainerModal);
 
 // ───────────────────────────────────────────────────────────────────────────
-// Drawings manager — left-toolbar drawing tools (trend line, horizontal
-// line, vertical line, rectangle, fibonacci retracement, text label).
-//
-// Architecture: each drawing is a plain object stored in `_drawings`
-// with anchor data in (time, price) coordinates so the drawing
-// re-renders correctly when the user pans/zooms the chart. The render
-// step uses `chart.timeScale().timeToCoordinate(time)` and
-// `series.priceToCoordinate(price)` to translate anchors to pixel
-// positions inside the SVG overlay (#drawings-overlay-top).
-//
-// Persistence: drawings array is serialized to localStorage under
-// `bt_drawings`; load on boot, save on every change.
+// Drawings manager — see the implementation block below for details.
+// Plugin-backed (deepentropy/lightweight-charts-drawing). The toolbar
+// UI on the left side of the chart wires each tool button to a click
+// flow that gathers points, then hands them to the plugin's tool
+// classes for rendering on the LWC canvas.
 // ───────────────────────────────────────────────────────────────────────────
 const DrawingsManager = (() => {
-  const LS_KEY = "bt_drawings";
-  const SVG_NS = "http://www.w3.org/2000/svg";
+  // ── Plugin-backed implementation ───────────────────────────────────
+  // The deepentropy/lightweight-charts-drawing UMD bundle (loaded at
+  // the top of the file) exposes ~190 names on `window.LightweightChartsDrawing`,
+  // including a DrawingManager and dozens of tool classes (TrendLine,
+  // FibRetracement, AndrewsPitchfork, GannFan, ParallelChannel, etc.).
+  //
+  // The plugin renders shapes onto LWC's canvas via Custom Series
+  // primitives and provides selection + drag-edit interactions on
+  // placed drawings out of the box. What it does NOT ship is a
+  // toolbar UI or a "draw mode" that captures clicks — that part is
+  // ours to build, and the existing #drawings-overlay-top SVG
+  // continues to capture clicks (and only renders pending-point
+  // handles during multi-click placement).
+  //
+  // EVERY plugin call is wrapped in try/catch with `[drawings]`
+  // console logging so the toolbar still functions (clicks register,
+  // pending dots render) even if a constructor signature, factory
+  // shape, or export/import format turns out to differ from what
+  // we assumed. Reload the page and check the console for any
+  // `[drawings]` messages to debug failures.
+  const LS_KEY  = "bt_drawings";
+  const SVG_NS  = "http://www.w3.org/2000/svg";
   const overlay = document.getElementById("drawings-overlay-top");
   const wrap    = document.getElementById("chart-top-wrap");
-  // Cache fib levels — standard 7-level retracement (TradingView default).
-  const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
-  const FIB_COLORS = ["#787b86","#f23645","#ff9800","#4caf50","#2196f3","#9c27b0","#787b86"];
+  const PLUGIN  = (typeof window !== "undefined") ? window.LightweightChartsDrawing : null;
+  const HAS_PLUGIN = !!(PLUGIN && typeof PLUGIN.DrawingManager === "function");
+  if (!HAS_PLUGIN) console.warn("[drawings] plugin not available — toolbar will be inert");
+  else             console.log("[drawings] plugin loaded, version:", PLUGIN.VERSION || "unknown");
 
-  let _drawings = [];      // [{id, tool, points: [{time, price}], text?}]
+  // Toolbar tool id → plugin class. Falls back to undefined if the
+  // plugin doesn't expose that name (newer/older versions may rename).
+  const TOOL_CLASS = HAS_PLUGIN ? {
+    trend:     PLUGIN.TrendLine,
+    hline:     PLUGIN.HorizontalLine,
+    vline:     PLUGIN.VerticalLine,
+    rect:      PLUGIN.Rectangle,
+    fib:       PLUGIN.FibRetracement,
+    text:      PLUGIN.TextAnnotation || PLUGIN.Note || PLUGIN.Comment,
+    ray:       PLUGIN.Ray,
+    parallel:  PLUGIN.ParallelChannel,
+    pitchfork: PLUGIN.AndrewsPitchfork,
+    gann:      PLUGIN.GannFan,
+    fibext:    PLUGIN.FibExtension,
+  } : {};
+
+  // Number of click-points each tool needs before finalizing.
+  const TOOL_POINTS = {
+    trend: 2, hline: 1, vline: 1, rect: 2, fib: 2, text: 1,
+    ray: 2, parallel: 3, pitchfork: 3, gann: 2, fibext: 3,
+  };
+
+  let pluginMgr   = null;
   let _activeTool = null;  // null = cursor mode; otherwise tool id
-  let _pending = null;     // {tool, points: [...], previewEvent?} during multi-click drawing
-  let _idSeq = 1;
+  let _pending    = null;  // { tool, points: [{time, price}] } during multi-click drawing
+  let _idSeq      = 1;
 
   // ── Coordinate helpers ─────────────────────────────────────────────
+  // Used to translate viewport pixel coords into (time, price) pairs
+  // when the user clicks the SVG overlay to place a drawing point.
   function _btcSeries() {
     if (typeof activeIndicators === "undefined") return null;
     for (const ind of activeIndicators.values()) {
@@ -4559,18 +4597,14 @@ const DrawingsManager = (() => {
     return null;
   }
   function _timeToX(time) {
-    try {
-      const x = topChart.timeScale().timeToCoordinate(time);
-      return (x == null) ? null : x;
-    } catch (e) { return null; }
+    try { return topChart.timeScale().timeToCoordinate(time); }
+    catch (e) { return null; }
   }
   function _priceToY(price) {
     const s = _btcSeries();
     if (!s) return null;
-    try {
-      const y = s.priceToCoordinate(price);
-      return (y == null) ? null : y;
-    } catch (e) { return null; }
+    try { return s.priceToCoordinate(price); }
+    catch (e) { return null; }
   }
   function _xToTime(x) {
     try { return topChart.timeScale().coordinateToTime(x); }
@@ -4583,310 +4617,171 @@ const DrawingsManager = (() => {
     catch (e) { return null; }
   }
 
-  // ── localStorage persistence ───────────────────────────────────────
-  function _save() {
-    try { localStorage.setItem(LS_KEY, JSON.stringify(_drawings)); }
-    catch (e) { /* quota / privacy mode — ignore */ }
-  }
-  function _load() {
+  // ── Plugin manager bootstrap ───────────────────────────────────────
+  // The DrawingManager.attach() call needs the BTC series to exist,
+  // and the series is created asynchronously when BTCPriceIndicator.load()
+  // resolves. We poll every 200ms (capped at 10s) until the series is
+  // present, then attach + restore drawings from localStorage.
+  function _initPlugin() {
+    if (!HAS_PLUGIN || pluginMgr) return !!pluginMgr;
+    if (!wrap) return false;
+    const series = _btcSeries();
+    if (!series) return false;
     try {
-      const raw = localStorage.getItem(LS_KEY);
-      if (!raw) return;
-      const arr = JSON.parse(raw);
-      if (Array.isArray(arr)) {
-        _drawings = arr;
-        // Reseed _idSeq above the highest existing id so new draws
-        // don't collide with restored ones.
-        for (const d of _drawings) {
-          const n = parseInt(String(d.id || "").replace(/\D/g, ""), 10);
-          if (!isNaN(n) && n >= _idSeq) _idSeq = n + 1;
-        }
+      pluginMgr = new PLUGIN.DrawingManager();
+      pluginMgr.attach(topChart, series, wrap);
+      console.log("[drawings] DrawingManager attached");
+      _loadFromLS();
+      return true;
+    } catch (e) {
+      console.error("[drawings] init failed:", e);
+      pluginMgr = null;
+      return false;
+    }
+  }
+  let _initTries = 0;
+  const _initTimer = setInterval(() => {
+    if (_initPlugin() || ++_initTries > 50) clearInterval(_initTimer);
+  }, 200);
+
+  // ── localStorage persistence (via plugin's exportDrawings/importDrawings) ─
+  function _save() {
+    if (!pluginMgr) return;
+    try {
+      const json = pluginMgr.exportDrawings();
+      localStorage.setItem(LS_KEY, JSON.stringify(json));
+    } catch (e) { /* quota / privacy / unsupported — silent */ }
+  }
+  function _loadFromLS() {
+    if (!pluginMgr) return;
+    let raw;
+    try { raw = localStorage.getItem(LS_KEY); } catch (e) { return; }
+    if (!raw) return;
+    let json;
+    try { json = JSON.parse(raw); } catch (e) { return; }
+    // Factory function passed to importDrawings. The exact API
+    // signature isn't documented, so we try a few common shapes
+    // (tool id by string, by class name, via getToolRegistry).
+    const factory = (toolId) => {
+      if (!toolId) return null;
+      if (TOOL_CLASS[toolId]) return TOOL_CLASS[toolId];
+      const lc = String(toolId).toLowerCase();
+      for (const k in TOOL_CLASS) {
+        const cls = TOOL_CLASS[k];
+        if (cls && cls.name && cls.name.toLowerCase() === lc) return cls;
       }
-    } catch (e) { /* corrupt JSON — start fresh */ }
+      try {
+        if (typeof PLUGIN.getToolRegistry === "function") {
+          const reg = PLUGIN.getToolRegistry();
+          const all = (reg && typeof reg.getAllTools === "function") ? reg.getAllTools() : [];
+          for (const def of all) {
+            if (def && (def.id === toolId || def.type === toolId || def.name === toolId)) {
+              return def.class || def.constructor || def.ctor || null;
+            }
+          }
+        }
+      } catch (e) {}
+      return null;
+    };
+    try { pluginMgr.importDrawings(json, factory); }
+    catch (e) { console.warn("[drawings] importDrawings failed:", e); }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────
+  // ── SVG overlay (pending-point handles only) ──────────────────────
+  // The plugin renders placed drawings to LWC's canvas. Our SVG overlay
+  // is now used solely for (a) capturing clicks while a drawing tool
+  // is active and (b) showing small "you clicked here" handles while
+  // the user is mid-draw on a multi-click tool.
   function _resizeOverlay() {
-    if (!wrap || !overlay) return;
+    if (!wrap || !overlay) return null;
     const w = wrap.clientWidth, h = wrap.clientHeight;
     overlay.setAttribute("viewBox", `0 0 ${w} ${h}`);
-    overlay.setAttribute("width", w);
+    overlay.setAttribute("width",  w);
     overlay.setAttribute("height", h);
     return { w, h };
   }
   function render() {
-    if (!overlay) return;
-    const dims = _resizeOverlay();
-    if (!dims) return;
-    const { w, h } = dims;
-    // Clear
-    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
-    // Draw each finalized drawing
-    for (const d of _drawings) _renderOne(d, w, h);
-    // Draw any pending preview (e.g. user has clicked first point)
-    if (_pending && _pending.points.length > 0) _renderPending(w, h);
+    // No drawings rendered here — plugin handles canvas painting.
+    // We just refresh the pending-point indicator.
+    _renderPending();
   }
-  function _renderOne(d, w, h) {
-    if (d.tool === "trend"  && d.points.length === 2) _renderLine(d, d.points[0], d.points[1]);
-    else if (d.tool === "hline" && d.points.length === 1) _renderHLine(d, d.points[0], w);
-    else if (d.tool === "vline" && d.points.length === 1) _renderVLine(d, d.points[0], h);
-    else if (d.tool === "rect"  && d.points.length === 2) _renderRect(d, d.points[0], d.points[1]);
-    else if (d.tool === "fib"   && d.points.length === 2) _renderFib(d, d.points[0], d.points[1], w);
-    else if (d.tool === "text"  && d.points.length === 1) _renderText(d, d.points[0]);
-    else if (d.tool === "ray"      && d.points.length === 2) _renderRay(d, d.points[0], d.points[1], w);
-    else if (d.tool === "parallel" && d.points.length === 3) _renderParallel(d, d.points[0], d.points[1], d.points[2]);
-    else if (d.tool === "pitchfork"&& d.points.length === 3) _renderPitchfork(d, d.points[0], d.points[1], d.points[2], w);
-    else if (d.tool === "gann"     && d.points.length === 2) _renderGann(d, d.points[0], d.points[1], w);
-    else if (d.tool === "fibext"   && d.points.length === 3) _renderFibExt(d, d.points[0], d.points[1], d.points[2], w);
-  }
-  // ── New shapes (breadth ask: pitchfork/parallel-channel/gann/ray/fib-ext) ──
-  // Ray: trend line that extends to the right edge of the chart.
-  function _renderRay(d, p1, p2, w) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
-    // Project to the right edge using the slope (y - y1) / (x - x1) = (y2 - y1) / (x2 - x1).
-    const dx = x2 - x1, dy = y2 - y1;
-    const xEnd = w + 24;
-    const yEnd = (Math.abs(dx) < 0.001) ? y2 : y1 + dy * (xEnd - x1) / dx;
-    const g = _g(d);
-    _line(g, x1, y1, xEnd, yEnd, "draw-line");
-    _handle(g, x1, y1); _handle(g, x2, y2);
-    overlay.appendChild(g);
-  }
-  // Parallel channel: 3 points = trend (p1, p2) + offset point (p3). Two
-  // parallel lines: one through p1-p2, one passing through p3 with the
-  // same slope.
-  function _renderParallel(d, p1, p2, p3) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
-    // Slope of main line; vertical offset between main line and p3.
-    const dx = x2 - x1, dy = y2 - y1;
-    const slopeY = (Math.abs(dx) < 0.001) ? 0 : dy / dx;
-    const yOnMainAtX3 = y1 + slopeY * (x3 - x1);
-    const offY = y3 - yOnMainAtX3;
-    const g = _g(d);
-    _line(g, x1, y1, x2, y2, "draw-line");
-    _line(g, x1, y1 + offY, x2, y2 + offY, "draw-line");
-    // Connectors at endpoints
-    const ln3 = _line(g, x1, y1, x1, y1 + offY, "draw-line");
-    ln3.setAttribute("style", "stroke-dasharray:3 3;opacity:0.4");
-    const ln4 = _line(g, x2, y2, x2, y2 + offY, "draw-line");
-    ln4.setAttribute("style", "stroke-dasharray:3 3;opacity:0.4");
-    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
-    overlay.appendChild(g);
-  }
-  // Andrew's pitchfork: 3 points. p1 is the anchor; the median runs from
-  // p1 through the midpoint of p2 and p3. Two parallel lines run through
-  // p2 and p3 with the same slope as the median.
-  function _renderPitchfork(d, p1, p2, p3, w) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
-    const mx = (x2 + x3) / 2, my = (y2 + y3) / 2;
-    const dx = mx - x1, dy = my - y1;
-    const slopeY = (Math.abs(dx) < 0.001) ? 0 : dy / dx;
-    const xEnd = w + 24;
-    // Project median + the two outer parallels to the right edge.
-    const projY = (xStart, yStart) => yStart + slopeY * (xEnd - xStart);
-    const g = _g(d);
-    // Median (p1 → midpoint, extended)
-    _line(g, x1, y1, xEnd, projY(x1, y1), "draw-line");
-    // Upper rail through p2
-    _line(g, x2, y2, xEnd, projY(x2, y2), "draw-line");
-    // Lower rail through p3
-    _line(g, x3, y3, xEnd, projY(x3, y3), "draw-line");
-    // The "tine" connecting p2 and p3 (ghost-line, dashed)
-    const tine = _line(g, x2, y2, x3, y3, "draw-line");
-    tine.setAttribute("style", "stroke-dasharray:3 3;opacity:0.5");
-    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
-    overlay.appendChild(g);
-  }
-  // Gann fan: 2 points define the anchor (p1) + direction (p2). Draws
-  // 7 lines through p1 at the standard 1x1, 1x2, 1x3, 1x4, 1x8 ratios
-  // plus their inverses (2x1, 3x1...). For an upward fan we flip
-  // signs of dy/dx so the rays splay correctly.
-  function _renderGann(d, p1, p2, w) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
-    // Use the p1→p2 distance as the "1x1" reference. Other ratios scale
-    // off this baseline.
-    const dx = x2 - x1, dy = y2 - y1;
-    const ratios = [
-      { num: 1, den: 8 }, { num: 1, den: 4 }, { num: 1, den: 3 },
-      { num: 1, den: 2 }, { num: 1, den: 1 },
-      { num: 2, den: 1 }, { num: 3, den: 1 }, { num: 4, den: 1 }, { num: 8, den: 1 },
-    ];
-    const xEnd = w + 24;
-    const g = _g(d);
-    for (const r of ratios) {
-      const slope = (dy / dx) * (r.num / r.den);
-      const yEnd = y1 + slope * (xEnd - x1);
-      const ln = _line(g, x1, y1, xEnd, yEnd, "draw-line");
-      // 1x1 line is the reference, render at full opacity. Others
-      // dimmed proportionally to how far they are from the 1x1.
-      const isMain = (r.num === 1 && r.den === 1);
-      ln.setAttribute("style", isMain
-        ? "opacity:1;stroke-width:1.8"
-        : "opacity:0.55;stroke-width:1.2");
+  // Hand off finalized drawings to the plugin. Constructor signature
+  // assumed from the plugin README:  new ToolClass('id', [points])
+  // where each point is { time, price }. If a particular tool needs
+  // a different signature (text annotation needs a string, fib
+  // extension may need a third anchor as a separate arg), we try a
+  // few alternates inside the try/catch and log which one worked.
+  function _addDrawing(tool, points) {
+    if (!_initPlugin()) {
+      console.warn("[drawings] plugin not ready, dropping draw:", tool);
+      return;
     }
-    _handle(g, x1, y1); _handle(g, x2, y2);
-    overlay.appendChild(g);
+    const Cls = TOOL_CLASS[tool];
+    if (!Cls) {
+      console.warn("[drawings] no plugin class for tool:", tool);
+      return;
+    }
+    const id = "d" + Date.now() + "_" + (_idSeq++);
+    let extraArg;
+    if (tool === "text") {
+      const promptMsg = (typeof _t === "function") ? _t("dt_label_prompt") : "Label text:";
+      const txt = window.prompt(promptMsg, "");
+      if (!txt || !txt.trim()) return;
+      extraArg = { text: txt.trim() };
+    }
+    let drawing, attempt;
+    try {
+      // 1st attempt: (id, points, extraArg) — handles text annotations.
+      attempt = "(id, points, extra)";
+      drawing = extraArg ? new Cls(id, points, extraArg) : new Cls(id, points);
+    } catch (e1) {
+      try {
+        // 2nd attempt: (id, points) only, set text after construction.
+        attempt = "(id, points) + post-set text";
+        drawing = new Cls(id, points);
+        if (extraArg && drawing && extraArg.text) drawing.text = extraArg.text;
+      } catch (e2) {
+        try {
+          // 3rd attempt: (points) only — no id arg.
+          attempt = "(points)";
+          drawing = new Cls(points);
+        } catch (e3) {
+          console.error("[drawings] all constructor attempts failed for", tool, "—", e1, e2, e3);
+          return;
+        }
+      }
+    }
+    try {
+      pluginMgr.addDrawing(drawing);
+      console.log("[drawings] added", tool, "via", attempt);
+      _save();
+      _recordIfAvailable();
+    } catch (e) {
+      console.error("[drawings] addDrawing rejected", tool, e);
+    }
   }
-  // Fibonacci extension: 3 points (A, B, C). Levels 0/0.236/0.382/0.5/
-  // 0.618/0.786/1.0 between A and B, then 1.272/1.414/1.618/2.0/2.618
-  // projected from C in the direction of the A→B move.
-  function _renderFibExt(d, p1, p2, p3, w) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    const x3 = _timeToX(p3.time), y3 = _priceToY(p3.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null || x3 == null || y3 == null) return;
-    const move = p2.price - p1.price; // signed move from A to B
-    // Standard extension levels (TradingView default: shows 0/0.382/0.5/
-    // 0.618/0.786 over A→B and 1.0/1.272/1.414/1.618/2.0/2.618 from C).
-    const LEVELS = [
-      { f: 0,     col: "#787b86" },
-      { f: 0.382, col: "#f23645" },
-      { f: 0.5,   col: "#ff9800" },
-      { f: 0.618, col: "#4caf50" },
-      { f: 0.786, col: "#2196f3" },
-      { f: 1.0,   col: "#9c27b0" },
-      { f: 1.272, col: "#e91e63" },
-      { f: 1.618, col: "#3f51b5" },
-      { f: 2.0,   col: "#009688" },
-      { f: 2.618, col: "#795548" },
-    ];
-    const xL = Math.min(x1, x3), xR = Math.max(x2, x3, w);
-    const g = _g(d);
-    LEVELS.forEach(lvl => {
-      const price = p3.price + move * lvl.f;
-      const y = _priceToY(price);
-      if (y == null) return;
-      const ln = _line(g, xL, y, xR, y, "draw-fib");
-      ln.setAttribute("style", `stroke:${lvl.col}`);
-      const lbl = document.createElementNS(SVG_NS, "text");
-      lbl.setAttribute("x", xL + 4);
-      lbl.setAttribute("y", y - 3);
-      lbl.setAttribute("class", "draw-fib-label");
-      lbl.textContent = `${lvl.f.toFixed(3).replace(/0+$/,"").replace(/\.$/,"")} (${price.toFixed(0)})`;
-      g.appendChild(lbl);
-    });
-    _handle(g, x1, y1); _handle(g, x2, y2); _handle(g, x3, y3);
-    overlay.appendChild(g);
-  }
-  function _renderLine(d, p1, p2) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
-    const g = _g(d);
-    _line(g, x1, y1, x2, y2, "draw-line");
-    _handle(g, x1, y1); _handle(g, x2, y2);
-    overlay.appendChild(g);
-  }
-  function _renderHLine(d, p, w) {
-    const y = _priceToY(p.price);
-    if (y == null) return;
-    const g = _g(d);
-    _line(g, 0, y, w, y, "draw-line");
-    _handle(g, w / 2, y);
-    overlay.appendChild(g);
-  }
-  function _renderVLine(d, p, h) {
-    const x = _timeToX(p.time);
-    if (x == null) return;
-    const g = _g(d);
-    _line(g, x, 0, x, h, "draw-line");
-    _handle(g, x, h / 2);
-    overlay.appendChild(g);
-  }
-  function _renderRect(d, p1, p2) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
-    const g = _g(d);
-    const x = Math.min(x1, x2), y = Math.min(y1, y2);
-    const ww = Math.abs(x2 - x1), hh = Math.abs(y2 - y1);
-    const r = document.createElementNS(SVG_NS, "rect");
-    r.setAttribute("x", x); r.setAttribute("y", y);
-    r.setAttribute("width", ww); r.setAttribute("height", hh);
-    r.setAttribute("class", "draw-rect");
-    g.appendChild(r);
-    overlay.appendChild(g);
-  }
-  function _renderFib(d, p1, p2, w) {
-    const x1 = _timeToX(p1.time), y1 = _priceToY(p1.price);
-    const x2 = _timeToX(p2.time), y2 = _priceToY(p2.price);
-    if (x1 == null || y1 == null || x2 == null || y2 == null) return;
-    const g = _g(d);
-    const xL = Math.min(x1, x2), xR = Math.max(x1, x2);
-    const priceLow  = Math.min(p1.price, p2.price);
-    const priceHigh = Math.max(p1.price, p2.price);
-    // Fib level prices interpolated between low and high.
-    FIB_LEVELS.forEach((lvl, i) => {
-      const price = priceHigh - (priceHigh - priceLow) * lvl;
-      const y = _priceToY(price);
-      if (y == null) return;
-      const ln = _line(g, xL, y, xR, y, "draw-fib");
-      ln.setAttribute("style", `stroke:${FIB_COLORS[i]}`);
-      const lbl = document.createElementNS(SVG_NS, "text");
-      lbl.setAttribute("x", xL + 4); lbl.setAttribute("y", y - 3);
-      lbl.setAttribute("class", "draw-fib-label");
-      lbl.textContent = `${lvl.toFixed(3).replace(/0+$/,"").replace(/\.$/,"")} (${price.toFixed(0)})`;
-      g.appendChild(lbl);
-    });
-    _handle(g, x1, y1); _handle(g, x2, y2);
-    overlay.appendChild(g);
-  }
-  function _renderText(d, p) {
-    const x = _timeToX(p.time), y = _priceToY(p.price);
-    if (x == null || y == null) return;
-    const g = _g(d);
-    const t = document.createElementNS(SVG_NS, "text");
-    t.setAttribute("x", x); t.setAttribute("y", y);
-    t.setAttribute("class", "draw-text");
-    t.textContent = d.text || "";
-    g.appendChild(t);
-    overlay.appendChild(g);
-  }
-  function _renderPending(w, h) {
-    // Preview while user is mid-draw. Show a handle at every placed
-    // point as feedback. Multi-click tools (parallel channel, pitchfork,
-    // fib extension) need 3 points — the user gets visual feedback on
-    // each click so they know how many they have left.
+  // (SVG-specific shape renderers removed — plugin handles all rendering.)
+  // ── Pending-point overlay (SVG) ────────────────────────────────────
+  // While a multi-click tool is mid-draw we show small dots at the
+  // placed points so the user sees their clicks landing. Once the
+  // final click finalizes the drawing, the SVG clears and the plugin
+  // takes over rendering on the canvas.
+  function _renderPending() {
+    if (!overlay) return;
+    _resizeOverlay();
+    while (overlay.firstChild) overlay.removeChild(overlay.firstChild);
+    if (!_pending || !_pending.points || _pending.points.length === 0) return;
     const g = document.createElementNS(SVG_NS, "g");
     g.setAttribute("class", "draw-group draw-pending");
     for (const p of _pending.points) {
       const x = _timeToX(p.time), y = _priceToY(p.price);
-      if (x != null && y != null) _handle(g, x, y);
+      if (x == null || y == null) continue;
+      const c = document.createElementNS(SVG_NS, "circle");
+      c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 3);
+      c.setAttribute("class", "draw-handle");
+      g.appendChild(c);
     }
     overlay.appendChild(g);
-  }
-  // ── DOM helpers ────────────────────────────────────────────────────
-  function _g(d) {
-    const g = document.createElementNS(SVG_NS, "g");
-    g.setAttribute("class", "draw-group");
-    g.setAttribute("data-id", d.id);
-    g.addEventListener("dblclick", (ev) => { ev.stopPropagation(); remove(d.id); });
-    return g;
-  }
-  function _line(parent, x1, y1, x2, y2, cls) {
-    const ln = document.createElementNS(SVG_NS, "line");
-    ln.setAttribute("x1", x1); ln.setAttribute("y1", y1);
-    ln.setAttribute("x2", x2); ln.setAttribute("y2", y2);
-    ln.setAttribute("class", cls);
-    parent.appendChild(ln);
-    return ln;
-  }
-  function _handle(parent, x, y) {
-    const c = document.createElementNS(SVG_NS, "circle");
-    c.setAttribute("cx", x); c.setAttribute("cy", y); c.setAttribute("r", 3);
-    c.setAttribute("class", "draw-handle");
-    parent.appendChild(c);
-    return c;
   }
 
   // ── Public API ─────────────────────────────────────────────────────
@@ -4894,132 +4789,109 @@ const DrawingsManager = (() => {
     _activeTool = (tool === "cursor" || !tool) ? null : tool;
     _pending = null;
     if (overlay) overlay.classList.toggle("is-drawing", !!_activeTool);
-    // Update toolbar UI active state.
     document.querySelectorAll("#left-toolbar .lt-tool").forEach(b => {
       const t = b.getAttribute("data-tool");
       const isActive = (_activeTool === null && t === "cursor") || (_activeTool === t);
       b.classList.toggle("active", isActive);
     });
-    render();
+    _renderPending();
   }
   function clearAll() {
-    _drawings = [];
-    _save();
-    _recordIfAvailable();
-    render();
+    if (!pluginMgr) return;
+    try {
+      const json = pluginMgr.exportDrawings();
+      const items = json && (json.drawings || json.items || (Array.isArray(json) ? json : []));
+      if (items && items.length) {
+        for (const d of items) {
+          if (d && d.id != null) {
+            try { pluginMgr.removeDrawing(d.id); } catch (_) {}
+          }
+        }
+      }
+      _save();
+      _recordIfAvailable();
+    } catch (e) { console.error("[drawings] clearAll failed:", e); }
   }
   function remove(id) {
-    _drawings = _drawings.filter(d => String(d.id) !== String(id));
-    _save();
-    _recordIfAvailable();
-    render();
+    if (!pluginMgr) return;
+    try { pluginMgr.removeDrawing(id); _save(); _recordIfAvailable(); }
+    catch (e) {}
   }
   // Read/write API used by the global undo/redo stack
-  // (snapshotState/applyState in the history block further down).
-  // Returns a deep-cloned array so callers can keep snapshots stable.
+  // (snapshotState/applyState). Returns the plugin's exportDrawings()
+  // JSON — opaque shape (we don't decode it). setAll passes it back.
   function getAll() {
-    try { return JSON.parse(JSON.stringify(_drawings)); }
-    catch (e) { return []; }
+    if (!pluginMgr) return null;
+    try { return pluginMgr.exportDrawings(); }
+    catch (e) { return null; }
   }
-  // Replaces the entire drawings array (used by applyState during
-  // undo/redo). Renders + persists but intentionally does NOT call
-  // recordHistory — the caller (applyState) is already inside a
-  // _suppressHistory window, but going through this path also keeps
-  // future-proof if it's called from anywhere else.
-  function setAll(arr) {
-    _drawings = Array.isArray(arr)
-      ? JSON.parse(JSON.stringify(arr))
-      : [];
-    _save();
-    render();
-  }
-  function _finalize(drawing) {
-    drawing.id = "d" + (_idSeq++);
-    _drawings.push(drawing);
-    _pending = null;
-    _save();
-    _recordIfAvailable();
-    render();
+  function setAll(json) {
+    if (!pluginMgr) return;
+    try {
+      // Clear current drawings first
+      const cur = pluginMgr.exportDrawings();
+      const items = cur && (cur.drawings || cur.items || (Array.isArray(cur) ? cur : []));
+      if (items) for (const d of items) {
+        if (d && d.id != null) {
+          try { pluginMgr.removeDrawing(d.id); } catch (_) {}
+        }
+      }
+      if (json) {
+        const factory = (toolId) => TOOL_CLASS[toolId] || null;
+        try { pluginMgr.importDrawings(json, factory); }
+        catch (e) { console.warn("[drawings] setAll: importDrawings failed", e); }
+      }
+      _save();
+    } catch (e) { console.warn("[drawings] setAll failed:", e); }
   }
   // Hook drawings into the global undo/redo stack. recordHistory is
-  // declared further down the file; at the moment we add/remove a
-  // drawing it definitely exists, but at module-load time it might
-  // not, so we look it up on each call. Suppression is handled by
-  // recordHistory itself (it checks `_suppressHistory`).
+  // declared later in the file, but by the time _addDrawing runs it
+  // definitely exists, so a typeof guard is enough.
   function _recordIfAvailable() {
     if (typeof recordHistory === "function") {
-      try { recordHistory(); } catch (e) { /* ignore */ }
+      try { recordHistory(); } catch (e) {}
     }
   }
+  function render() { _renderPending(); }
 
   // ── Click handler on the SVG overlay ───────────────────────────────
   if (overlay) {
     overlay.addEventListener("click", (ev) => {
       if (!_activeTool) return;
+      if (!_initPlugin()) {
+        console.warn("[drawings] click ignored — plugin not yet ready");
+        return;
+      }
       const rect = overlay.getBoundingClientRect();
       const px = ev.clientX - rect.left;
       const py = ev.clientY - rect.top;
       const time  = _xToTime(px);
       const price = _yToPrice(py);
       if (time == null || price == null) return;
-      const t = _activeTool;
-
-      if (t === "hline") {
-        _finalize({ tool: "hline", points: [{ time, price }] });
-        setActiveTool("cursor");
-        return;
-      }
-      if (t === "vline") {
-        _finalize({ tool: "vline", points: [{ time, price }] });
-        setActiveTool("cursor");
-        return;
-      }
-      if (t === "text") {
-        const promptMsg = (typeof _t === "function") ? _t("dt_label_prompt") : "Label text:";
-        const text = window.prompt(promptMsg, "");
-        if (text == null || !text.trim()) { setActiveTool("cursor"); return; }
-        _finalize({ tool: "text", points: [{ time, price }], text: text.trim() });
-        setActiveTool("cursor");
-        return;
-      }
-      // Multi-click tools. Most need 2 points (trend/rect/fib/ray/gann),
-      // a few need 3 (parallel channel, pitchfork, fib extension).
-      const NEED = { trend: 2, rect: 2, fib: 2, ray: 2, gann: 2,
-                     parallel: 3, pitchfork: 3, fibext: 3 }[t] || 2;
-      if (!_pending) _pending = { tool: t, points: [] };
+      const tool = _activeTool;
+      const need = TOOL_POINTS[tool] || 2;
+      if (!_pending) _pending = { tool, points: [] };
       _pending.points.push({ time, price });
-      if (_pending.points.length >= NEED) {
-        _finalize({ tool: t, points: _pending.points.slice(0, NEED) });
+      if (_pending.points.length >= need) {
+        const points = _pending.points.slice(0, need);
+        _pending = null;
+        _addDrawing(tool, points);
         setActiveTool("cursor");
       } else {
-        render();
+        _renderPending();
       }
     });
-    // Right-click cancels an in-progress drawing.
     overlay.addEventListener("contextmenu", (ev) => {
       if (_pending) { ev.preventDefault(); _pending = null; setActiveTool("cursor"); }
     });
   }
 
   // ── Reflow on chart pan/zoom/resize ────────────────────────────────
-  // LWC fires visibleLogicalRangeChange on pan/zoom and crosshair-move
-  // happens often enough to also catch most layout changes.
-  function _hookChartEvents() {
-    if (!topChart) return;
-    try {
-      topChart.timeScale().subscribeVisibleLogicalRangeChange(() => render());
-      topChart.timeScale().subscribeSizeChange?.(() => render());
-    } catch (e) {}
-  }
-  // ResizeObserver on the chart wrap so the overlay's viewBox stays
-  // in sync with the actual rendered size (important when the user
-  // drags the divider between top/bottom panes).
+  // The plugin handles canvas-level repaints itself; we only need to
+  // re-render the SVG pending overlay when the chart resizes.
   if (typeof ResizeObserver !== "undefined" && wrap) {
-    new ResizeObserver(() => render()).observe(wrap);
+    new ResizeObserver(() => _renderPending()).observe(wrap);
   }
-  // Defer event hookup — topChart isn't constructed until later in the
-  // file. queueMicrotask runs after the current synchronous parse.
-  queueMicrotask(_hookChartEvents);
 
   // ── Toolbar wiring ─────────────────────────────────────────────────
   document.querySelectorAll("#left-toolbar .lt-tool").forEach(btn => {
@@ -5027,20 +4899,17 @@ const DrawingsManager = (() => {
       const t = btn.getAttribute("data-tool");
       if (t === "clear") {
         const confirmMsg = (typeof _t === "function") ? _t("dt_clear_confirm") : "Remove all drawings?";
-        if (_drawings.length > 0 && window.confirm(confirmMsg)) clearAll();
+        const cur = pluginMgr ? pluginMgr.exportDrawings() : null;
+        const items = cur && (cur.drawings || cur.items || (Array.isArray(cur) ? cur : []));
+        const has = items && items.length > 0;
+        if (has && window.confirm(confirmMsg)) clearAll();
         return;
       }
       setActiveTool(t);
     });
   });
 
-  // ── Boot ───────────────────────────────────────────────────────────
-  _load();
-  // Initial render is deferred until the chart has data; we'll re-render
-  // again from the first visibleLogicalRangeChange.
-  queueMicrotask(() => render());
-
-  return { setActiveTool, clearAll, remove, render };
+  return { setActiveTool, clearAll, remove, render, getAll, setAll };
 })();
 
 // ───────────────────────────────────────────────────────────────────────────
