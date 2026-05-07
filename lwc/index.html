@@ -7251,6 +7251,15 @@ applyPriceScale();
       catch (e) { console.warn("auto enterNavMode:", e); }
       try { await setCurrentDateAwait(navDate); }
       catch (e) { console.warn("await histogram render:", e); }
+      // Final centering pass — applies AFTER all indicator loads, the
+      // BTC series fitContent, and the URPD render that nav-mode entry
+      // triggers, so nothing downstream resets the visible range. Only
+      // for fresh defaults: saved state restores its own lookback via
+      // restoreState's standard applyLookback (right-aligned tip).
+      if (!savedState) {
+        try { applyLookback(1825, true); }
+        catch (e) { console.warn("center chain tip:", e); }
+      }
     }
     refreshIndicatorPanel();
   } catch (e) {
@@ -7287,12 +7296,6 @@ applyPriceScale();
     // we forced cycles on — rebuild them now so the cycle arrows actually
     // appear on first paint.
     try { _refreshAnchoredMarkers(); } catch (e) {}
-    // Default time window — 5Y lookback, but with the chain tip pulled
-    // to the horizontal centre of the chart (so the right half is empty
-    // future space). Saved state, when restored, uses the standard
-    // tip-on-right applyLookback path; only the fresh-defaults branch
-    // hits the centered version.
-    try { applyLookback(1825, true); } catch (e) { console.warn("default lookback:", e); }
     const inds = [
       new SpotPriceLineIndicator(),
       new STHRealisedPriceIndicator(),
