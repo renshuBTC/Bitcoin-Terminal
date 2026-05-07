@@ -1542,19 +1542,50 @@ const CYCLE_LANDMARKS = [
   { time: "2025-10-06", top: true,  text: "Cycle 5 Top" },
 ];
 
-// Attach the landmark markers to the supplied price series. v5.0 moved
-// markers out of the series API into a standalone plugin
-// (LightweightCharts.createSeriesMarkers); fall back to the legacy
-// series.setMarkers() if the plugin isn't on the build.
+// Build the combined marker array for cycle tops/bottoms (white arrows)
+// AND BTC halvings (orange circles). LWC v5 requires markers sorted
+// ascending by time, so we merge then sort the whole list. The
+// halving-date list lives further down in the file (under the EPOCH
+// cohort classifier) — referenced by name, both consts are top-level
+// and resolved at marker-attach time, which only happens after the
+// whole script body has run.
+function _buildAnchoredMarkers() {
+  const cyc = (typeof _t === "function" ? _t("cycle") : "Cycle");
+  const top = (typeof _t === "function" ? _t("top") : "Top");
+  const bot = (typeof _t === "function" ? _t("bottom") : "Bottom");
+  const hv  = (typeof _t === "function" ? _t("halving") : "Halving");
+  const cycleMarkers = CYCLE_LANDMARKS.map((lm, i) => {
+    const cycleNum = Math.floor(i / 2) + 1;
+    const fixedNum = (i === 8) ? 5 : cycleNum;  // last entry is "Cycle 5 Top"
+    return {
+      time: lm.time,
+      position: lm.top ? "aboveBar" : "belowBar",
+      shape: lm.top ? "arrowDown" : "arrowUp",
+      color: "rgba(255,255,255,0.85)",
+      text: `${cyc} ${fixedNum} ${lm.top ? top : bot}`,
+      size: 1,
+    };
+  });
+  const halvingMarkers = (typeof _HALVING_DATES !== "undefined")
+    ? _HALVING_DATES.map((date, i) => ({
+        time: date,
+        position: "aboveBar",
+        shape: "circle",
+        color: "rgba(255, 140, 0, 0.95)",
+        text: `${hv} ${i + 1}`,
+        size: 1,
+      }))
+    : [];
+  return [...cycleMarkers, ...halvingMarkers].sort((a, b) =>
+    a.time < b.time ? -1 : a.time > b.time ? 1 : 0);
+}
+// Attach the anchored markers (cycle landmarks + halvings) to the
+// supplied price series. v5.0 moved markers out of the series API
+// into a standalone plugin (LightweightCharts.createSeriesMarkers);
+// fall back to the legacy series.setMarkers() if the plugin isn't
+// on the build.
 function _attachCycleLandmarkMarkers(series) {
-  const markers = CYCLE_LANDMARKS.map(lm => ({
-    time: lm.time,
-    position: lm.top ? "aboveBar" : "belowBar",
-    shape: lm.top ? "arrowDown" : "arrowUp",
-    color: "rgba(255,255,255,0.85)",
-    text: lm.text,
-    size: 1,
-  }));
+  const markers = _buildAnchoredMarkers();
   try {
     if (typeof LightweightCharts.createSeriesMarkers === "function") {
       return LightweightCharts.createSeriesMarkers(series, markers);
@@ -4550,7 +4581,7 @@ const I18N = {
     ct_baseline: "Baseline", ct_columns: "Columns",
     ct_high_low: "High-low", ct_heikin_ashi: "Heikin Ashi",
     // Cycle marker text on chart
-    cycle: "Cycle",
+    cycle: "Cycle", halving: "Halving",
     // Indicator panel actions
     action_remove: "REMOVE", action_added: "Added",
     action_edit: "Edit", action_apply: "Apply", action_add: "Add",
@@ -4616,7 +4647,7 @@ const I18N = {
     ct_line: "ライン", ct_step: "ステップライン", ct_area: "エリア",
     ct_baseline: "ベースライン", ct_columns: "カラム",
     ct_high_low: "高値–安値", ct_heikin_ashi: "平均足",
-    cycle: "サイクル",
+    cycle: "サイクル", halving: "ハービング",
     action_remove: "削除", action_added: "追加済",
     action_edit: "編集", action_apply: "適用", action_add: "追加",
     action_cancel: "キャンセル", action_configure: "設定",
@@ -4674,7 +4705,7 @@ const I18N = {
     ct_line: "Ligne", ct_step: "Ligne en escalier", ct_area: "Aire",
     ct_baseline: "Ligne de base", ct_columns: "Colonnes",
     ct_high_low: "Haut–bas", ct_heikin_ashi: "Heikin Ashi",
-    cycle: "Cycle",
+    cycle: "Cycle", halving: "Halving",
     action_remove: "RETIRER", action_added: "Ajouté",
     action_edit: "Modifier", action_apply: "Appliquer", action_add: "Ajouter",
     action_cancel: "Annuler", action_configure: "Configurer",
@@ -4732,7 +4763,7 @@ const I18N = {
     ct_line: "خطی", ct_step: "خط پلکانی", ct_area: "ناحیه‌ای",
     ct_baseline: "خط مبنا", ct_columns: "ستونی",
     ct_high_low: "بالا–پایین", ct_heikin_ashi: "هیکن آشی",
-    cycle: "چرخه",
+    cycle: "چرخه", halving: "نیمه‌سازی",
     action_remove: "حذف", action_added: "افزوده شد",
     action_edit: "ویرایش", action_apply: "اعمال", action_add: "افزودن",
     action_cancel: "لغو", action_configure: "پیکربندی",
@@ -4790,7 +4821,7 @@ const I18N = {
     ct_line: "折线图", ct_step: "阶梯图", ct_area: "面积图",
     ct_baseline: "基线图", ct_columns: "列状图",
     ct_high_low: "高–低", ct_heikin_ashi: "平均K线",
-    cycle: "周期",
+    cycle: "周期", halving: "减半",
     action_remove: "移除", action_added: "已添加",
     action_edit: "编辑", action_apply: "应用", action_add: "添加",
     action_cancel: "取消", action_configure: "配置",
@@ -4986,22 +5017,10 @@ function _retranslateCycleMarkers() {
     }
   }
   if (!btcInd || !btcInd._cycleMarkersPrim) return;
-  const cyc = _t("cycle");
-  const top = _t("top");
-  const bot = _t("bottom");
   if (typeof CYCLE_LANDMARKS === "undefined") return;
-  const markers = CYCLE_LANDMARKS.map((lm, i) => {
-    const cycleNum = Math.floor(i / 2) + 1;
-    const fixedNum = (i === 8) ? 5 : cycleNum;  // last entry is "Cycle 5 Top"
-    return {
-      time: lm.time,
-      position: lm.top ? "aboveBar" : "belowBar",
-      shape: lm.top ? "arrowDown" : "arrowUp",
-      color: "rgba(255,255,255,0.85)",
-      text: `${cyc} ${fixedNum} ${lm.top ? top : bot}`,
-      size: 1,
-    };
-  });
+  // Reuse the same builder used at attach-time so cycle + halving
+  // markers stay in sync on language change.
+  const markers = _buildAnchoredMarkers();
   try { btcInd._cycleMarkersPrim.setMarkers(markers); } catch (e) {
     // Fallback for legacy series.setMarkers
     const series = btcInd.getPriceSeries && btcInd.getPriceSeries();
