@@ -4729,10 +4729,31 @@ const DrawingsManager = (() => {
   function clearAll() {
     _drawings = [];
     _save();
+    _recordIfAvailable();
     render();
   }
   function remove(id) {
     _drawings = _drawings.filter(d => String(d.id) !== String(id));
+    _save();
+    _recordIfAvailable();
+    render();
+  }
+  // Read/write API used by the global undo/redo stack
+  // (snapshotState/applyState in the history block further down).
+  // Returns a deep-cloned array so callers can keep snapshots stable.
+  function getAll() {
+    try { return JSON.parse(JSON.stringify(_drawings)); }
+    catch (e) { return []; }
+  }
+  // Replaces the entire drawings array (used by applyState during
+  // undo/redo). Renders + persists but intentionally does NOT call
+  // recordHistory — the caller (applyState) is already inside a
+  // _suppressHistory window, but going through this path also keeps
+  // future-proof if it's called from anywhere else.
+  function setAll(arr) {
+    _drawings = Array.isArray(arr)
+      ? JSON.parse(JSON.stringify(arr))
+      : [];
     _save();
     render();
   }
@@ -4741,7 +4762,18 @@ const DrawingsManager = (() => {
     _drawings.push(drawing);
     _pending = null;
     _save();
+    _recordIfAvailable();
     render();
+  }
+  // Hook drawings into the global undo/redo stack. recordHistory is
+  // declared further down the file; at the moment we add/remove a
+  // drawing it definitely exists, but at module-load time it might
+  // not, so we look it up on each call. Suppression is handled by
+  // recordHistory itself (it checks `_suppressHistory`).
+  function _recordIfAvailable() {
+    if (typeof recordHistory === "function") {
+      try { recordHistory(); } catch (e) { /* ignore */ }
+    }
   }
 
   // ── Click handler on the SVG overlay ───────────────────────────────
@@ -6246,6 +6278,17 @@ let _suppressHistory = false;
 let _lastRecordedState = null;
 
 function snapshotState() {
+  // Drawings live in the global undo/redo stack alongside the
+  // indicator/chart-type/lookback state so Ctrl+Z reverses a drawing
+  // creation just like it reverses adding an indicator. We snapshot
+  // a deep clone via DrawingsManager.getAll() so later mutations don't
+  // poison the saved state.
+  let drawings = [];
+  try {
+    if (typeof DrawingsManager !== "undefined" && typeof DrawingsManager.getAll === "function") {
+      drawings = DrawingsManager.getAll();
+    }
+  } catch (e) { /* ignore */ }
   return {
     v: 2,
     d: currentDateStr,
@@ -6255,6 +6298,7 @@ function snapshotState() {
     ind: [...activeIndicators.values()]
       .filter(ind => ind.constructor.type !== "btc_price")
       .map(ind => ({ t: ind.constructor.type, c: ind.config, h: ind.visible === false ? 1 : 0 })),
+    dr: drawings,
   };
 }
 
@@ -6326,6 +6370,14 @@ async function applyState(state) {
       }
     }
     _origRefreshPanel();
+    // Restore drawings to whatever the snapshot recorded. setAll
+    // intentionally does NOT call recordHistory itself (we're inside
+    // a _suppressHistory window anyway).
+    try {
+      if (typeof DrawingsManager !== "undefined" && typeof DrawingsManager.setAll === "function") {
+        DrawingsManager.setAll(state.dr || []);
+      }
+    } catch (e) { console.warn("apply: drawings restore", e); }
   } finally {
     _suppressHistory = false;
   }
