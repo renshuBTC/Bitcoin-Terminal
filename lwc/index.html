@@ -7497,26 +7497,112 @@ applyPriceScale();
     serialize() { return { kind: "fib", p1: this._p1, p2: this._p2, color: this._options.color }; }
   }
 
-  // ── TextLabel (single point + free-form text) ──────────────────────
+  // ── TextLabel ──────────────────────────────────────────────────────
+  // PowerPoint-style text frame: anchor at top-left, fixed pixel width,
+  // word-wrap inside the frame, eight drag handles when selected.
+  // Corner handles scale font + width together (like dragging an image
+  // corner). Left/right edge handles change wrap width only — text
+  // re-flows. Top/bottom edge handles scale font only. Body drag
+  // translates the whole frame.
+  const TEXT_PAD_X = 6;  // inner horizontal padding (media px)
+  const TEXT_PAD_Y = 4;  // inner vertical padding (media px)
+  const TEXT_LINE_FACTOR = 1.25;  // line-height multiplier
+  let _textMeasureCtx = null;
+  function _getMeasureCtx() {
+    if (!_textMeasureCtx) {
+      _textMeasureCtx = document.createElement("canvas").getContext("2d");
+    }
+    return _textMeasureCtx;
+  }
+  // Greedy word-wrap. Returns at least one (possibly empty) line so the
+  // box always has visible height even for an empty label.
+  function _wrapText(text, fontSize, maxWidth) {
+    const ctx = _getMeasureCtx();
+    ctx.font = fontSize + "px sans-serif";
+    const words = (text || "").split(/\s+/).filter(Boolean);
+    if (words.length === 0) return [""];
+    const lines = [];
+    let cur = words[0];
+    for (let i = 1; i < words.length; i++) {
+      const test = cur + " " + words[i];
+      if (ctx.measureText(test).width <= maxWidth) {
+        cur = test;
+      } else {
+        lines.push(cur);
+        cur = words[i];
+      }
+    }
+    lines.push(cur);
+    return lines;
+  }
+  function _measureTextWidth(text, fontSize) {
+    const ctx = _getMeasureCtx();
+    ctx.font = fontSize + "px sans-serif";
+    return ctx.measureText(text || "").width;
+  }
+  // Compute box size in media pixels for a given (text, fontSize, widthPx).
+  function _textBoxSize(text, fontSize, widthPx) {
+    const inner = Math.max(20, widthPx - TEXT_PAD_X * 2);
+    const lines = _wrapText(text, fontSize, inner);
+    const lh = Math.round(fontSize * TEXT_LINE_FACTOR);
+    return {
+      width: widthPx,
+      height: lines.length * lh + TEXT_PAD_Y * 2,
+      lines: lines,
+      lineHeight: lh,
+    };
+  }
   class TextPaneRenderer {
-    constructor(p, text, color, fontSize, selected) {
+    constructor(p, text, color, fontSize, widthPx, selected) {
       this._p = p; this._text = text; this._color = color;
-      this._fontSize = fontSize; this._selected = selected;
+      this._fontSize = fontSize; this._widthPx = widthPx;
+      this._selected = selected;
     }
     draw(target) {
       target.useBitmapCoordinateSpace(scope => {
         if (this._p.x === null || this._p.y === null) return;
         const ctx = scope.context;
         const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
-        const x = this._p.x * hpr, y = this._p.y * vpr;
-        const fontSize = (this._fontSize || 14) * vpr;
-        ctx.font = (this._selected ? "bold " : "") + fontSize + "px sans-serif";
+        const fs = this._fontSize || 14;
+        const widthPx = this._widthPx || 200;
+        const box = _textBoxSize(this._text, fs, widthPx);
+        const x = this._p.x, y = this._p.y;
+        // Text rendering — bitmap-space font for crispness.
+        ctx.font = (fs * vpr) + "px sans-serif";
         ctx.fillStyle = this._color;
         ctx.textAlign = "left";
-        ctx.textBaseline = "middle";
-        ctx.fillText(this._text || "", x + 6 * hpr, y);
+        ctx.textBaseline = "top";
+        for (let i = 0; i < box.lines.length; i++) {
+          const lineY = (y + TEXT_PAD_Y + i * box.lineHeight) * vpr;
+          ctx.fillText(box.lines[i], (x + TEXT_PAD_X) * hpr, lineY);
+        }
+        // Selection chrome — dashed bounding box + 8 handles.
         if (this._selected) {
-          drawHandle(ctx, this._p.x, this._p.y, hpr, vpr);
+          ctx.strokeStyle = this._color;
+          ctx.lineWidth = Math.max(1, vpr | 0);
+          ctx.setLineDash([3 * vpr, 3 * vpr]);
+          ctx.globalAlpha = 0.7;
+          ctx.strokeRect(
+            x * hpr, y * vpr,
+            box.width * hpr, box.height * vpr
+          );
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+          const w = box.width, h = box.height;
+          // Order matches hitTestAnchor: 0=NW 1=N 2=NE 3=W 4=E 5=SW 6=S 7=SE
+          const handles = [
+            [x,         y        ],
+            [x + w / 2, y        ],
+            [x + w,     y        ],
+            [x,         y + h / 2],
+            [x + w,     y + h / 2],
+            [x,         y + h    ],
+            [x + w / 2, y + h    ],
+            [x + w,     y + h    ],
+          ];
+          for (const [hx, hy] of handles) {
+            drawHandle(ctx, hx, hy, hpr, vpr);
+          }
         }
       });
     }
@@ -7525,45 +7611,147 @@ applyPriceScale();
     constructor(source) { this._source = source; this._p = {x:null,y:null}; }
     update() {
       const s = this._source.series, ts = this._source.chart.timeScale();
-      this._p = { x: ts.timeToCoordinate(this._source._anchor.time), y: s.priceToCoordinate(this._source._anchor.price) };
+      this._p = {
+        x: ts.timeToCoordinate(this._source._anchor.time),
+        y: s.priceToCoordinate(this._source._anchor.price),
+      };
     }
     renderer() {
       return new TextPaneRenderer(this._p, this._source._text,
         this._source._options.color, this._source._options.fontSize,
-        this._source._selected);
+        this._source._options.widthPx, this._source._selected);
     }
   }
   class TextLabel extends PluginBase {
     constructor(p, text, options) {
       super();
-      this._anchor = p;
+      this._anchor = p;  // top-left of the frame
       this._text = text || "";
-      this._options = Object.assign({ color: "#ff8c00", fontSize: 14 }, options || {});
+      this._options = Object.assign(
+        { color: "#ff8c00", fontSize: 14, widthPx: 200 },
+        options || {}
+      );
       this._paneViews = [new TextPaneView(this)];
     }
     updateAllViews() { this._paneViews.forEach(v => v.update()); }
     paneViews() { return this._paneViews; }
+    _box() {
+      return _textBoxSize(this._text,
+        this._options.fontSize || 14,
+        this._options.widthPx || 200);
+    }
     hitTest(x, y) {
       const v = this._paneViews[0];
       if (v._p.x === null) return false;
-      // Bounding box scales with font size — sans-serif averages
-      // roughly 0.55em per character at common label sizes.
-      const fs = this._options.fontSize || 14;
-      const w = (this._text || "").length * (fs * 0.6) + 14;
-      const halfH = Math.max(10, Math.round(fs * 0.7));
-      return x >= v._p.x - 4 && x <= v._p.x + w
-          && y >= v._p.y - halfH && y <= v._p.y + halfH;
+      const b = this._box();
+      return x >= v._p.x - 2 && x <= v._p.x + b.width + 2
+          && y >= v._p.y - 2 && y <= v._p.y + b.height + 2;
     }
-    hitTestAnchor() { return -1; }
-    getCoords() { return [{ x: this._paneViews[0]._p.x, y: this._paneViews[0]._p.y }]; }
-    applyDrag(orig, dx, dy) {
-      const ts = this.chart.timeScale(), s = this.series;
-      const newTime = ts.coordinateToTime(orig[0].x + dx);
-      const newPrice = s.coordinateToPrice(orig[0].y + dy);
-      if (newTime != null && newPrice != null) {
-        this._anchor = { time: newTime, price: newPrice };
-        this.requestUpdate();
+    // Returns 0..7 if the click hits a specific handle, else -1.
+    hitTestAnchor(x, y) {
+      if (!this._selected) return -1;
+      const v = this._paneViews[0];
+      if (v._p.x === null) return -1;
+      const px = v._p.x, py = v._p.y;
+      const b = this._box();
+      const w = b.width, h = b.height;
+      const positions = [
+        [px,         py        ],  // 0 NW
+        [px + w / 2, py        ],  // 1 N
+        [px + w,     py        ],  // 2 NE
+        [px,         py + h / 2],  // 3 W
+        [px + w,     py + h / 2],  // 4 E
+        [px,         py + h    ],  // 5 SW
+        [px + w / 2, py + h    ],  // 6 S
+        [px + w,     py + h    ],  // 7 SE
+      ];
+      for (let i = 0; i < positions.length; i++) {
+        const [hx, hy] = positions[i];
+        if (Math.hypot(x - hx, y - hy) < 8) return i;
       }
+      return -1;
+    }
+    // For body drag we need pixel coords of the anchor; for handle drag
+    // we also need the original widthPx and fontSize so applyDrag can
+    // compute deltas relative to the drag-start state.
+    getCoords() {
+      const v = this._paneViews[0];
+      return [{
+        x: v._p.x,
+        y: v._p.y,
+        widthPx: this._options.widthPx,
+        fontSize: this._options.fontSize,
+      }];
+    }
+    applyDrag(orig, dx, dy, anchorIdx) {
+      const ts = this.chart.timeScale(), s = this.series;
+      const o = orig[0];
+      const origW = o.widthPx;
+      const origFs = o.fontSize;
+      // Body translate.
+      if (anchorIdx == null || anchorIdx === -1) {
+        const newTime = ts.coordinateToTime(o.x + dx);
+        const newPrice = s.coordinateToPrice(o.y + dy);
+        if (newTime != null && newPrice != null) {
+          this._anchor = { time: newTime, price: newPrice };
+          this.requestUpdate();
+        }
+        return;
+      }
+      // Handle drag — compute new width / font / anchor from anchorIdx.
+      let newW = origW;
+      let newFs = origFs;
+      let anchorTime = null;     // if left edge, anchor.time shifts
+      let anchorPrice = null;    // if top edge, anchor.price shifts
+      const isLeft   = (anchorIdx === 0 || anchorIdx === 3 || anchorIdx === 5);
+      const isRight  = (anchorIdx === 2 || anchorIdx === 4 || anchorIdx === 7);
+      const isTop    = (anchorIdx === 0 || anchorIdx === 1 || anchorIdx === 2);
+      const isBottom = (anchorIdx === 5 || anchorIdx === 6 || anchorIdx === 7);
+      const isCorner = (anchorIdx === 0 || anchorIdx === 2 ||
+                        anchorIdx === 5 || anchorIdx === 7);
+      const isMidH   = (anchorIdx === 3 || anchorIdx === 4);  // pure L/R
+      const isMidV   = (anchorIdx === 1 || anchorIdx === 6);  // pure T/B
+      // Width change for any handle that touches a vertical edge.
+      if (isRight) newW = Math.max(40, origW + dx);
+      else if (isLeft) newW = Math.max(40, origW - dx);
+      // Left-edge handles shift the anchor's time so the right edge
+      // stays put visually — feels like dragging the left side inward.
+      if (isLeft) {
+        const shift = origW - newW;  // positive = anchor moves right
+        const newTime = ts.coordinateToTime(o.x + shift);
+        if (newTime != null) anchorTime = newTime;
+      }
+      // Font scaling.
+      if (isCorner) {
+        // Corner: font scales with width (like proportional image resize).
+        const ratio = newW / origW;
+        newFs = Math.max(8, Math.min(72, Math.round(origFs * ratio)));
+      } else if (isMidV) {
+        // Top/bottom midpoint: font scales with vertical drag.
+        // Bottom edge: drag down = bigger. Top edge: drag up = bigger.
+        const sign = (anchorIdx === 6) ? 1 : -1;
+        newFs = Math.max(8, Math.min(72, origFs + Math.round(sign * dy * 0.4)));
+      }
+      // Top-edge handles also shift the anchor's price so the bottom
+      // edge stays put when the font shrinks/grows.
+      if (isTop && isMidV) {
+        // Compute new height; bottom should stay at o.y + origBoxHeight.
+        const origBox = _textBoxSize(this._text, origFs, origW);
+        const newBox = _textBoxSize(this._text, newFs, newW);
+        const newY = o.y + origBox.height - newBox.height;
+        const newPrice = s.coordinateToPrice(newY);
+        if (newPrice != null) anchorPrice = newPrice;
+      }
+      // Commit the new state.
+      this._options.widthPx = newW;
+      this._options.fontSize = newFs;
+      if (anchorTime != null || anchorPrice != null) {
+        this._anchor = {
+          time:  anchorTime  != null ? anchorTime  : this._anchor.time,
+          price: anchorPrice != null ? anchorPrice : this._anchor.price,
+        };
+      }
+      this.requestUpdate();
     }
     setColor(color) { this._options.color = color; this.requestUpdate(); }
     setFontSize(size) {
@@ -7571,9 +7759,17 @@ applyPriceScale();
       this._options.fontSize = v;
       this.requestUpdate();
     }
+    setWidthPx(w) {
+      this._options.widthPx = Math.max(40, w | 0);
+      this.requestUpdate();
+    }
     serialize() {
-      return { kind: "text", p: this._anchor, text: this._text,
-        color: this._options.color, fontSize: this._options.fontSize };
+      return {
+        kind: "text", p: this._anchor, text: this._text,
+        color: this._options.color,
+        fontSize: this._options.fontSize,
+        widthPx: this._options.widthPx,
+      };
     }
   }
 
@@ -7773,10 +7969,19 @@ applyPriceScale();
         const color = _currentColor;
         try { input.remove(); } catch (e) {}
         if (!txt) return;
-        const drawing = new TextLabel(point, txt, { color, fontSize });
+        // Initial widthPx hugs the text on a single line + padding, with
+        // a sensible minimum. User can drag side handles to widen and
+        // force wrapping, or drag corners to scale.
+        const natural = _measureTextWidth(txt, fontSize);
+        const widthPx = Math.max(80, Math.round(natural + TEXT_PAD_X * 2 + 4));
+        const drawing = new TextLabel(point, txt, { color, fontSize, widthPx });
         try {
           series.attachPrimitive(drawing);
           _drawings.push(drawing);
+          // Auto-select so the 8 drag handles appear immediately —
+          // the user just placed it; they can resize without an
+          // intermediate click.
+          _select(drawing);
           _recordIfAvailable();
         } catch (e) { console.warn("[drawings] text attach failed:", e); }
       }
@@ -8015,6 +8220,7 @@ applyPriceScale();
             const opts = {};
             if (color) opts.color = color;
             if (Number.isFinite(data.fontSize)) opts.fontSize = data.fontSize;
+            if (Number.isFinite(data.widthPx)) opts.widthPx = data.widthPx;
             d = new TextLabel(data.p, data.text || "",
               Object.keys(opts).length ? opts : undefined);
           }
@@ -8028,7 +8234,7 @@ applyPriceScale();
       }
     }
 
-    console.log("[drawings] tool manager ready (Stage 3 — 7 tools: trend/hline/vline/rect/ray/fib/text + editing + color + text font size)");
+    console.log("[drawings] tool manager ready (Stage 3 — 7 tools: trend/hline/vline/rect/ray/fib/text-frame + editing + color + ppt-style text resize)");
     window.__drawings = {
       startDrawing, stopDrawing, clearAll,
       snapshot, restore,
