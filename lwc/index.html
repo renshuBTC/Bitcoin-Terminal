@@ -222,23 +222,26 @@ window.__loadMp4Muxer = function() {
   /* Middle area = drawing toolbar (left, 36px) + chart column (right, flex). */
   #middle-area { flex: 1; display: flex; flex-direction: row; min-height: 0; min-width: 0; }
   #chart-column { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
-  #left-toolbar { flex: 0 0 36px; background: #000; border-right: 1px solid #1a1a1a;
+  /* Width matches the top toolbar's approximate height (8px padding × 2
+     + ~32px button content) so the corner where the two bars meet
+     reads as a square and tap targets are equivalent in both axes. */
+  #left-toolbar { flex: 0 0 48px; background: #000; border-right: 1px solid #1a1a1a;
     display: flex; flex-direction: column; align-items: center; padding: 6px 0; gap: 2px;
     user-select: none; }
-  #left-toolbar .lt-btn { width: 28px; height: 28px; padding: 0; margin: 0;
+  #left-toolbar .lt-btn { width: 38px; height: 38px; padding: 0; margin: 0;
     background: transparent; border: 1px solid transparent; border-radius: 3px;
     color: #888; cursor: pointer; display: inline-flex; align-items: center;
     justify-content: center; transition: background-color 90ms, color 90ms; }
   #left-toolbar .lt-btn:hover { background: #1a1a1a; color: #fff; }
   #left-toolbar .lt-btn.active { background: #1a1a1a; color: #ff8c00;
     border-color: #2a2a2a; }
-  #left-toolbar .lt-btn svg { display: block; }
-  #left-toolbar .lt-sep { width: 18px; height: 1px; background: #1a1a1a; margin: 4px 0; }
+  #left-toolbar .lt-btn svg { display: block; width: 22px; height: 22px; }
+  #left-toolbar .lt-sep { width: 28px; height: 1px; background: #1a1a1a; margin: 4px 0; }
   /* Color swatch button — replaces the native <input type="color"> so we
      can show a tidy palette popover instead of the OS color dialog. The
      element shows the currently-selected color as its fill; clicking it
      toggles the .lt-color-popover. */
-  #left-toolbar #lt-color { width: 22px; height: 22px; padding: 0;
+  #left-toolbar #lt-color { width: 30px; height: 30px; padding: 0;
     border: 1px solid #2a2a2a; border-radius: 3px; cursor: pointer;
     background: #ff8c00; box-sizing: border-box; }
   #left-toolbar #lt-color:hover { border-color: #3a3a3a; }
