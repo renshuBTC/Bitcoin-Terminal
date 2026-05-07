@@ -5134,47 +5134,27 @@ const DrawingsManager = (() => {
     } catch (e) {}
     return null;
   }
-  function _activatePluginTool(cls) {
-    if (!pluginMgr || !cls) return false;
-    const canonicalId = _resolveToolId(cls);
-    // Try in order of likelihood: canonical id (if found), the class
-    // itself, an instance, the minified name. Each call is verified by
-    // re-reading getActiveTool() — "didn't throw" alone is misleading
-    // because the plugin's setActiveTool quietly accepts any string
-    // and falls back to its first registered tool, which created the
-    // earlier `→ Ot` symptom.
-    const tries = [];
-    if (canonicalId)         tries.push(["canonical", () => pluginMgr.setActiveTool(canonicalId)]);
-    /* class itself */       tries.push(["class",     () => pluginMgr.setActiveTool(cls)]);
-    /* instance */           tries.push(["instance",  () => pluginMgr.setActiveTool(new cls())]);
-    /* {class:...} */        tries.push(["{class}",   () => pluginMgr.setActiveTool({ class: cls })]);
-    /* minified .name */     tries.push(["name",      () => pluginMgr.setActiveTool(cls.name)]);
-    for (const [label, fn] of tries) {
-      try {
-        fn();
-        const active = (typeof pluginMgr.getActiveTool === "function") ? pluginMgr.getActiveTool() : null;
-        // For success, the active value should be the class we passed,
-        // an instance of it, or an object whose .class/.constructor
-        // matches. A bare string that's NOT one we passed (e.g. "Ot"
-        // when we passed a class) means the plugin fell through to
-        // its default — not a real success.
-        const matches = (
-          active === cls ||
-          (active && active.constructor === cls) ||
-          (active && (active.class === cls || active.tool === cls)) ||
-          (canonicalId && active === canonicalId)
-        );
-        if (matches) {
-          console.log("[drawings] setActiveTool OK via", label, "for", cls.name, "(canonical:", canonicalId, ")");
-          return true;
-        }
-        console.log("[drawings] setActiveTool", label, "→ active:", active, "(no match)");
-      } catch (e) {
-        console.log("[drawings] setActiveTool", label, "threw:", e && e.message);
-      }
+  // Plugin's canonical tool id is kebab-case of the class name. The
+  // diagnostic confirmed each tool class sets `this.type = "trend-line"`
+  // (etc.) in its constructor, and that string is what setActiveTool
+  // matches against. Our TOOL_GROUPS entries store `cls: "TrendLine"`
+  // (the unminified name as a string) so we can derive the kebab-case
+  // id without going through the minified `class.name`.
+  function _kebab(s) {
+    return String(s || "").replace(/([a-z0-9])([A-Z])/g, "$1-$2").toLowerCase();
+  }
+  function _activatePluginTool(cls, unminifiedName) {
+    if (!pluginMgr) return false;
+    const id = _kebab(unminifiedName);
+    try {
+      pluginMgr.setActiveTool(id);
+      const active = (typeof pluginMgr.getActiveTool === "function") ? pluginMgr.getActiveTool() : null;
+      console.log("[drawings] setActiveTool('" + id + "') → active:", active);
+      return active != null && active !== false;
+    } catch (e) {
+      console.warn("[drawings] setActiveTool('" + id + "') threw:", e && e.message);
+      return false;
     }
-    console.warn("[drawings] setActiveTool failed for", cls && cls.name);
-    return false;
   }
   function setActiveTool(tool) {
     _activeTool = (tool === "cursor" || !tool) ? null : tool;
@@ -5196,7 +5176,11 @@ const DrawingsManager = (() => {
         try { pluginMgr.setActiveTool(null); } catch (e) {}
       } else {
         const cls = TOOL_CLASS[_activeTool];
-        if (cls) _activatePluginTool(cls);
+        const def = TOOL_DEF[_activeTool];
+        // `def.cls` is the unminified class name string ("TrendLine")
+        // we stored in TOOL_GROUPS — needed because the bundle is
+        // minified so cls.name returns "oe" instead.
+        if (cls && def) _activatePluginTool(cls, def.cls);
       }
     }
   }
