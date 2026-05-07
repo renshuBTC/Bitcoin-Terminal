@@ -536,6 +536,9 @@ window.__loadMp4Muxer = function() {
       <button class="lt-btn" data-tool="hline" title="Horizontal line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="2" y1="12" x2="22" y2="12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
       <button class="lt-btn" data-tool="vline" title="Vertical line"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="12" y1="2" x2="12" y2="22" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="12" r="2" fill="currentColor"/></svg></button>
       <button class="lt-btn" data-tool="rect" title="Rectangle"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><rect x="4" y="6" width="16" height="12" stroke="currentColor" stroke-width="2" fill="none" rx="1"/></svg></button>
+      <button class="lt-btn" data-tool="ray" title="Ray"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="20" x2="22" y2="6" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="3" cy="20" r="2" fill="currentColor"/></svg></button>
+      <button class="lt-btn" data-tool="fib" title="Fibonacci retracement"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><line x1="3" y1="5" x2="21" y2="5" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="10" x2="21" y2="10" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="14" x2="21" y2="14" stroke="currentColor" stroke-width="1.4"/><line x1="3" y1="19" x2="21" y2="19" stroke="currentColor" stroke-width="1.4"/></svg></button>
+      <button class="lt-btn" data-tool="text" title="Text label"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg"><path d="M5 5 H19 M12 5 V20" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/></svg></button>
       <div class="lt-sep"></div>
       <input type="color" id="lt-color" value="#ff8c00" title="Drawing color">
       <div class="lt-sep"></div>
@@ -7215,11 +7218,311 @@ applyPriceScale();
     serialize() { return { kind: "vline", p: this._p, color: this._options.color }; }
   }
 
+  // ── Ray (line from p1 extended past p2 to right edge) ──────────────
+  class RayPaneRenderer {
+    constructor(p1, p2, color, width, selected) {
+      this._p1 = p1; this._p2 = p2; this._color = color; this._width = width;
+      this._selected = selected;
+    }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._p1.x === null || this._p1.y === null ||
+            this._p2.x === null || this._p2.y === null) return;
+        const ctx = scope.context;
+        const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+        const x1 = this._p1.x * hpr, y1 = this._p1.y * vpr;
+        const x2 = this._p2.x * hpr, y2 = this._p2.y * vpr;
+        const dx = x2 - x1, dy = y2 - y1;
+        // Project beyond the visible right edge along the p1→p2 vector.
+        let endX, endY;
+        if (Math.abs(dx) < 0.01) {
+          // Effectively vertical — extend in p1→p2's vertical direction.
+          endX = x1;
+          endY = (dy >= 0) ? scope.bitmapSize.height + 200 : -200;
+        } else {
+          const slope = dy / dx;
+          endX = scope.bitmapSize.width + 200;
+          endY = y1 + slope * (endX - x1);
+        }
+        ctx.strokeStyle = this._color;
+        ctx.lineWidth = Math.max(1, Math.round((this._selected ? this._width + 1 : this._width) * vpr));
+        ctx.lineCap = "round";
+        ctx.beginPath();
+        ctx.moveTo(x1, y1);
+        ctx.lineTo(endX, endY);
+        ctx.stroke();
+        if (this._selected) {
+          drawHandle(ctx, this._p1.x, this._p1.y, hpr, vpr);
+          drawHandle(ctx, this._p2.x, this._p2.y, hpr, vpr);
+        }
+      });
+    }
+  }
+  class RayPaneView {
+    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+    update() {
+      const s = this._source.series, ts = this._source.chart.timeScale();
+      this._p1 = { x: ts.timeToCoordinate(this._source._p1.time), y: s.priceToCoordinate(this._source._p1.price) };
+      this._p2 = { x: ts.timeToCoordinate(this._source._p2.time), y: s.priceToCoordinate(this._source._p2.price) };
+    }
+    renderer() {
+      return new RayPaneRenderer(this._p1, this._p2,
+        this._source._options.color, this._source._options.width,
+        this._source._selected);
+    }
+  }
+  class Ray extends PluginBase {
+    constructor(p1, p2, options) {
+      super();
+      this._p1 = p1; this._p2 = p2;
+      this._options = Object.assign({ color: "#ff8c00", width: 2 }, options || {});
+      this._paneViews = [new RayPaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+    hitTest(x, y) {
+      // Project an effectively-infinite segment from p1 through p2 and
+      // measure perpendicular distance from (x, y) to it.
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return false;
+      const dx = v._p2.x - v._p1.x, dy = v._p2.y - v._p1.y;
+      let endX, endY;
+      if (Math.abs(dx) < 0.01) {
+        endX = v._p1.x;
+        endY = (dy >= 0) ? v._p1.y + 100000 : v._p1.y - 100000;
+      } else {
+        const slope = dy / dx;
+        endX = v._p1.x + (dx >= 0 ? 100000 : -100000);
+        endY = v._p1.y + slope * (endX - v._p1.x);
+      }
+      return distToSegment(x, y, v._p1.x, v._p1.y, endX, endY) < 6;
+    }
+    hitTestAnchor(x, y) {
+      if (!this._selected) return -1;
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return -1;
+      if (Math.hypot(x - v._p1.x, y - v._p1.y) < 8) return 0;
+      if (Math.hypot(x - v._p2.x, y - v._p2.y) < 8) return 1;
+      return -1;
+    }
+    getCoords() {
+      const v = this._paneViews[0];
+      return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
+    }
+    applyDrag(orig, dx, dy, anchorIdx) {
+      const ts = this.chart.timeScale(), s = this.series;
+      if (anchorIdx == null || anchorIdx === -1) {
+        const t1 = ts.coordinateToTime(orig[0].x + dx);
+        const p1 = s.coordinateToPrice(orig[0].y + dy);
+        const t2 = ts.coordinateToTime(orig[1].x + dx);
+        const p2 = s.coordinateToPrice(orig[1].y + dy);
+        if (t1 != null && p1 != null && t2 != null && p2 != null) {
+          this._p1 = { time: t1, price: p1 };
+          this._p2 = { time: t2, price: p2 };
+          this.requestUpdate();
+        }
+      } else {
+        const newTime = ts.coordinateToTime(orig[anchorIdx].x + dx);
+        const newPrice = s.coordinateToPrice(orig[anchorIdx].y + dy);
+        if (newTime == null || newPrice == null) return;
+        if (anchorIdx === 0) this._p1 = { time: newTime, price: newPrice };
+        else this._p2 = { time: newTime, price: newPrice };
+        this.requestUpdate();
+      }
+    }
+    setColor(color) { this._options.color = color; this.requestUpdate(); }
+    serialize() { return { kind: "ray", p1: this._p1, p2: this._p2, color: this._options.color }; }
+  }
+
+  // ── FibRetracement (7 horizontal levels between p1 and p2) ─────────
+  // Standard 0/0.236/0.382/0.5/0.618/0.786/1.0 levels with price labels
+  // at the right end. Selected → bright handles at p1 and p2; per-handle
+  // resize moves just that anchor.
+  const FIB_LEVELS = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+  class FibPaneRenderer {
+    constructor(p1, p2, p1Price, p2Price, color, selected) {
+      this._p1 = p1; this._p2 = p2;
+      this._p1Price = p1Price; this._p2Price = p2Price;
+      this._color = color; this._selected = selected;
+    }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._p1.x === null || this._p1.y === null ||
+            this._p2.x === null || this._p2.y === null) return;
+        const ctx = scope.context;
+        const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+        const x1 = Math.min(this._p1.x, this._p2.x);
+        const x2 = Math.max(this._p1.x, this._p2.x);
+        const xStart = x1 * hpr, xEnd = x2 * hpr;
+        ctx.fillStyle = this._color;
+        ctx.font = (10 * vpr) + "px sans-serif";
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        for (const lvl of FIB_LEVELS) {
+          const yMedia = this._p1.y + (this._p2.y - this._p1.y) * lvl;
+          const yPos = positionsLine(yMedia, vpr, this._selected ? 2 : 1);
+          ctx.fillRect(xStart, yPos.position, xEnd - xStart, yPos.length);
+          // Label: percent + price
+          const price = this._p1Price + (this._p2Price - this._p1Price) * lvl;
+          const label = (lvl * 100).toFixed(1) + "%  " + price.toFixed(2);
+          ctx.fillText(label, xEnd + 6 * hpr, yMedia * vpr);
+        }
+        if (this._selected) {
+          drawHandle(ctx, this._p1.x, this._p1.y, hpr, vpr);
+          drawHandle(ctx, this._p2.x, this._p2.y, hpr, vpr);
+        }
+      });
+    }
+  }
+  class FibPaneView {
+    constructor(source) { this._source = source; this._p1 = {x:null,y:null}; this._p2 = {x:null,y:null}; }
+    update() {
+      const s = this._source.series, ts = this._source.chart.timeScale();
+      this._p1 = { x: ts.timeToCoordinate(this._source._p1.time), y: s.priceToCoordinate(this._source._p1.price) };
+      this._p2 = { x: ts.timeToCoordinate(this._source._p2.time), y: s.priceToCoordinate(this._source._p2.price) };
+    }
+    renderer() {
+      return new FibPaneRenderer(this._p1, this._p2,
+        this._source._p1.price, this._source._p2.price,
+        this._source._options.color, this._source._selected);
+    }
+  }
+  class FibRetracement extends PluginBase {
+    constructor(p1, p2, options) {
+      super();
+      this._p1 = p1; this._p2 = p2;
+      this._options = Object.assign({ color: "#ff8c00" }, options || {});
+      this._paneViews = [new FibPaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    updatePreviewEnd(p) { this._p2 = p; this.requestUpdate(); }
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._p1.x === null || v._p2.x === null) return false;
+      const x1 = Math.min(v._p1.x, v._p2.x);
+      const x2 = Math.max(v._p1.x, v._p2.x);
+      // Allow hits within the line span plus the label area on the right.
+      if (x < x1 - 4 || x > x2 + 110) return false;
+      for (const lvl of FIB_LEVELS) {
+        const yLevel = v._p1.y + (v._p2.y - v._p1.y) * lvl;
+        if (Math.abs(y - yLevel) < 6) return true;
+      }
+      return false;
+    }
+    hitTestAnchor(x, y) {
+      if (!this._selected) return -1;
+      const v = this._paneViews[0];
+      if (v._p1.x === null) return -1;
+      if (Math.hypot(x - v._p1.x, y - v._p1.y) < 8) return 0;
+      if (Math.hypot(x - v._p2.x, y - v._p2.y) < 8) return 1;
+      return -1;
+    }
+    getCoords() {
+      const v = this._paneViews[0];
+      return [{ x: v._p1.x, y: v._p1.y }, { x: v._p2.x, y: v._p2.y }];
+    }
+    applyDrag(orig, dx, dy, anchorIdx) {
+      const ts = this.chart.timeScale(), s = this.series;
+      if (anchorIdx == null || anchorIdx === -1) {
+        const t1 = ts.coordinateToTime(orig[0].x + dx);
+        const p1 = s.coordinateToPrice(orig[0].y + dy);
+        const t2 = ts.coordinateToTime(orig[1].x + dx);
+        const p2 = s.coordinateToPrice(orig[1].y + dy);
+        if (t1 != null && p1 != null && t2 != null && p2 != null) {
+          this._p1 = { time: t1, price: p1 };
+          this._p2 = { time: t2, price: p2 };
+          this.requestUpdate();
+        }
+      } else {
+        const newTime = ts.coordinateToTime(orig[anchorIdx].x + dx);
+        const newPrice = s.coordinateToPrice(orig[anchorIdx].y + dy);
+        if (newTime == null || newPrice == null) return;
+        if (anchorIdx === 0) this._p1 = { time: newTime, price: newPrice };
+        else this._p2 = { time: newTime, price: newPrice };
+        this.requestUpdate();
+      }
+    }
+    setColor(color) { this._options.color = color; this.requestUpdate(); }
+    serialize() { return { kind: "fib", p1: this._p1, p2: this._p2, color: this._options.color }; }
+  }
+
+  // ── TextLabel (single point + free-form text) ──────────────────────
+  class TextPaneRenderer {
+    constructor(p, text, color, selected) {
+      this._p = p; this._text = text; this._color = color; this._selected = selected;
+    }
+    draw(target) {
+      target.useBitmapCoordinateSpace(scope => {
+        if (this._p.x === null || this._p.y === null) return;
+        const ctx = scope.context;
+        const hpr = scope.horizontalPixelRatio, vpr = scope.verticalPixelRatio;
+        const x = this._p.x * hpr, y = this._p.y * vpr;
+        const fontSize = 13 * vpr;
+        ctx.font = (this._selected ? "bold " : "") + fontSize + "px sans-serif";
+        ctx.fillStyle = this._color;
+        ctx.textAlign = "left";
+        ctx.textBaseline = "middle";
+        ctx.fillText(this._text || "", x + 6 * hpr, y);
+        if (this._selected) {
+          drawHandle(ctx, this._p.x, this._p.y, hpr, vpr);
+        }
+      });
+    }
+  }
+  class TextPaneView {
+    constructor(source) { this._source = source; this._p = {x:null,y:null}; }
+    update() {
+      const s = this._source.series, ts = this._source.chart.timeScale();
+      this._p = { x: ts.timeToCoordinate(this._source._anchor.time), y: s.priceToCoordinate(this._source._anchor.price) };
+    }
+    renderer() {
+      return new TextPaneRenderer(this._p, this._source._text,
+        this._source._options.color, this._source._selected);
+    }
+  }
+  class TextLabel extends PluginBase {
+    constructor(p, text, options) {
+      super();
+      this._anchor = p;
+      this._text = text || "";
+      this._options = Object.assign({ color: "#ff8c00" }, options || {});
+      this._paneViews = [new TextPaneView(this)];
+    }
+    updateAllViews() { this._paneViews.forEach(v => v.update()); }
+    paneViews() { return this._paneViews; }
+    hitTest(x, y) {
+      const v = this._paneViews[0];
+      if (v._p.x === null) return false;
+      // Crude bounding box: ~8 media pixels per character, 13px tall.
+      const w = (this._text || "").length * 8 + 14;
+      return x >= v._p.x - 4 && x <= v._p.x + w && y >= v._p.y - 10 && y <= v._p.y + 10;
+    }
+    hitTestAnchor() { return -1; }
+    getCoords() { return [{ x: this._paneViews[0]._p.x, y: this._paneViews[0]._p.y }]; }
+    applyDrag(orig, dx, dy) {
+      const ts = this.chart.timeScale(), s = this.series;
+      const newTime = ts.coordinateToTime(orig[0].x + dx);
+      const newPrice = s.coordinateToPrice(orig[0].y + dy);
+      if (newTime != null && newPrice != null) {
+        this._anchor = { time: newTime, price: newPrice };
+        this.requestUpdate();
+      }
+    }
+    setColor(color) { this._options.color = color; this.requestUpdate(); }
+    serialize() {
+      return { kind: "text", p: this._anchor, text: this._text, color: this._options.color };
+    }
+  }
+
   // ── Tool catalog ───────────────────────────────────────────────────
   // Each entry: nPts (clicks needed), build(pts, color) (final shape),
   // preview(p1, color) (translucent in-progress shape, optional).
-  // hline + vline finalize on first click — no preview needed.
+  // hline + vline + text finalize on first click — no preview needed.
   // Color is sourced from the toolbar's color picker at draw time.
+  // build() may return null to signal "user cancelled" (e.g. text
+  // prompt aborted) — the manager skips attach in that case.
   const TOOLS = {
     trend: {
       nPts: 2,
@@ -7238,6 +7541,25 @@ applyPriceScale();
         fillColor: addAlpha(color, 0.10),
         strokeColor: addAlpha(color, 0.40),
       }),
+    },
+    ray: {
+      nPts: 2,
+      build: (pts, color) => new Ray(pts[0], pts[1], { color }),
+      preview: (p1, color) => new Ray(p1, p1, { color: addAlpha(color, 0.45), width: 1.5 }),
+    },
+    fib: {
+      nPts: 2,
+      build: (pts, color) => new FibRetracement(pts[0], pts[1], { color }),
+      preview: (p1, color) => new FibRetracement(p1, p1, { color: addAlpha(color, 0.45) }),
+    },
+    text: {
+      nPts: 1,
+      build: (pts, color) => {
+        const txt = window.prompt("Label text:", "");
+        if (!txt || !txt.trim()) return null;  // user cancelled
+        return new TextLabel(pts[0], txt.trim(), { color });
+      },
+      preview: null,
     },
   };
 
@@ -7347,11 +7669,15 @@ applyPriceScale();
         const need = TOOLS[_activeKind].nPts;
         if (_points.length >= need) {
           const drawing = TOOLS[_activeKind].build(_points, _currentColor);
-          try {
-            series.attachPrimitive(drawing);
-            _drawings.push(drawing);
-            _recordIfAvailable();
-          } catch (e) { console.warn("[drawings] attach failed:", e); }
+          // build() can return null when the user cancels a prompt
+          // (e.g. text label with empty input). Skip attach in that case.
+          if (drawing) {
+            try {
+              series.attachPrimitive(drawing);
+              _drawings.push(drawing);
+              _recordIfAvailable();
+            } catch (e) { console.warn("[drawings] attach failed:", e); }
+          }
           _removePreview();
           stopDrawing();
         } else if (_points.length === 1 && TOOLS[_activeKind].preview) {
@@ -7513,6 +7839,12 @@ applyPriceScale();
             d = new HorizontalLine(data.p, color ? { color } : undefined);
           } else if (data.kind === "vline") {
             d = new VerticalLine(data.p, color ? { color } : undefined);
+          } else if (data.kind === "ray") {
+            d = new Ray(data.p1, data.p2, color ? { color } : undefined);
+          } else if (data.kind === "fib") {
+            d = new FibRetracement(data.p1, data.p2, color ? { color } : undefined);
+          } else if (data.kind === "text") {
+            d = new TextLabel(data.p, data.text || "", color ? { color } : undefined);
           }
         } catch (e) { console.warn("[drawings] restore deserialize failed:", e); }
         if (d) {
@@ -7524,7 +7856,7 @@ applyPriceScale();
       }
     }
 
-    console.log("[drawings] tool manager ready (Stage 2.2 — editing layer + color picker + per-handle resize)");
+    console.log("[drawings] tool manager ready (Stage 3 — 7 tools: trend/hline/vline/rect/ray/fib/text + editing + color)");
     window.__drawings = {
       startDrawing, stopDrawing, clearAll,
       snapshot, restore,
