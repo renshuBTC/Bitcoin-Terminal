@@ -1,4 +1,4 @@
-# Trademark & Branding Policy
+ # Trademark & Branding Policy
 
 The names **"Bitcoin Terminal"**, **"BITCOINTERMINAL.NET"**, the orange-on-black
 visual identity, the project's logo, and any associated branding elements
