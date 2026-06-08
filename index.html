@@ -2141,16 +2141,16 @@
       background: #000
     }
 
-    /* B298+B299: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.)
-       use compact TradingView-style 11px. Own-pane indicators (URPD, SOPD,
-       COPD) keep the larger 15px so they're readable as a pane title.
+    /* B298+B299+B304: top-pane overlays (Realized Price, CVDD, SMAs,
+       %-Supply etc.) use 13px — bigger than TradingView's 11px (per user
+       request 2026-06-08) but still smaller than the 15px own-pane title.
        The BTC pane uses the STATIC #header-top container (rows pushed into
        #ind-rows-top), so that selector is needed in addition to the dynamic
        per-indicator .is-top-overlay class. */
     #header-top .ind-row,
     .pane-label.is-top-overlay .ind-row {
-      font-size: 11px;
-      line-height: 1.3
+      font-size: 13px;
+      line-height: 1.35
     }
 
     .ind-row .swatch {
@@ -2185,12 +2185,13 @@
       display: inline-flex
     }
 
-    /* B301: seamless action buttons — no border, transparent bg matches the
-       .ind-row backdrop. Slight highlight on per-button hover only. */
+    /* B301+B304: seamless action buttons — no border, transparent bg matches
+       the .ind-row backdrop. Pure white icons (per user 2026-06-08), with a
+       subtle backdrop tint on per-button hover. */
     .ind-row .act-btn {
       background: transparent;
       border: 0;
-      color: #b0b0b0;
+      color: #ffffff;
       cursor: pointer;
       padding: 2px 4px;
       border-radius: 2px;
@@ -2202,8 +2203,8 @@
     }
 
     .ind-row .act-btn:hover {
-      background: rgba(255, 255, 255, 0.08);
-      color: #fff
+      background: rgba(255, 255, 255, 0.12);
+      color: #ffffff
     }
 
     .ind-row .act-btn svg {
