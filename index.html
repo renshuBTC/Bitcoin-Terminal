@@ -2122,9 +2122,9 @@
       gap: 2px
     }
 
-    /* B301: TradingView-style row — subtle dark backdrop so the row text
-       sits on top of (not through) chart lines, with rounded corners and a
-       small padding. No outline/border. */
+    /* B301+B303: TradingView-style row — pure-black backdrop so the row
+       text sits on top of (not through) chart lines, with rounded corners
+       and a small padding. No outline/border. */
     .ind-row {
       display: inline-flex;
       align-items: center;
@@ -2133,13 +2133,12 @@
       font-size: 15px;
       line-height: 1.4;
       padding: 1px 6px;
-      background: rgba(0, 0, 0, 0.55);
-      border-radius: 3px;
-      transition: background 0.08s ease
+      background: #000;
+      border-radius: 3px
     }
 
     .ind-row:hover {
-      background: rgba(20, 20, 20, 0.92)
+      background: #000
     }
 
     /* B298+B299: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.)
@@ -2172,20 +2171,18 @@
       opacity: .4
     }
 
-    /* B300: always-laid-out actions to prevent the row from bouncing on hover.
-       Was display:none / display:inline-flex which changed layout on hover. */
+    /* B303: actions hidden by default, revealed on hover. Box grows
+       rightward to fit them — text stays anchored because the parent
+       .ind-rows uses align-items: flex-start (B302). */
     .ind-row .actions {
-      display: inline-flex;
-      visibility: hidden;
+      display: none;
       gap: 2px;
       margin-left: 4px;
-      align-items: center;
-      pointer-events: none
+      align-items: center
     }
 
     .ind-row:hover .actions {
-      visibility: visible;
-      pointer-events: auto
+      display: inline-flex
     }
 
     /* B301: seamless action buttons — no border, transparent bg matches the
