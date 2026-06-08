@@ -2131,9 +2131,13 @@
       padding: 0
     }
 
-    /* B298: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.) use
-       compact TradingView-style 11px. Own-pane indicators (URPD, SOPD, COPD)
-       keep the larger 15px so they're readable as a pane title. */
+    /* B298+B299: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.)
+       use compact TradingView-style 11px. Own-pane indicators (URPD, SOPD,
+       COPD) keep the larger 15px so they're readable as a pane title.
+       The BTC pane uses the STATIC #header-top container (rows pushed into
+       #ind-rows-top), so that selector is needed in addition to the dynamic
+       per-indicator .is-top-overlay class. */
+    #header-top .ind-row,
     .pane-label.is-top-overlay .ind-row {
       font-size: 11px;
       line-height: 1.3
