@@ -2121,6 +2121,9 @@
       gap: 2px
     }
 
+    /* B301: TradingView-style row — subtle dark backdrop so the row text
+       sits on top of (not through) chart lines, with rounded corners and a
+       small padding. No outline/border. */
     .ind-row {
       display: inline-flex;
       align-items: center;
@@ -2128,7 +2131,14 @@
       pointer-events: auto;
       font-size: 15px;
       line-height: 1.4;
-      padding: 0
+      padding: 1px 6px;
+      background: rgba(0, 0, 0, 0.55);
+      border-radius: 3px;
+      transition: background 0.08s ease
+    }
+
+    .ind-row:hover {
+      background: rgba(20, 20, 20, 0.92)
     }
 
     /* B298+B299: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.)
@@ -2177,12 +2187,14 @@
       pointer-events: auto
     }
 
+    /* B301: seamless action buttons — no border, transparent bg matches the
+       .ind-row backdrop. Slight highlight on per-button hover only. */
     .ind-row .act-btn {
-      background: rgba(20, 20, 20, .85);
-      border: 1px solid rgba(255, 255, 255, .08);
-      color: #d4d4d4;
+      background: transparent;
+      border: 0;
+      color: #b0b0b0;
       cursor: pointer;
-      padding: 2px 5px;
+      padding: 2px 4px;
       border-radius: 2px;
       font-size: 11px;
       line-height: 1;
@@ -2192,9 +2204,8 @@
     }
 
     .ind-row .act-btn:hover {
-      background: #2a2a2a;
-      color: #fff;
-      border-color: rgba(255, 255, 255, .18)
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff
     }
 
     .ind-row .act-btn svg {
