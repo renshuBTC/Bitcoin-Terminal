@@ -2161,15 +2161,20 @@
       opacity: .4
     }
 
+    /* B300: always-laid-out actions to prevent the row from bouncing on hover.
+       Was display:none / display:inline-flex which changed layout on hover. */
     .ind-row .actions {
-      display: none;
+      display: inline-flex;
+      visibility: hidden;
       gap: 2px;
       margin-left: 4px;
-      align-items: center
+      align-items: center;
+      pointer-events: none
     }
 
     .ind-row:hover .actions {
-      display: inline-flex
+      visibility: visible;
+      pointer-events: auto
     }
 
     .ind-row .act-btn {
