@@ -2126,10 +2126,17 @@
       align-items: center;
       gap: 6px;
       pointer-events: auto;
-      /* B297: 11px to match TradingView's compact indicator legend */
-      font-size: 11px;
-      line-height: 1.3;
+      font-size: 15px;
+      line-height: 1.4;
       padding: 0
+    }
+
+    /* B298: top-pane overlays (Realized Price, CVDD, SMAs, %-Supply etc.) use
+       compact TradingView-style 11px. Own-pane indicators (URPD, SOPD, COPD)
+       keep the larger 15px so they're readable as a pane title. */
+    .pane-label.is-top-overlay .ind-row {
+      font-size: 11px;
+      line-height: 1.3
     }
 
     .ind-row .swatch {
@@ -8357,7 +8364,7 @@
       const t = document.getElementById("chart-top-wrap");
       if (!t) return null;
       const i = document.createElement("div");
-      return i.id = "header-ind-" + e.id, i.className = "pane-label", i.style.display = "none", i.innerHTML = '<div class="header-bottom-row"><div class="ind-rows"></div><div class="snapshot-meta ind-snapshot-meta"></div><div class="hover-readout ind-hover-readout"></div></div><div class="ind-nav-instruction"></div><div class="cohort-legend ind-cohort-legend"></div>', t.appendChild(i), e._headerEl = i, i.addEventListener("click", e => {
+      return i.id = "header-ind-" + e.id, i.className = "pane-label" + ((e && e.constructor && e.constructor.pane === "top") ? " is-top-overlay" : ""), i.style.display = "none", i.innerHTML = '<div class="header-bottom-row"><div class="ind-rows"></div><div class="snapshot-meta ind-snapshot-meta"></div><div class="hover-readout ind-hover-readout"></div></div><div class="ind-nav-instruction"></div><div class="cohort-legend ind-cohort-legend"></div>', t.appendChild(i), e._headerEl = i, i.addEventListener("click", e => {
         const t = e.target.closest(".ind-cohort-legend .cl-row");
         if (!t) return;
         e.preventDefault(), e.stopPropagation();
