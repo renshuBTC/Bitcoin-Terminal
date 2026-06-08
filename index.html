@@ -646,8 +646,12 @@
       cursor: pointer;
       font-family: inherit;
       font-size: 10px;
+      /* B311: bump weight to 500 + tighten letter-spacing to match the
+         visual heft of the bordered toggle buttons. Same font-size, but
+         compensates for the missing container chrome. */
+      font-weight: 500;
       text-transform: uppercase;
-      letter-spacing: .04em;
+      letter-spacing: .3px;
       white-space: nowrap;
       transition: background-color 80ms ease
     }
