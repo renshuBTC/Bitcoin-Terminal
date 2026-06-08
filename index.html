@@ -62,8 +62,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      /* B310: shrink top-bar padding 8 -> 3 so chart pane gains ~10px */
-      padding: 3px 12px;
+      padding: 8px 12px;
       background: #000;
       flex-wrap: nowrap;
       position: relative;
@@ -288,14 +287,14 @@
       color: #d4d4d4;
       border: 1px solid #555;
       border-radius: 2px;
-      height: 22px;
-      padding: 0 6px;
+      height: 28px;
+      padding: 0 10px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: .3px;
-      line-height: 20px;
+      letter-spacing: .5px;
+      line-height: 26px;
       box-sizing: border-box;
       transition: all .15s
     }
@@ -314,14 +313,14 @@
       color: #d4d4d4;
       border: 1px solid #555;
       border-radius: 2px;
-      height: 22px;
-      padding: 0 6px;
+      height: 28px;
+      padding: 0 10px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 12px;
       text-transform: uppercase;
-      letter-spacing: .3px;
-      line-height: 20px;
+      letter-spacing: .5px;
+      line-height: 26px;
       box-sizing: border-box;
       transition: all .15s;
       margin-left: 6px
@@ -505,10 +504,10 @@
       background: 0 0;
       color: #d4d4d4;
       border: none;
-      padding: 4px 6px;
+      padding: 7px 12px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 15px;
       font-weight: 500;
       border-radius: 3px;
       transition: background-color 80ms ease
@@ -519,32 +518,28 @@
       color: #fff
     }
 
-    /* B308+B312: top-bar shrunk + chrome stripped. Toggle group is now an
-       invisible flex container — each button reads as bare text on black,
-       matching @RENSHUBTC. Active state still gets the orange highlight. */
     .tb-mode-toggle {
       display: inline-flex;
-      gap: 4px;
-      background: transparent;
-      padding: 0;
-      border: none;
-      border-radius: 0;
-      height: 24px;
+      gap: 1px;
+      background: #0d0d0d;
+      padding: 2px;
+      border: 1px solid #555;
+      border-radius: 2px;
+      height: 28px;
       align-items: center;
       box-sizing: border-box
     }
 
     .tb-mode-toggle button {
-      height: 20px;
+      height: 22px;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      padding: 0 5px;
-      font-size: 10px;
-      font-weight: 500;
-      letter-spacing: .3px;
-      background: transparent;
-      border: none;
+      padding: 0 8px;
+      font-size: 12px;
+      letter-spacing: .5px;
+      background: #0d0d0d;
+      border: 1px solid transparent;
       border-radius: 2px;
       color: #fff;
       cursor: pointer;
@@ -599,9 +594,9 @@
 
     .tb-ctrl-sep {
       width: 1px;
-      height: 20px;
+      height: 22px;
       background: #555;
-      margin: 0 3px
+      margin: 0 4px
     }
 
     .cohort-legend .cl-flag-row:first-of-type {
@@ -642,19 +637,15 @@
       gap: 4px;
       background: 0 0;
       color: #fff;
-      padding: 4px 8px;
+      padding: 7px 12px;
       border: none;
       border-radius: 3px;
       text-decoration: none;
       cursor: pointer;
       font-family: inherit;
-      font-size: 10px;
-      /* B311: bump weight to 500 + tighten letter-spacing to match the
-         visual heft of the bordered toggle buttons. Same font-size, but
-         compensates for the missing container chrome. */
-      font-weight: 500;
+      font-size: 15px;
       text-transform: uppercase;
-      letter-spacing: .3px;
+      letter-spacing: .04em;
       white-space: nowrap;
       transition: background-color 80ms ease
     }
@@ -687,10 +678,10 @@
       background: 0 0;
       color: #d4d4d4;
       border: none;
-      padding: 4px 6px;
+      padding: 5px 9px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 10px;
+      font-size: 12px;
       border-radius: 3px;
       transition: background-color 80ms ease, color 80ms ease
     }
@@ -2220,18 +2211,6 @@
       display: block
     }
 
-    /* B307 M6 preview: WALLET button is visible but disabled until backend
-       cohorts ship. Slightly faded + dashed outline to signal 'coming soon'. */
-    .tb-mode-toggle button.wallet-pending {
-      opacity: 0.5;
-      cursor: not-allowed;
-      border-style: dashed !important;
-    }
-    .tb-mode-toggle button.wallet-pending:hover {
-      background: transparent !important;
-      color: inherit !important;
-    }
-
     #status {
       position: absolute;
       bottom: 6px;
@@ -3332,7 +3311,7 @@
          / cohort / weight selection. openAddModal() + setChartType()
          remain in the JS as dead code for potential future re-wiring. -->
       <div id="tb-mode" class="tb-mode-toggle" data-i18n-title="tt_tb_mode" title="Primitive (Stock / Delta / Inflow / Outflow)"><button data-mode="stock" class="active" data-i18n-title="tt_mode_stock" title="URPD — supply distribution by cost basis">STOCK</button> <button data-mode="delta" data-i18n-title="tt_mode_delta" title="Net Flow (ΔURPD) — change in URPD = COPD − SOPD per bin">NET FLOW</button> <button data-mode="inflow" data-i18n-title="tt_mode_inflow" title="COPD — newly-created outputs by cost basis">INFLOW</button> <button data-mode="outflow" data-i18n-title="tt_mode_outflow" title="SOPD — spent outputs by cost basis">OUTFLOW</button></div>
-      <div id="tb-cohort" class="tb-mode-toggle" data-i18n-title="tt_tb_cohort" title="Cohort split"><button data-cohort="pl" class="active" data-i18n-title="tt_cohort_pl" title="Profit / Loss colouring (no cohort)">P/L</button> <button data-cohort="lth_sth" data-i18n-title="tt_cohort_lthsth" title="Long-Term Holders / Short-Term Holders">LTH/STH</button> <button data-cohort="epoch" data-i18n-title="tt_cohort_epoch" title="Halving Epochs">EPOCH</button> <button data-cohort="age" data-i18n-title="tt_cohort_age" title="UTXO Age Bands">AGE</button> <button data-cohort="wallet" class="wallet-pending" disabled data-i18n-title="tt_cohort_wallet" title="Address-Balance Bands — backend in development (B307)">WALLET</button></div>
+      <div id="tb-cohort" class="tb-mode-toggle" data-i18n-title="tt_tb_cohort" title="Cohort split"><button data-cohort="pl" class="active" data-i18n-title="tt_cohort_pl" title="Profit / Loss colouring (no cohort)">P/L</button> <button data-cohort="lth_sth" data-i18n-title="tt_cohort_lthsth" title="Long-Term Holders / Short-Term Holders">LTH/STH</button> <button data-cohort="epoch" data-i18n-title="tt_cohort_epoch" title="Halving Epochs">EPOCH</button> <button data-cohort="age" data-i18n-title="tt_cohort_age" title="UTXO Age Bands">AGE</button></div>
       <div id="tb-weight" class="tb-mode-toggle" data-i18n-title="tt_tb_weight" title="Weight axis"><button data-weight="btc" class="active" data-i18n-title="tt_weight_btc" title="BTC supply">BTC</button> <button data-weight="usd" data-i18n-title="tt_weight_usd" title="USD (Realized Cap)">USD</button> <button data-weight="cd" data-i18n-title="tt_weight_cd" title="Coindays">CD</button> <button data-weight="vd" data-i18n-title="tt_weight_vd" title="Valuedays">VD</button></div>
       <div style="flex:1 1 auto"></div><!-- #btn-explainer relocated next to the weight group as a text button. --> <a id="renshu-btn" href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" data-i18n-title="tt_follow_x" title="Follow @RenshuBTC on X"><span id="view-counter">— VIEWS</span> <span class="renshu-btn-label">@RENSHUBTC</span></a>
       <div id="lang-wrap" title="Language"><button id="btn-lang"><span id="lang-label">日本語</span></button></div>
@@ -27699,7 +27678,6 @@
         tt_cohort_lthsth: "Long-Term Holders / Short-Term Holders",
         tt_cohort_epoch: "Halving Epochs",
         tt_cohort_age: "UTXO Age Bands",
-        tt_cohort_wallet: "Address-Balance Bands - backend in development (B307)",
         tt_weight_btc: "BTC supply",
         tt_weight_usd: "USD (Realized Cap)",
         tt_weight_cd: "Coindays",
