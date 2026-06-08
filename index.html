@@ -62,7 +62,8 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      padding: 8px 12px;
+      /* B310: shrink top-bar padding 8 -> 3 so chart pane gains ~10px */
+      padding: 3px 12px;
       background: #000;
       flex-wrap: nowrap;
       position: relative;
@@ -287,14 +288,14 @@
       color: #d4d4d4;
       border: 1px solid #555;
       border-radius: 2px;
-      height: 28px;
-      padding: 0 10px;
+      height: 22px;
+      padding: 0 6px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: .5px;
-      line-height: 26px;
+      letter-spacing: .3px;
+      line-height: 20px;
       box-sizing: border-box;
       transition: all .15s
     }
@@ -313,14 +314,14 @@
       color: #d4d4d4;
       border: 1px solid #555;
       border-radius: 2px;
-      height: 28px;
-      padding: 0 10px;
+      height: 22px;
+      padding: 0 6px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 12px;
+      font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: .5px;
-      line-height: 26px;
+      letter-spacing: .3px;
+      line-height: 20px;
       box-sizing: border-box;
       transition: all .15s;
       margin-left: 6px
@@ -504,10 +505,10 @@
       background: 0 0;
       color: #d4d4d4;
       border: none;
-      padding: 7px 12px;
+      padding: 4px 6px;
       cursor: pointer;
       font-family: inherit;
-      font-size: 15px;
+      font-size: 10px;
       font-weight: 500;
       border-radius: 3px;
       transition: background-color 80ms ease
