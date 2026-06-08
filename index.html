@@ -519,14 +519,16 @@
       color: #fff
     }
 
-    /* B308: top-bar shrunk to fit 5-button cohort row + language button. */
+    /* B308+B312: top-bar shrunk + chrome stripped. Toggle group is now an
+       invisible flex container — each button reads as bare text on black,
+       matching @RENSHUBTC. Active state still gets the orange highlight. */
     .tb-mode-toggle {
       display: inline-flex;
-      gap: 1px;
-      background: #0d0d0d;
-      padding: 2px;
-      border: 1px solid #555;
-      border-radius: 2px;
+      gap: 4px;
+      background: transparent;
+      padding: 0;
+      border: none;
+      border-radius: 0;
       height: 24px;
       align-items: center;
       box-sizing: border-box
@@ -539,9 +541,10 @@
       justify-content: center;
       padding: 0 5px;
       font-size: 10px;
+      font-weight: 500;
       letter-spacing: .3px;
-      background: #0d0d0d;
-      border: 1px solid transparent;
+      background: transparent;
+      border: none;
       border-radius: 2px;
       color: #fff;
       cursor: pointer;
