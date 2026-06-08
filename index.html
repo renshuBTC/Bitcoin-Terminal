@@ -2211,6 +2211,18 @@
       display: block
     }
 
+    /* B307 M6 preview: WALLET button is visible but disabled until backend
+       cohorts ship. Slightly faded + dashed outline to signal 'coming soon'. */
+    .tb-mode-toggle button.wallet-pending {
+      opacity: 0.5;
+      cursor: not-allowed;
+      border-style: dashed !important;
+    }
+    .tb-mode-toggle button.wallet-pending:hover {
+      background: transparent !important;
+      color: inherit !important;
+    }
+
     #status {
       position: absolute;
       bottom: 6px;
@@ -3311,7 +3323,7 @@
          / cohort / weight selection. openAddModal() + setChartType()
          remain in the JS as dead code for potential future re-wiring. -->
       <div id="tb-mode" class="tb-mode-toggle" data-i18n-title="tt_tb_mode" title="Primitive (Stock / Delta / Inflow / Outflow)"><button data-mode="stock" class="active" data-i18n-title="tt_mode_stock" title="URPD — supply distribution by cost basis">STOCK</button> <button data-mode="delta" data-i18n-title="tt_mode_delta" title="Net Flow (ΔURPD) — change in URPD = COPD − SOPD per bin">NET FLOW</button> <button data-mode="inflow" data-i18n-title="tt_mode_inflow" title="COPD — newly-created outputs by cost basis">INFLOW</button> <button data-mode="outflow" data-i18n-title="tt_mode_outflow" title="SOPD — spent outputs by cost basis">OUTFLOW</button></div>
-      <div id="tb-cohort" class="tb-mode-toggle" data-i18n-title="tt_tb_cohort" title="Cohort split"><button data-cohort="pl" class="active" data-i18n-title="tt_cohort_pl" title="Profit / Loss colouring (no cohort)">P/L</button> <button data-cohort="lth_sth" data-i18n-title="tt_cohort_lthsth" title="Long-Term Holders / Short-Term Holders">LTH/STH</button> <button data-cohort="epoch" data-i18n-title="tt_cohort_epoch" title="Halving Epochs">EPOCH</button> <button data-cohort="age" data-i18n-title="tt_cohort_age" title="UTXO Age Bands">AGE</button></div>
+      <div id="tb-cohort" class="tb-mode-toggle" data-i18n-title="tt_tb_cohort" title="Cohort split"><button data-cohort="pl" class="active" data-i18n-title="tt_cohort_pl" title="Profit / Loss colouring (no cohort)">P/L</button> <button data-cohort="lth_sth" data-i18n-title="tt_cohort_lthsth" title="Long-Term Holders / Short-Term Holders">LTH/STH</button> <button data-cohort="epoch" data-i18n-title="tt_cohort_epoch" title="Halving Epochs">EPOCH</button> <button data-cohort="age" data-i18n-title="tt_cohort_age" title="UTXO Age Bands">AGE</button> <button data-cohort="wallet" class="wallet-pending" disabled data-i18n-title="tt_cohort_wallet" title="Address-Balance Bands — backend in development (B307)">WALLET</button></div>
       <div id="tb-weight" class="tb-mode-toggle" data-i18n-title="tt_tb_weight" title="Weight axis"><button data-weight="btc" class="active" data-i18n-title="tt_weight_btc" title="BTC supply">BTC</button> <button data-weight="usd" data-i18n-title="tt_weight_usd" title="USD (Realized Cap)">USD</button> <button data-weight="cd" data-i18n-title="tt_weight_cd" title="Coindays">CD</button> <button data-weight="vd" data-i18n-title="tt_weight_vd" title="Valuedays">VD</button></div>
       <div style="flex:1 1 auto"></div><!-- #btn-explainer relocated next to the weight group as a text button. --> <a id="renshu-btn" href="https://x.com/RenshuBTC" target="_blank" rel="noopener noreferrer" data-i18n-title="tt_follow_x" title="Follow @RenshuBTC on X"><span id="view-counter">— VIEWS</span> <span class="renshu-btn-label">@RENSHUBTC</span></a>
       <div id="lang-wrap" title="Language"><button id="btn-lang"><span id="lang-label">日本語</span></button></div>
@@ -27678,6 +27690,7 @@
         tt_cohort_lthsth: "Long-Term Holders / Short-Term Holders",
         tt_cohort_epoch: "Halving Epochs",
         tt_cohort_age: "UTXO Age Bands",
+        tt_cohort_wallet: "Address-Balance Bands - backend in development (B307)",
         tt_weight_btc: "BTC supply",
         tt_weight_usd: "USD (Realized Cap)",
         tt_weight_cd: "Coindays",
