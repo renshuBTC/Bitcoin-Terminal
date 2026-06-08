@@ -6046,13 +6046,11 @@
       if (i <= 1) return e.some(e => e && e.buckets && e.buckets.length > 0);
       return e.reduce((e, t) => e + (t && t.buckets ? t.buckets.length : 0), 0) >= i
     }
-    // B294 (2026-06-08): default to 720 blocks (~5D) instead of 0. With 0, the
-    // first boot fetch hits /api/series/price/height?from=-0 which returns ALL
-    // ~952k height-indexed values (~7 MB) × 2 series (price + timestamp) =
-    // ~14 MB before the chart can paint anything. Stranded users on "Loading…"
-    // for many seconds. 720 matches the 5D default lookback window so first
-    // paint happens fast; the chart can expand later when the user picks a
-    // longer window.
+    // B294: default to 720 blocks (~5D) instead of 0. With 0, the first boot
+    // fetch to /api/series/price/height?from=-0 returns ALL ~952k height values
+    // (~7 MB) × 2 series (price + timestamp) = ~14 MB and the chart sits on
+    // "Loading…" until both downloads complete. 720 matches the 5D default
+    // lookback so first paint happens fast.
     let currentHeightFrom = 720,
       currentHeightStride = 1,
       currentHeightStart = 0,
@@ -33881,4 +33879,23 @@
                 const e = B();
                 if (!e) return !1;
                 for (const e of r) try {
-                  t && "
+                  t && "function" == typeof t.detachPrimitive && t.detachPrimitive(e)
+                } catch (e) {}
+                t = e;
+                for (const e of r) try {
+                  "function" == typeof t.attachPrimitive && t.attachPrimitive(e)
+                } catch (e) {}
+                return !0
+              },
+              drawings: r
+            }, !0
+          }
+          let V = 0;
+          const $ = setInterval(() => {
+            (H() || ++V > 50) && clearInterval($)
+          }, 200)
+        }()
+  </script>
+</body>
+
+</html>
