@@ -4452,7 +4452,7 @@
             // chart (default): BTC + 6 line overlays (BTCPriceIndicator must be first;
             // it's the actual white BTC price line. SpotPriceLineIndicator is just the
             // dashed tracer that needs btc_price to attach to.)
-            newInds = [new BTCPriceIndicator, new SpotPriceLineIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator];
+            newInds = [new BTCPriceIndicator, new SpotPriceLineIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator];
           }
           for (const i of newInds) activeIndicators.set(i.id, i);
           await Promise.all(newInds.map(i => i.load().catch(e => console.warn("mv load:", e))));
@@ -32099,7 +32099,7 @@
             activeIndicators.delete(t)
           }
         }
-        const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const t = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator] : [new SpotPriceLineIndicator, new RealisedPriceIndicator, new STHRealisedPriceIndicator, new URPDProfileIndicator, new DeltaURPDIndicator];
+        const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const t = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator] : [new SpotPriceLineIndicator, new RealisedPriceIndicator, new STHRealisedPriceIndicator, new URPDProfileIndicator, new DeltaURPDIndicator];
         for (const e of t) activeIndicators.set(e.id, e);
         await Promise.all(t.map(e => e.load().catch(t => {
           console.warn(`daily-screen ${e.constructor.type} load failed:`, t)
@@ -32148,7 +32148,7 @@
               activeIndicators.delete(t)
             }
           }
-          const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const t = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator] : [new SpotPriceLineIndicator, new URPDProfileIndicator, new URPDLTHSTHHistoryIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator];
+          const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const t = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator] : [new SpotPriceLineIndicator, new URPDProfileIndicator, new URPDLTHSTHHistoryIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator];
           for (const e of t) activeIndicators.set(e.id, e);
           await Promise.all(t.map(e => e.load().catch(t => {
             console.warn(`default-startup ${e.constructor.type} load failed:`, t)
@@ -32307,7 +32307,7 @@
             try {
               _refreshAnchoredMarkers()
             } catch (e) {}
-            const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const i = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator] : [new SpotPriceLineIndicator, new URPDProfileIndicator, new URPDLTHSTHHistoryIndicator, new RealisedPriceIndicator, new POSMA200Indicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator, new POMedianRealizedPriceIndicator];
+            const _isMob = window.matchMedia && (window.matchMedia("(max-width: 768px)").matches || window.matchMedia("(orientation: landscape) and (max-height: 500px)").matches); const i = _isMob ? [new SpotPriceLineIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator] : [new SpotPriceLineIndicator, new URPDProfileIndicator, new URPDLTHSTHHistoryIndicator, new RealisedPriceIndicator, new POCVDDIndicator, new POSupply45ProfitPriceIndicator];
             for (const e of i) activeIndicators.set(e.id, e);
             if (await Promise.all(i.map(e => e.load().catch(t => {
                 console.warn(`default ${e.constructor.type} load failed:`, t)
