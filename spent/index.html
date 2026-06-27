@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SPENT Flow Tracker · bitcointerminal</title>
+<style>
+:root{--bg:#0a0e14;--panel:#111722;--panel2:#0d131c;--line:#1d2733;--txt:#d6e1f0;--dim:#7d8da3;--accent:#f7931a;--green:#26a269;--red:#e0506a;--blue:#4a9eff;--mono:'SF Mono',ui-monospace,'Cascadia Code',Consolas,monospace}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--txt);font:14px/1.5 var(--mono);-webkit-font-smoothing:antialiased}
+.wrap{max-width:1120px;margin:0 auto;padding:18px}
+header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;flex-wrap:wrap;border-bottom:1px solid var(--line);padding-bottom:12px;margin-bottom:16px}
+h1{font-size:16px;margin:0;letter-spacing:.5px;color:#fff}
+h1 .tag{color:var(--accent)}
+.sub{color:var(--dim);font-size:12px;margin-top:3px}
+.meta{color:var(--dim);font-size:12px;text-align:right}
+.meta b{color:var(--txt)}
+button{font-family:inherit;font-size:12px;background:var(--panel);color:var(--txt);border:1px solid var(--line);border-radius:4px;padding:5px 10px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+.grid{display:grid;gap:12px}
+.kpis{grid-template-columns:repeat(4,1fr)}
+.k{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:12px 14px}
+.k .lab{color:var(--dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+.k .val{font-size:22px;color:#fff;margin-top:4px;font-weight:600}
+.k .val.s{font-size:18px}
+.k .sub2{color:var(--dim);font-size:11px;margin-top:2px}
+.cols{grid-template-columns:1fr 1fr}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px}
+.panel h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--dim);margin:0 0 10px}
+.bar{height:22px;border-radius:3px;background:var(--accent);display:flex;align-items:center;padding-left:8px;color:#000;font-size:11px;font-weight:700;white-space:nowrap;min-width:34px}
+.brow{display:grid;grid-template-columns:64px 1fr 120px;gap:8px;align-items:center;margin-bottom:7px;font-size:12px}
+.brow .nm{color:var(--dim)}
+.brow .vv{text-align:right;color:var(--txt)}
+.kv{display:flex;justify-content:space-between;gap:10px;padding:6px 0;border-bottom:1px solid var(--panel2);font-size:12px}
+.kv:last-child{border-bottom:0}
+.kv .n{color:var(--dim)}
+.kv .v{color:var(--txt);text-align:right}
+.verdict{border-left:3px solid var(--accent);background:var(--panel2);padding:12px 14px;font-size:12.5px;line-height:1.65}
+.verdict b{color:#fff}
+.green{color:var(--green)}.red{color:var(--red)}.accent{color:var(--accent)}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th,td{text-align:left;padding:5px 8px;border-bottom:1px solid var(--panel2)}
+th{color:var(--dim);font-weight:500;text-transform:uppercase;font-size:10px;letter-spacing:.5px}
+td a{color:var(--blue);text-decoration:none}
+td a:hover{text-decoration:underline}
+td.r{text-align:right}
+.foot{color:var(--dim);font-size:11px;margin-top:14px;border-top:1px solid var(--line);padding-top:10px}
+.err{color:var(--red);padding:24px;text-align:center}
+.pulse{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-right:4px;animation:p 2s infinite;vertical-align:middle}
+@keyframes p{0%,100%{opacity:1}50%{opacity:.25}}
+@media(max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.cols{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+<div>
+<h1>SPENT FLOW <span class="tag">TRACKER</span></h1>
+<div class="sub">Large on-chain BTC movements · outputs &ge; <span id="thr">10</span> BTC · rolling buffer · live</div>
+</div>
+<div class="meta" id="meta">loading&hellip;</div>
+</header>
+<div id="content"><div class="err">Loading live feed&hellip;</div></div>
+<div class="foot">
+Source: <span class="accent">api.bitcointerminal.net/api/tx/large</span> · auto-refresh 60s ·
+<span class="pulse"></span><span id="age">&mdash;</span> ·
+<button onclick="load()">&#8635; Refresh now</button>
+<div style="margin-top:6px">On-chain transfers move <i>custody</i>, not price &mdash; this flow is plumbing, not economic volume, and most of it is hot-wallet / exchange churn. Research view, not financial advice.</div>
+</div>
+</div>
+<script>
+const API="https://api.bitcointerminal.net/api/tx/large";
+const fmt=(n,d=0)=>(isFinite(n)?n:0).toLocaleString('en-US',{maximumFractionDigits:d,minimumFractionDigits:d});
+const usd=n=>n>=1e9?'$'+(n/1e9).toFixed(2)+'B':n>=1e6?'$'+(n/1e6).toFixed(1)+'M':n>=1e3?'$'+(n/1e3).toFixed(0)+'K':'$'+fmt(n);
+const hh=h=>h<1?(h*60).toFixed(0)+'m':h<48?h.toFixed(1)+'h':(h/24).toFixed(0)+'d';
+let lastLoad=0;
+function median(a){if(!a.length)return 0;a=a.slice().sort((x,y)=>x-y);const m=a.length>>1;return a.length%2?a[m]:(a[m-1]+a[m])/2}
+async function load(){
+  try{
+    const r=await fetch(API,{cache:'no-store'});
+    if(!r.ok)throw new Error('HTTP '+r.status);
+    render(await r.json()); lastLoad=Date.now();
+  }catch(e){
+    document.getElementById('content').innerHTML='<div class="err">Feed unreachable: '+e.message+'<br><span style="font-size:11px;color:var(--dim)">The SPENT feed is served by the fork API &mdash; it is offline if the node is down, and is not available on bitview.space.</span></div>';
+  }
+}
+function render(d){
+  const items=d.items||[]; if(!items.length){document.getElementById('content').innerHTML='<div class="err">Feed empty.</div>';return;}
+  const price=d.price_usd||(items[0]&&items[0].current_price_usd)||0; const thr=d.threshold_btc||10;
+  document.getElementById('thr').textContent=thr;
+  const times=items.filter(i=>i.time).map(i=>i.time);
+  const tmin=Math.min(...times),tmax=Math.max(...times); const spanD=Math.max((tmax-tmin)/86400,1e-6); const spanH=(tmax-tmin)/3600;
+  const tot=items.reduce((s,i)=>s+i.amount_btc,0);
+  const perDay=tot/spanD;
+  const bytx={}; items.forEach(i=>{(bytx[i.spending_txid]=bytx[i.spending_txid]||[]).push(i.amount_btc)});
+  const txTot=Object.values(bytx).map(v=>v.reduce((a,b)=>a+b,0)).sort((a,b)=>b-a);
+  const ntx=txTot.length;
+  const top10=txTot.slice(0,10).reduce((a,b)=>a+b,0);
+  const big=txTot.filter(t=>t>=1000); const bigSum=big.reduce((a,b)=>a+b,0);
+  const bk=[[10,100,'10&ndash;100'],[100,1000,'100&ndash;1K'],[1000,1e9,'&ge;1K']].map(([lo,hi,lab])=>{
+    const g=items.filter(i=>i.amount_btc>=lo&&i.amount_btc<hi); const s=g.reduce((a,i)=>a+i.amount_btc,0);
+    return {lab,n:g.length,sum:s,pct:100*s/tot};});
+  const holds=items.filter(i=>i.creation_time&&i.time).map(i=>(i.time-i.creation_time)/3600);
+  const medH=median(holds); const h1=100*holds.filter(h=>h<1).length/holds.length; const h24=100*holds.filter(h=>h<24).length/holds.length;
+  const amts=items.map(i=>i.amount_btc);
+  const nearInt=100*amts.filter(a=>Math.abs(a-Math.round(a))<0.05).length/amts.length;
+  const exactInt=100*amts.filter(a=>Math.abs(a-Math.round(a))<1e-6).length/amts.length;
+  const cnt={}; amts.forEach(a=>{const k=a.toFixed(8);cnt[k]=(cnt[k]||0)+1});
+  const dups=Object.entries(cnt).filter(e=>e[1]>=2).sort((a,b)=>b[1]-a[1]);
+  const dupRec=dups.reduce((s,e)=>s+e[1],0);
+  const perMin={}; times.forEach(t=>{const m=Math.floor(t/60);perMin[m]=(perMin[m]||0)+1});
+  const busiest=Math.max(0,...Object.values(perMin));
+  const pls=items.filter(i=>typeof i.pl_pct==='number').map(i=>i.pl_pct);
+  const loss=pls.length?100*pls.filter(p=>p<0).length/pls.length:0; const medPl=median(pls);
+  const top=items.slice().sort((a,b)=>b.amount_btc-a.amount_btc).slice(0,12);
+
+  document.getElementById('meta').innerHTML='tip <b>'+fmt(d.tip_height)+'</b> &middot; spot <b>'+usd(price)+'</b> &middot; window <b>'+spanH.toFixed(1)+'h</b> &middot; <b>'+fmt(items.length)+'</b> records';
+  const bar=(pct,txt)=>'<div class="bar" style="width:'+Math.max(pct,3)+'%">'+txt+'</div>';
+  document.getElementById('content').innerHTML=
+  '<div class="grid kpis" style="margin-bottom:12px">'+
+    '<div class="k"><div class="lab">Flow / day (run-rate)</div><div class="val">'+fmt(perDay)+' <span style="font-size:13px;color:var(--dim)">BTC</span></div><div class="sub2">'+usd(perDay*price)+'/day</div></div>'+
+    '<div class="k"><div class="lab">In window ('+spanH.toFixed(0)+'h)</div><div class="val s">'+fmt(tot)+' BTC</div><div class="sub2">'+usd(tot*price)+'</div></div>'+
+    '<div class="k"><div class="lab">Large txs / day</div><div class="val">'+fmt(ntx/spanD)+'</div><div class="sub2">'+fmt(ntx)+' in window</div></div>'+
+    '<div class="k"><div class="lab">Median hold before spend</div><div class="val accent">'+hh(medH)+'</div><div class="sub2">'+h1.toFixed(0)+'% spent &lt;1h</div></div>'+
+  '</div>'+
+  '<div class="grid cols" style="margin-bottom:12px">'+
+    '<div class="panel"><h2>Flow by size</h2>'+
+      bk.map(b=>'<div class="brow"><span class="nm">'+b.lab+'</span>'+bar(b.pct,b.pct.toFixed(0)+'%')+'<span class="vv">'+fmt(b.sum)+' BTC</span></div>').join('')+
+      '<div style="color:var(--dim);font-size:11px;margin-top:8px">'+fmt(big.length)+' txs moved &ge;1,000 BTC = '+(100*bigSum/tot).toFixed(0)+'% of all flow.</div>'+
+    '</div>'+
+    '<div class="panel"><h2>Concentration &amp; behavior</h2>'+
+      '<div class="kv"><span class="n">Top 10 txs share</span><span class="v">'+(100*top10/tot).toFixed(0)+'% of flow</span></div>'+
+      '<div class="kv"><span class="n">Largest single tx</span><span class="v">'+fmt(txTot[0])+' BTC</span></div>'+
+      '<div class="kv"><span class="n">Spent within 24h of receipt</span><span class="v accent">'+h24.toFixed(0)+'%</span></div>'+
+      '<div class="kv"><span class="n">Spent at a loss</span><span class="v">'+loss.toFixed(0)+'% &middot; median '+(medPl>=0?'+':'')+medPl.toFixed(2)+'%</span></div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="grid cols" style="margin-bottom:12px">'+
+    '<div class="panel"><h2>Programmatic signals</h2>'+
+      '<div class="kv"><span class="n">Exact whole-BTC amounts</span><span class="v">'+exactInt.toFixed(1)+'% <span style="color:var(--dim)">(random&asymp;0%)</span></span></div>'+
+      '<div class="kv"><span class="n">Near a round number</span><span class="v">'+nearInt.toFixed(0)+'%</span></div>'+
+      '<div class="kv"><span class="n">Repeated identical amounts</span><span class="v">'+dups.length+' values &middot; '+(100*dupRec/items.length).toFixed(0)+'% of records</span></div>'+
+      '<div class="kv"><span class="n">Busiest single minute</span><span class="v">'+busiest+' large spends</span></div>'+
+      (dups.length?'<div style="color:var(--dim);font-size:11px;margin-top:8px">Top batches: '+dups.slice(0,4).map(e=>fmt(parseFloat(e[0]),e[0].endsWith('00000000')?0:2)+'&times;'+e[1]).join(' &middot; ')+'</div>':'')+
+    '</div>'+
+    '<div class="panel"><h2>Read</h2>'+
+      '<div class="verdict">Most of this is <b>operational churn</b> by a few large desks &mdash; coins arrive and leave within <span class="accent">'+hh(medH)+'</span> (median), in round lots and repeated batches. That is <b>exchange / ETF-custodian / OTC / market-maker plumbing</b>, not holders selling. It is <b>not</b> evidence of price manipulation: on-chain transfers move custody &mdash; price is set on exchange order books, off-chain and invisible to this feed.</div>'+
+    '</div>'+
+  '</div>'+
+  '<div class="panel"><h2>Largest spends in window</h2>'+
+    '<table><thead><tr><th>BTC</th><th class="r">USD</th><th class="r">Hold</th><th class="r">P/L</th><th>spending tx</th></tr></thead><tbody>'+
+    top.map(i=>{const h=(i.time-i.creation_time)/3600;return '<tr><td>'+fmt(i.amount_btc)+'</td><td class="r">'+usd(i.amount_btc*price)+'</td><td class="r">'+hh(h)+'</td><td class="r '+(i.pl_pct>=0?'green':'red')+'">'+(i.pl_pct>=0?'+':'')+i.pl_pct+'%</td><td><a href="'+i.url+'" target="_blank" rel="noopener">'+i.spending_txid.slice(0,12)+'&hellip;</a></td></tr>';}).join('')+
+    '</tbody></table></div>';
+}
+setInterval(function(){const s=Math.round((Date.now()-lastLoad)/1000);document.getElementById('age').textContent=lastLoad?('updated '+(s<60?s+'s':Math.round(s/60)+'m')+' ago'):'—';},1000);
+setInterval(load,60000);
+load();
+</script>
+</body>
+</html>
